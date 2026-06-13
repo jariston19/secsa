@@ -1,0 +1,271 @@
+import type { FastifyInstance } from "fastify";
+import { QuestionSetStatus, QuestionSetType, Role } from "@prisma/client";
+import { z } from "zod";
+import { prisma } from "../lib/prisma.js";
+import { getUser, requireRoles } from "../lib/auth.js";
+import { yearLevelSchema, curriculumYearForStudentYear } from "../lib/yearLevel.js";
+import {
+  getConfigPoolQuestions,
+  validateQuestionSetConfigs,
+} from "../services/examGenerator.js";
+
+const configSchema = z.object({
+  subjectId: z.string().min(1),
+  topicId: z.string().optional().nullable(),
+  easyCount: z.number().int().min(0),
+  mediumCount: z.number().int().min(0),
+  hardCount: z.number().int().min(0),
+});
+
+const createSetSchema = z.object({
+  name: z.string().min(1),
+  yearLevel: yearLevelSchema,
+  type: z.nativeEnum(QuestionSetType),
+  totalItems: z.number().int().min(1),
+  passThreshold: z.number().min(0).max(100).optional(),
+  configs: z.array(configSchema).min(1),
+});
+
+export async function questionSetRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", app.authenticate);
+
+  app.get("/", async (request) => {
+    const query = request.query as { yearLevel?: string; type?: QuestionSetType };
+    const sets = await prisma.questionSet.findMany({
+      where: {
+        yearLevel: query.yearLevel ? Number(query.yearLevel) : undefined,
+        type: query.type,
+      },
+      include: { configs: { include: { subject: true, topic: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return { questionSets: sets };
+  });
+
+  app.post("/", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const body = createSetSchema.parse(request.body);
+    const configTotal = body.configs.reduce(
+      (sum, c) => sum + c.easyCount + c.mediumCount + c.hardCount,
+      0
+    );
+
+    if (configTotal !== body.totalItems) {
+      return reply.code(400).send({
+        error: `Config counts (${configTotal}) must equal totalItems (${body.totalItems}).`,
+      });
+    }
+
+    const errors = await validateQuestionSetConfigs(
+      body.configs.map((c, i) => ({
+        id: `draft-${i}`,
+        questionSetId: "draft",
+        subjectId: c.subjectId,
+        topicId: c.topicId ?? null,
+        easyCount: c.easyCount,
+        mediumCount: c.mediumCount,
+        hardCount: c.hardCount,
+      }))
+    );
+
+    if (errors.length > 0) {
+      return reply.code(400).send({ error: "Insufficient questions in pools.", details: errors });
+    }
+
+    const curriculumYear = curriculumYearForStudentYear(body.yearLevel);
+    const subjectIds = [...new Set(body.configs.map((c) => c.subjectId))];
+    const subjectsInConfigs = await prisma.subject.findMany({
+      where: { id: { in: subjectIds } },
+      select: { id: true, courseCode: true, yearLevel: true },
+    });
+
+    if (subjectsInConfigs.length !== subjectIds.length) {
+      return reply.code(400).send({ error: "One or more subjects in this set were not found." });
+    }
+
+    const mismatched = subjectsInConfigs.find((s) => s.yearLevel !== curriculumYear);
+    if (mismatched) {
+      return reply.code(400).send({
+        error: `${mismatched.courseCode} is curriculum year ${mismatched.yearLevel}, but student year ${body.yearLevel} requires curriculum year ${curriculumYear} subjects only.`,
+      });
+    }
+
+    const questionSet = await prisma.questionSet.create({
+      data: {
+        name: body.name,
+        yearLevel: body.yearLevel,
+        type: body.type,
+        totalItems: body.totalItems,
+        passThreshold: body.passThreshold ?? 75,
+        createdById: user.id,
+        configs: {
+          create: body.configs.map((c) => ({
+            subjectId: c.subjectId,
+            topicId: c.topicId ?? null,
+            easyCount: c.easyCount,
+            mediumCount: c.mediumCount,
+            hardCount: c.hardCount,
+          })),
+        },
+      },
+      include: { configs: { include: { subject: true, topic: true } } },
+    });
+
+    return reply.code(201).send({ questionSet });
+  });
+
+  app.get("/:id/preview", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const set = await prisma.questionSet.findUnique({
+      where: { id },
+      include: { configs: { include: { subject: true, topic: true } } },
+    });
+
+    if (!set) return reply.code(404).send({ error: "Question set not found." });
+
+    const sections = await Promise.all(
+      set.configs.map(async (config) => {
+        const questions = await getConfigPoolQuestions(config.subjectId, config.topicId);
+        const easy = questions.filter((q) => q.difficulty === "EASY");
+        const medium = questions.filter((q) => q.difficulty === "MEDIUM");
+        const hard = questions.filter((q) => q.difficulty === "HARD");
+
+        return {
+          configId: config.id,
+          subject: config.subject,
+          topic: config.topic,
+          required: {
+            easy: config.easyCount,
+            medium: config.mediumCount,
+            hard: config.hardCount,
+          },
+          available: {
+            easy: easy.length,
+            medium: medium.length,
+            hard: hard.length,
+          },
+          questions: questions.map((q) => ({
+            id: q.id,
+            text: q.text,
+            difficulty: q.difficulty,
+            optionA: q.optionA,
+            optionB: q.optionB,
+            optionC: q.optionC,
+            optionD: q.optionD,
+            correctOption: q.correctOption,
+            imagePath: q.imagePath,
+            topic: q.topic?.name ?? null,
+            subject: `${q.subject.courseCode} ${q.subject.courseTitle}`,
+          })),
+        };
+      })
+    );
+
+    const validationErrors = await validateQuestionSetConfigs(set.configs);
+
+    return {
+      questionSet: set,
+      sections,
+      isReady: validationErrors.length === 0,
+      validationErrors,
+    };
+  });
+
+  app.delete("/:id", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const { id } = request.params as { id: string };
+    const set = await prisma.questionSet.findUnique({
+      where: { id },
+      include: { _count: { select: { examAttempts: true } } },
+    });
+
+    if (!set) return reply.code(404).send({ error: "Question set not found." });
+
+    if (set.status === QuestionSetStatus.DEPLOYED) {
+      return reply.code(400).send({
+        error: "Cannot delete a deployed question set. Cancel deploy first.",
+      });
+    }
+
+    if (set._count.examAttempts > 0) {
+      return reply.code(400).send({
+        error: "Cannot delete a question set that students have already used for exams.",
+      });
+    }
+
+    await prisma.questionSet.delete({ where: { id } });
+    return { success: true };
+  });
+
+  app.post("/:id/deploy", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const { id } = request.params as { id: string };
+    const set = await prisma.questionSet.findUnique({
+      where: { id },
+      include: { configs: true },
+    });
+
+    if (!set) return reply.code(404).send({ error: "Question set not found." });
+
+    const errors = await validateQuestionSetConfigs(set.configs);
+    if (errors.length > 0) {
+      return reply.code(400).send({ error: "Cannot deploy. Pools incomplete.", details: errors });
+    }
+
+    await prisma.$transaction([
+      prisma.questionSet.updateMany({
+        where: {
+          yearLevel: set.yearLevel,
+          type: set.type,
+          status: QuestionSetStatus.DEPLOYED,
+        },
+        data: { status: QuestionSetStatus.ARCHIVED },
+      }),
+      prisma.questionSet.update({
+        where: { id },
+        data: {
+          status: QuestionSetStatus.DEPLOYED,
+          deployedAt: new Date(),
+        },
+      }),
+    ]);
+
+    const deployed = await prisma.questionSet.findUnique({
+      where: { id },
+      include: { configs: { include: { subject: true, topic: true } } },
+    });
+
+    return { questionSet: deployed };
+  });
+
+  app.post("/:id/undeploy", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const { id } = request.params as { id: string };
+    const set = await prisma.questionSet.findUnique({ where: { id } });
+
+    if (!set) return reply.code(404).send({ error: "Question set not found." });
+
+    if (set.status !== QuestionSetStatus.DEPLOYED) {
+      return reply.code(400).send({ error: "Only deployed question sets can be undeployed." });
+    }
+
+    const updated = await prisma.questionSet.update({
+      where: { id },
+      data: {
+        status: QuestionSetStatus.DRAFT,
+        deployedAt: null,
+      },
+      include: { configs: { include: { subject: true, topic: true } } },
+    });
+
+    return { questionSet: updated };
+  });
+}

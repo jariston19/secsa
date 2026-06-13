@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: file:/data/prod.db
+      JWT_SECRET: change-this-in-production
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - secsa-data:/data
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  secsa-data:

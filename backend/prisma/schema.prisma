@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  SUPERADMIN
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionSetType {
+  DIAGNOSTIC
+  RETAKE
+}
+
+enum QuestionSetStatus {
+  DRAFT
+  DEPLOYED
+  ARCHIVED
+}
+
+enum AttemptType {
+  FIRST
+  RETAKE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role
+  yearLevel    Int?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subjectsCreated      Subject[]        @relation("SubjectCreator")
+  questionsCreated     Question[]       @relation("QuestionCreator")
+  questionSetsCreated  QuestionSet[]    @relation("QuestionSetCreator")
+  examAttempts              ExamAttempt[]
+  retakeApprovalsGiven      RetakeApproval[] @relation("Approver")
+  retakeApprovalsRequested  RetakeApproval[] @relation("RetakeStudent")
+}
+
+model Subject {
+  id          String   @id @default(cuid())
+  courseCode  String
+  courseTitle String
+  yearLevel   Int
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User      @relation("SubjectCreator", fields: [createdById], references: [id])
+  topics    Topic[]
+  questions Question[]
+  configs   QuestionSetConfig[]
+
+  @@unique([courseCode, yearLevel])
+}
+
+model Topic {
+  id        String   @id @default(cuid())
+  name      String
+  subjectId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subject   Subject             @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  questions Question[]
+  configs   QuestionSetConfig[]
+
+  @@unique([subjectId, name])
+}
+
+model Question {
+  id            String     @id @default(cuid())
+  subjectId     String
+  topicId       String?
+  difficulty    Difficulty
+  text          String
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  correctOption String
+  imagePath     String?
+  createdById   String
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  subject   Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic     Topic?       @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  createdBy User         @relation("QuestionCreator", fields: [createdById], references: [id])
+  answers   ExamAnswer[]
+}
+
+model QuestionSet {
+  id            String            @id @default(cuid())
+  name          String
+  yearLevel     Int
+  type          QuestionSetType
+  status        QuestionSetStatus @default(DRAFT)
+  totalItems    Int
+  passThreshold Float             @default(75)
+  createdById   String
+  deployedAt    DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  createdBy    User                @relation("QuestionSetCreator", fields: [createdById], references: [id])
+  configs      QuestionSetConfig[]
+  examAttempts ExamAttempt[]
+}
+
+model QuestionSetConfig {
+  id            String @id @default(cuid())
+  questionSetId String
+  subjectId     String
+  topicId       String?
+  easyCount     Int    @default(0)
+  mediumCount   Int    @default(0)
+  hardCount     Int    @default(0)
+
+  questionSet QuestionSet @relation(fields: [questionSetId], references: [id], onDelete: Cascade)
+  subject     Subject     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic       Topic?      @relation(fields: [topicId], references: [id], onDelete: SetNull)
+}
+
+model ExamAttempt {
+  id             String      @id @default(cuid())
+  studentId      String
+  questionSetId  String
+  attemptType    AttemptType
+  attemptNumber  Int
+  questionIds    String
+  score          Int?
+  totalItems     Int
+  percentage     Float?
+  passed         Boolean?
+  startedAt      DateTime    @default(now())
+  submittedAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  student       User             @relation(fields: [studentId], references: [id])
+  questionSet   QuestionSet      @relation(fields: [questionSetId], references: [id])
+  answers       ExamAnswer[]
+  retakeRequest RetakeApproval?
+}
+
+model ExamAnswer {
+  id             String  @id @default(cuid())
+  examAttemptId  String
+  questionId     String
+  selectedOption String?
+  isCorrect      Boolean?
+
+  examAttempt ExamAttempt @relation(fields: [examAttemptId], references: [id], onDelete: Cascade)
+  question    Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([examAttemptId, questionId])
+}
+
+model RetakeApproval {
+  id            String         @id @default(cuid())
+  studentId     String
+  examAttemptId String         @unique
+  yearLevel     Int
+  status        ApprovalStatus @default(PENDING)
+  approvedById  String?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  student     User         @relation("RetakeStudent", fields: [studentId], references: [id])
+  approvedBy  User?        @relation("Approver", fields: [approvedById], references: [id])
+  examAttempt ExamAttempt  @relation(fields: [examAttemptId], references: [id], onDelete: Cascade)
+}
