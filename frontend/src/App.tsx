@@ -22,6 +22,16 @@ function ProtectedRoute({
   return <>{children}</>;
 }
 
+function HomeRedirect() {
+  const { user } = useAuth();
+
+  if (user?.role === "STUDENT") return <StudentDashboard />;
+  if (user?.role === "TEACHER") return <Navigate to="/teach" replace />;
+  if (user?.role === "SUPERADMIN") return <Navigate to="/admin" replace />;
+
+  return <Navigate to="/login" replace />;
+}
+
 export default function App() {
   const { user } = useAuth();
 
@@ -36,16 +46,21 @@ export default function App() {
           </ProtectedRoute>
         }
       >
+        <Route index element={<HomeRedirect />} />
         <Route
-          index
+          path="teach"
           element={
-            user?.role === "STUDENT" ? (
-              <StudentDashboard />
-            ) : user?.role === "TEACHER" ? (
+            <ProtectedRoute roles={["TEACHER", "SUPERADMIN"]}>
               <TeacherDashboard />
-            ) : (
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin"
+          element={
+            <ProtectedRoute roles={["SUPERADMIN"]}>
               <AdminDashboard />
-            )
+            </ProtectedRoute>
           }
         />
       </Route>

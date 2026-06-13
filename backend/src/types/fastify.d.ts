@@ -13,6 +13,7 @@ declare module "@fastify/jwt" {
       email: string;
       role: string;
       yearLevel?: number | null;
+      qaUnlimited?: boolean;
     };
   }
 }

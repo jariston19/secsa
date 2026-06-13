@@ -8,6 +8,10 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "auto",
+      includeAssets: ["secsa.png"],
+      devOptions: {
+        enabled: false,
+      },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
       },
@@ -18,14 +22,33 @@ export default defineConfig({
         background_color: "#f8fafc",
         display: "standalone",
         start_url: "/",
+        icons: [
+          {
+            src: "secsa.png",
+            sizes: "500x500",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "secsa.png",
+            sizes: "500x500",
+            type: "image/png",
+            purpose: "maskable",
+          },
+        ],
       },
     }),
   ],
   server: {
+    host: true,
     port: 5173,
+    strictPort: true,
+    hmr: {
+      clientPort: 5173,
+    },
     proxy: {
-      "/api": "http://localhost:3001",
-      "/uploads": "http://localhost:3001",
+      "/api": "http://127.0.0.1:3001",
+      "/uploads": "http://127.0.0.1:3001",
     },
   },
 });

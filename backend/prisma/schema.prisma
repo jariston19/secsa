@@ -41,13 +41,24 @@ enum ApprovalStatus {
   REJECTED
 }
 
+enum ProgramCourse {
+  CIVIL_ENGINEERING
+  MECHANICAL_ENGINEERING
+  ELECTRICAL_ENGINEERING
+  INFORMATION_TECHNOLOGY
+  ARCHITECTURE
+}
+
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String
-  role         Role
-  yearLevel    Int?
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  role          Role
+  yearLevel     Int?
+  programCourse ProgramCourse?
+  qaUnlimited  Boolean  @default(false)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -69,12 +80,23 @@ model Subject {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  createdBy User      @relation("SubjectCreator", fields: [createdById], references: [id])
-  topics    Topic[]
-  questions Question[]
-  configs   QuestionSetConfig[]
+  createdBy        User                   @relation("SubjectCreator", fields: [createdById], references: [id])
+  topics           Topic[]
+  questions        Question[]
+  configs          QuestionSetConfig[]
+  programCourses   SubjectProgramCourse[]
 
   @@unique([courseCode, yearLevel])
+}
+
+model SubjectProgramCourse {
+  id            String        @id @default(cuid())
+  subjectId     String
+  programCourse ProgramCourse
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, programCourse])
 }
 
 model Topic {
@@ -117,6 +139,7 @@ model QuestionSet {
   id            String            @id @default(cuid())
   name          String
   yearLevel     Int
+  programCourse ProgramCourse
   type          QuestionSetType
   status        QuestionSetStatus @default(DRAFT)
   totalItems    Int
@@ -168,11 +191,12 @@ model ExamAttempt {
 }
 
 model ExamAnswer {
-  id             String  @id @default(cuid())
-  examAttemptId  String
-  questionId     String
-  selectedOption String?
-  isCorrect      Boolean?
+  id               String  @id @default(cuid())
+  examAttemptId    String
+  questionId       String
+  selectedOption   String?
+  isCorrect        Boolean?
+  timeSpentSeconds Int?
 
   examAttempt ExamAttempt @relation(fields: [examAttemptId], references: [id], onDelete: Cascade)
   question    Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)

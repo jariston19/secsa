@@ -12,7 +12,8 @@ async function main() {
     create: {
       email: "admin@secsa.local",
       passwordHash,
-      name: "Super Admin",
+      firstName: "Super",
+      lastName: "Admin",
       role: Role.SUPERADMIN,
     },
   });
@@ -23,7 +24,8 @@ async function main() {
     create: {
       email: "teacher@secsa.local",
       passwordHash,
-      name: "Demo Teacher",
+      firstName: "Demo",
+      lastName: "Teacher",
       role: Role.TEACHER,
     },
   });
@@ -34,20 +36,61 @@ async function main() {
     create: {
       email: "student@secsa.local",
       passwordHash,
-      name: "Demo Student",
+      firstName: "Demo",
+      lastName: "Student",
       role: Role.STUDENT,
       yearLevel: 2,
+      programCourse: "INFORMATION_TECHNOLOGY",
+    },
+  });
+
+  const qaStudent = await prisma.user.upsert({
+    where: { email: "qa@secsa.local" },
+    update: {
+      qaUnlimited: true,
+      yearLevel: 2,
+      programCourse: "INFORMATION_TECHNOLOGY",
+      isActive: true,
+    },
+    create: {
+      email: "qa@secsa.local",
+      passwordHash,
+      firstName: "QA",
+      lastName: "Student",
+      role: Role.STUDENT,
+      yearLevel: 2,
+      programCourse: "INFORMATION_TECHNOLOGY",
+      qaUnlimited: true,
     },
   });
 
   const subject = await prisma.subject.upsert({
-    where: { courseCode_yearLevel: { courseCode: "ACEE 106", yearLevel: 1 } },
+    where: {
+      courseCode_yearLevel: {
+        courseCode: "ACEE 106",
+        yearLevel: 1,
+      },
+    },
     update: {},
     create: {
       courseCode: "ACEE 106",
       courseTitle: "Electromagnetics",
       yearLevel: 1,
       createdById: teacher.id,
+    },
+  });
+
+  await prisma.subjectProgramCourse.upsert({
+    where: {
+      subjectId_programCourse: {
+        subjectId: subject.id,
+        programCourse: "INFORMATION_TECHNOLOGY",
+      },
+    },
+    update: {},
+    create: {
+      subjectId: subject.id,
+      programCourse: "INFORMATION_TECHNOLOGY",
     },
   });
 
@@ -107,8 +150,14 @@ async function main() {
   }
 
   console.log("Seed complete.");
-  console.log({ superadmin: superadmin.email, teacher: teacher.email, student: student.email });
+  console.log({
+    superadmin: superadmin.email,
+    teacher: teacher.email,
+    student: student.email,
+    qaStudent: qaStudent.email,
+  });
   console.log("Default password: password123");
+  console.log("QA student (unlimited exam takes): qa@secsa.local / password123 (year level 2)");
 }
 
 main()

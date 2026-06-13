@@ -2,12 +2,20 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { api } from "../lib/api";
 import { curriculumYearForStudentYear, parseYearLevel, sanitizeYearInput } from "../lib/constants";
+import {
+  PROGRAM_COURSES,
+  abbreviateProgramCourse,
+  formatProgramCourse,
+  subjectHasProgram,
+  type ProgramCourseId,
+} from "../lib/programCourse";
 
 interface Subject {
   id: string;
   courseCode: string;
   courseTitle: string;
   yearLevel: number;
+  programCourses: Array<{ programCourse: ProgramCourseId }>;
 }
 
 interface Topic {
@@ -37,7 +45,9 @@ interface ConfigRow {
 interface Props {
   subjects: Subject[];
   topics: Topic[];
+  programCourse: ProgramCourseId;
   token: string | null;
+  setId?: string | null;
   onClose: () => void;
   onCreated: (message: string) => void;
 }
@@ -95,20 +105,31 @@ function rowRemaining(row: ConfigRow) {
 export default function BuildQuestionSetModal({
   subjects,
   topics,
+  programCourse,
   token,
+  setId = null,
   onClose,
   onCreated,
 }: Props) {
+  const isEditing = Boolean(setId);
   const [name, setName] = useState("");
   const [yearLevel, setYearLevel] = useState("2");
+  const [setProgramCourse, setSetProgramCourse] = useState<ProgramCourseId>(programCourse);
   const [type, setType] = useState<"DIAGNOSTIC" | "RETAKE">("DIAGNOSTIC");
+  const [setStatus, setSetStatus] = useState<string | null>(null);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [rows, setRows] = useState<ConfigRow[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [addSubjectId, setAddSubjectId] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(Boolean(setId));
   const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+
+  useEffect(() => {
+    if (isEditing) return;
+    setSetProgramCourse(programCourse);
+  }, [programCourse, isEditing]);
 
   useEffect(() => {
     api<{ questions: Question[] }>("/questions", {}, token)
@@ -116,22 +137,83 @@ export default function BuildQuestionSetModal({
       .catch(() => setQuestions([]));
   }, [token]);
 
+  useEffect(() => {
+    if (!setId) return;
+
+    setLoading(true);
+    setError("");
+
+    api<{
+      questionSet: {
+        id: string;
+        name: string;
+        yearLevel: number;
+        programCourse: ProgramCourseId;
+        type: "DIAGNOSTIC" | "RETAKE";
+        status: string;
+        configs: Array<{
+          subjectId: string;
+          topicId: string | null;
+          easyCount: number;
+          mediumCount: number;
+          hardCount: number;
+          subject: { courseCode: string; courseTitle: string };
+          topic: { name: string } | null;
+        }>;
+      };
+    }>(`/question-sets/${setId}/preview`, {}, token)
+      .then((data) => {
+        const set = data.questionSet;
+        setName(set.name);
+        setYearLevel(String(set.yearLevel));
+        setSetProgramCourse(set.programCourse);
+        setType(set.type);
+        setSetStatus(set.status);
+
+        const subjectIds = [...new Set(set.configs.map((c) => c.subjectId))];
+        const loadedRows: ConfigRow[] = set.configs.map((config) => {
+          const itemTotal = config.easyCount + config.mediumCount + config.hardCount;
+          return {
+            key: `${config.subjectId}:${config.topicId ?? "all"}`,
+            subjectId: config.subjectId,
+            topicId: config.topicId,
+            label: config.topic?.name ?? "Whole subject",
+            itemCount: itemTotal > 0 ? String(itemTotal) : "",
+            easyCount: config.easyCount > 0 ? String(config.easyCount) : "",
+            mediumCount: config.mediumCount > 0 ? String(config.mediumCount) : "",
+            hardCount: config.hardCount > 0 ? String(config.hardCount) : "",
+          };
+        });
+
+        setSelectedSubjectIds(subjectIds);
+        setRows(loadedRows);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to load question set");
+      })
+      .finally(() => setLoading(false));
+  }, [setId, token]);
+
   const parsedStudentYear = parseYearLevel(yearLevel);
   const curriculumYear = curriculumYearForStudentYear(parsedStudentYear);
   const curriculumSubjects = useMemo(
-    () => subjects.filter((s) => s.yearLevel === curriculumYear),
-    [subjects, curriculumYear]
+    () =>
+      subjects.filter(
+        (s) =>
+          s.yearLevel === curriculumYear && subjectHasProgram(s.programCourses, setProgramCourse)
+      ),
+    [subjects, curriculumYear, setProgramCourse]
   );
 
   useEffect(() => {
-    if (!yearLevel.trim()) return;
+    if (isEditing || !yearLevel.trim()) return;
 
     const allowedSubjectIds = new Set(curriculumSubjects.map((s) => s.id));
 
     setSelectedSubjectIds((prev) => prev.filter((id) => allowedSubjectIds.has(id)));
     setRows((prev) => prev.filter((row) => allowedSubjectIds.has(row.subjectId)));
     setAddSubjectId("");
-  }, [curriculumYear, curriculumSubjects, yearLevel]);
+  }, [curriculumYear, curriculumSubjects, yearLevel, isEditing, setProgramCourse]);
 
   const totalItems = rows.reduce((sum, row) => sum + rowSubtotal(row), 0);
   const targetItems = rows.reduce((sum, row) => sum + rowItemCount(row), 0);
@@ -154,6 +236,13 @@ export default function BuildQuestionSetModal({
     if (subject.yearLevel !== curriculumYear) {
       setError(
         `Only curriculum year ${curriculumYear} subjects can be added for student year ${parsedStudentYear}.`
+      );
+      return;
+    }
+
+    if (!subjectHasProgram(subject.programCourses, setProgramCourse)) {
+      setError(
+        `${subject.courseCode} is not linked to ${formatProgramCourse(setProgramCourse)}.`
       );
       return;
     }
@@ -235,6 +324,16 @@ export default function BuildQuestionSetModal({
       return;
     }
 
+    const mismatchedCourse = groupedSubjects.find(
+      (s) => !subjectHasProgram(s.programCourses, setProgramCourse)
+    );
+    if (mismatchedCourse) {
+      setError(
+        `${mismatchedCourse.courseCode} is not linked to ${formatProgramCourse(setProgramCourse)}.`
+      );
+      return;
+    }
+
     const poolError = rows.map(poolValidationError).find(Boolean);
     if (poolError) {
       setError(poolError);
@@ -258,24 +357,43 @@ export default function BuildQuestionSetModal({
 
     setSaving(true);
     try {
-      await api(
-        "/question-sets",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: name.trim(),
-            yearLevel: parsedStudentYear,
-            type,
-            totalItems,
-            configs,
-          }),
-        },
-        token
-      );
-      onCreated("Question set created.");
+      const payload = {
+        name: name.trim(),
+        totalItems,
+        configs,
+      };
+
+      if (isEditing && setId) {
+        await api(`/question-sets/${setId}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        }, token);
+        onCreated("Question set updated.");
+      } else {
+        await api(
+          "/question-sets",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              ...payload,
+              yearLevel: parsedStudentYear,
+              programCourse: setProgramCourse,
+              type,
+            }),
+          },
+          token
+        );
+        onCreated("Question set created.");
+      }
       requestClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create question set");
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEditing
+            ? "Failed to update question set"
+            : "Failed to create question set"
+      );
     } finally {
       setSaving(false);
     }
@@ -290,16 +408,24 @@ export default function BuildQuestionSetModal({
       <div className={panelClass("build-set-modal")} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2>Build Question Set</h2>
+            <h2>{isEditing ? "Edit Question Set" : "Build Question Set"}</h2>
             <p className="muted">
-              Set item targets per topic, then split them across easy, medium, and hard.
+              {isEditing
+                ? "Add subjects or adjust difficulty counts. Deployed sets stay live after saving."
+                : "Set item targets per topic, then split them across easy, medium, and hard."}
             </p>
+            {isEditing && setStatus === "DEPLOYED" && (
+              <p className="success build-set-status-note">This set is currently deployed.</p>
+            )}
           </div>
           <button type="button" className="btn secondary" onClick={requestClose}>
             Close
           </button>
         </div>
 
+        {loading ? (
+          <p className="muted">Loading question set...</p>
+        ) : (
         <form onSubmit={handleSubmit}>
           <div className="build-set-meta">
             <label className="build-set-meta-name">
@@ -312,7 +438,7 @@ export default function BuildQuestionSetModal({
               />
             </label>
             <label className="build-set-meta-year">
-              Student year level
+              Year level
               <input
                 type="text"
                 inputMode="numeric"
@@ -320,22 +446,42 @@ export default function BuildQuestionSetModal({
                 value={yearLevel}
                 onChange={(e) => setYearLevel(sanitizeYearInput(e.target.value))}
                 onBlur={() => setYearLevel(String(parseYearLevel(yearLevel)))}
+                disabled={isEditing}
                 required
               />
             </label>
-            <span className="field-hint build-set-meta-hint">
-              Uses curriculum year {curriculumYear} subjects when available.
-            </span>
+            <label className="build-set-meta-course">
+              Program course
+              <select
+                value={setProgramCourse}
+                onChange={(e) => setSetProgramCourse(e.target.value as ProgramCourseId)}
+                disabled={isEditing}
+                required
+              >
+                {PROGRAM_COURSES.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="build-set-meta-type">
               Exam type
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as "DIAGNOSTIC" | "RETAKE")}
+                disabled={isEditing}
               >
                 <option value="DIAGNOSTIC">Comprehensive</option>
                 <option value="RETAKE">Retake</option>
               </select>
             </label>
+            <span
+              className="field-hint build-set-meta-hint"
+              title={`Uses curriculum year ${curriculumYear} subjects for ${formatProgramCourse(setProgramCourse)} when available.`}
+            >
+              Curriculum yr {curriculumYear} · {abbreviateProgramCourse(setProgramCourse)}
+            </span>
           </div>
 
           <div className="build-set-add-subject">
@@ -367,8 +513,8 @@ export default function BuildQuestionSetModal({
 
           {curriculumSubjects.length === 0 && (
             <p className="muted">
-              No subjects found for curriculum year {curriculumYear}. Add subjects for this year in
-              Setup first.
+              No subjects found for {formatProgramCourse(setProgramCourse)} curriculum year{" "}
+              {curriculumYear}. Add subjects for this program and year in Setup first.
             </p>
           )}
 
@@ -534,11 +680,16 @@ export default function BuildQuestionSetModal({
             <button type="button" className="btn secondary" onClick={requestClose}>
               Cancel
             </button>
-            <button type="submit" className="btn" disabled={saving}>
-              {saving ? "Saving..." : "Save question set"}
+            <button type="submit" className="btn" disabled={saving || loading}>
+              {saving
+                ? "Saving..."
+                : isEditing
+                  ? "Save changes"
+                  : "Save question set"}
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

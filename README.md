@@ -28,6 +28,7 @@ cd .. && npm run dev
 | Superadmin | admin@secsa.local | password123 |
 | Teacher | teacher@secsa.local | password123 |
 | Student | student@secsa.local | password123 |
+| QA Student (unlimited takes) | qa@secsa.local | password123 |
 
 ## Docker
 

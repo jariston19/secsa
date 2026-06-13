@@ -11,8 +11,19 @@ export async function api<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  const data = await response.json();
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch {
+    throw new Error("Network error — check your connection to the server.");
+  }
+
+  let data: { error?: string };
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(response.ok ? "Invalid server response" : "Request failed");
+  }
 
   if (!response.ok) {
     throw new Error(data.error || "Request failed");

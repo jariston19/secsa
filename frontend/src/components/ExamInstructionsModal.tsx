@@ -75,6 +75,14 @@ export default function ExamInstructionsModal({
             </>
           )}
 
+          <h3>Exam lockdown</h3>
+          <ul className="instructions-list">
+            <li>When you begin, the exam enters <strong>fullscreen mode</strong> and takes over your screen.</li>
+            <li>Do <strong>not</strong> switch tabs, minimize the window, or open other applications during the exam.</li>
+            <li>If you leave the exam view, it will <strong>pause</strong> until you return to fullscreen.</li>
+            <li>You must <strong>submit the exam</strong> before closing or leaving this page.</li>
+          </ul>
+
           <h3>Technical reminders</h3>
           <ul className="instructions-list">
             <li>Ensure you have a stable connection before starting.</li>

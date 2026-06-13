@@ -28,6 +28,8 @@ export async function authRoutes(app: FastifyInstance) {
       email: user.email,
       role: user.role,
       yearLevel: user.yearLevel,
+      programCourse: user.programCourse,
+      qaUnlimited: user.qaUnlimited,
     });
 
     return {
@@ -35,9 +37,12 @@ export async function authRoutes(app: FastifyInstance) {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
         role: user.role,
         yearLevel: user.yearLevel,
+        programCourse: user.programCourse,
+        qaUnlimited: user.qaUnlimited,
       },
     };
   });
@@ -46,7 +51,16 @@ export async function authRoutes(app: FastifyInstance) {
     const jwtUser = getUser(request);
     const user = await prisma.user.findUnique({
       where: { id: jwtUser.id },
-      select: { id: true, email: true, name: true, role: true, yearLevel: true },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        yearLevel: true,
+        programCourse: true,
+        qaUnlimited: true,
+      },
     });
     return { user };
   });

@@ -34,6 +34,7 @@ interface PreviewData {
     type: string;
     status: string;
     totalItems: number;
+    _count?: { examAttempts: number };
   };
   sections: PreviewSection[];
   isReady: boolean;
@@ -46,6 +47,7 @@ interface Props {
   onClose: () => void;
   onQuestionRemoved: () => void;
   onSetDeleted: () => void;
+  onSetArchived: () => void;
   onSetUndeployed: () => void;
 }
 
@@ -55,6 +57,7 @@ export default function QuestionSetPreviewModal({
   onClose,
   onQuestionRemoved,
   onSetDeleted,
+  onSetArchived,
   onSetUndeployed,
 }: Props) {
   const [data, setData] = useState<PreviewData | null>(null);
@@ -62,6 +65,7 @@ export default function QuestionSetPreviewModal({
   const [error, setError] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [deletingSet, setDeletingSet] = useState(false);
+  const [archivingSet, setArchivingSet] = useState(false);
   const [undeployingSet, setUndeployingSet] = useState(false);
   const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
 
@@ -100,6 +104,27 @@ export default function QuestionSetPreviewModal({
       setError(err instanceof Error ? err.message : "Failed to cancel deploy");
     } finally {
       setUndeployingSet(false);
+    }
+  }
+
+  async function archiveQuestionSet() {
+    if (!data) return;
+
+    const confirmed = window.confirm(
+      `Archive question set "${data.questionSet.name}"?\n\nIt will be removed from your Build list. You can restore it later from Archive.`
+    );
+    if (!confirmed) return;
+
+    setArchivingSet(true);
+    setError("");
+    try {
+      await api(`/question-sets/${setId}/archive`, { method: "POST" }, token);
+      onSetArchived();
+      requestClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to archive question set");
+    } finally {
+      setArchivingSet(false);
     }
   }
 
@@ -167,15 +192,27 @@ export default function QuestionSetPreviewModal({
                 {undeployingSet ? "Cancelling..." : "Cancel Deploy"}
               </button>
             )}
-            {data && data.questionSet.status !== "DEPLOYED" && (
-              <button
-                type="button"
-                className="btn danger"
-                disabled={deletingSet}
-                onClick={deleteQuestionSet}
-              >
-                {deletingSet ? "Deleting..." : "Delete Set"}
-              </button>
+            {data && data.questionSet.status !== "DEPLOYED" && data.questionSet.status !== "ARCHIVED" && (
+              <>
+                {(data.questionSet._count?.examAttempts ?? 0) === 0 && (
+                  <button
+                    type="button"
+                    className="btn danger"
+                    disabled={deletingSet}
+                    onClick={deleteQuestionSet}
+                  >
+                    {deletingSet ? "Deleting..." : "Delete Set"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={archivingSet}
+                  onClick={archiveQuestionSet}
+                >
+                  {archivingSet ? "Archiving..." : "Archive Set"}
+                </button>
+              </>
             )}
             <button type="button" className="btn secondary" onClick={requestClose}>
               Close
@@ -183,6 +220,7 @@ export default function QuestionSetPreviewModal({
           </div>
         </div>
 
+        <div className="modal-scroll-area">
         {loading && <p>Loading preview...</p>}
         {error && <p className="error">{error}</p>}
 
@@ -254,6 +292,7 @@ export default function QuestionSetPreviewModal({
             ))}
           </>
         )}
+        </div>
       </div>
     </div>
   );

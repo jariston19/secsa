@@ -6,6 +6,8 @@ export interface JwtUser {
   email: string;
   role: Role;
   yearLevel?: number | null;
+  programCourse?: string | null;
+  qaUnlimited?: boolean;
 }
 
 export function getUser(request: FastifyRequest): JwtUser {

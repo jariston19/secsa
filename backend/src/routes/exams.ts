@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   ApprovalStatus,
   AttemptType,
+  ProgramCourse,
   QuestionSetStatus,
   QuestionSetType,
   Role,
@@ -10,17 +11,75 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import { calculateResult, generateExamQuestions } from "../services/examGenerator.js";
+import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, yearLevelSchema } from "../lib/yearLevel.js";
 
 const submitSchema = z.object({
   answers: z.array(
     z.object({
       questionId: z.string(),
       selectedOption: z.enum(["A", "B", "C", "D"]),
+      timeSpentSeconds: z.number().int().min(0).optional(),
     })
   ),
 });
 
+const startExamSchema = z.object({
+  examYearLevel: yearLevelSchema.optional(),
+});
+
 const MAX_RETAKES = 2;
+
+async function getStudentProfile(userId: string) {
+  const student = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, yearLevel: true, programCourse: true, qaUnlimited: true },
+  });
+
+  if (!student) {
+    throw Object.assign(new Error("Student not found."), { statusCode: 404 });
+  }
+
+  return student;
+}
+
+async function getQaExamOptions(programCourse: ProgramCourse) {
+  const deployedSets = await prisma.questionSet.findMany({
+    where: {
+      type: QuestionSetType.DIAGNOSTIC,
+      status: QuestionSetStatus.DEPLOYED,
+      programCourse,
+    },
+    orderBy: { yearLevel: "asc" },
+    select: { yearLevel: true, name: true },
+  });
+
+  const byYear = new Map(deployedSets.map((set) => [set.yearLevel, set.name]));
+
+  return Array.from({ length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 }, (_, i) => {
+    const yearLevel = MIN_YEAR_LEVEL + i;
+    const setName = byYear.get(yearLevel) ?? null;
+    return {
+      yearLevel,
+      setName,
+      deployed: Boolean(setName),
+    };
+  });
+}
+
+function parseQaExamYear(
+  student: { yearLevel: number | null; qaUnlimited: boolean },
+  value: unknown
+) {
+  if (!student.qaUnlimited) {
+    return student.yearLevel!;
+  }
+
+  if (value == null || value === "") {
+    return student.yearLevel ?? MIN_YEAR_LEVEL;
+  }
+
+  return yearLevelSchema.parse(Number(value));
+}
 
 export async function examRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate);
@@ -29,8 +88,14 @@ export async function examRoutes(app: FastifyInstance) {
     const user = getUser(request);
     requireRoles(user, [Role.STUDENT]);
 
-    if (!user.yearLevel) {
+    const student = await getStudentProfile(user.id);
+
+    if (!student.yearLevel) {
       return reply.code(400).send({ error: "Student year level is not set." });
+    }
+
+    if (!student.programCourse) {
+      return reply.code(400).send({ error: "Student program course is not set." });
     }
 
     const attempts = await prisma.examAttempt.findMany({
@@ -38,6 +103,64 @@ export async function examRoutes(app: FastifyInstance) {
       include: { questionSet: true, retakeRequest: true },
       orderBy: { createdAt: "asc" },
     });
+
+    const diagnosticSet = await prisma.questionSet.findFirst({
+      where: {
+        yearLevel: student.yearLevel,
+        programCourse: student.programCourse,
+        type: QuestionSetType.DIAGNOSTIC,
+        status: QuestionSetStatus.DEPLOYED,
+      },
+    });
+
+    const retakeSet = await prisma.questionSet.findFirst({
+      where: {
+        yearLevel: student.yearLevel,
+        programCourse: student.programCourse,
+        type: QuestionSetType.RETAKE,
+        status: QuestionSetStatus.DEPLOYED,
+      },
+    });
+
+    if (student.qaUnlimited) {
+      const query = request.query as { examYearLevel?: string };
+      const examYearLevel = parseQaExamYear(student, query.examYearLevel);
+      const qaExamOptions = await getQaExamOptions(student.programCourse);
+
+      const qaDiagnosticSet = await prisma.questionSet.findFirst({
+        where: {
+          yearLevel: examYearLevel,
+          programCourse: student.programCourse,
+          type: QuestionSetType.DIAGNOSTIC,
+          status: QuestionSetStatus.DEPLOYED,
+        },
+      });
+
+      const qaRetakeSet = await prisma.questionSet.findFirst({
+        where: {
+          yearLevel: examYearLevel,
+          programCourse: student.programCourse,
+          type: QuestionSetType.RETAKE,
+          status: QuestionSetStatus.DEPLOYED,
+        },
+      });
+
+      return {
+        yearLevel: student.yearLevel,
+        programCourse: student.programCourse,
+        examYearLevel,
+        attempts,
+        nextAction: qaDiagnosticSet ? "take_diagnostic" : "completed",
+        diagnosticAvailable: Boolean(qaDiagnosticSet),
+        retakeAvailable: Boolean(qaRetakeSet),
+        retakesUsed: attempts.filter((a) => a.attemptType === AttemptType.RETAKE).length,
+        retakesRemaining: null,
+        qaMode: true,
+        usingSetYearLevel: qaDiagnosticSet?.yearLevel ?? examYearLevel,
+        usingSetName: qaDiagnosticSet?.name ?? null,
+        qaExamOptions,
+      };
+    }
 
     const firstAttempts = attempts.filter((a) => a.attemptType === AttemptType.FIRST);
     const retakeAttempts = attempts.filter((a) => a.attemptType === AttemptType.RETAKE);
@@ -62,30 +185,16 @@ export async function examRoutes(app: FastifyInstance) {
       nextAction = "wait_approval";
     }
 
-    const diagnosticSet = await prisma.questionSet.findFirst({
-      where: {
-        yearLevel: user.yearLevel,
-        type: QuestionSetType.DIAGNOSTIC,
-        status: QuestionSetStatus.DEPLOYED,
-      },
-    });
-
-    const retakeSet = await prisma.questionSet.findFirst({
-      where: {
-        yearLevel: user.yearLevel,
-        type: QuestionSetType.RETAKE,
-        status: QuestionSetStatus.DEPLOYED,
-      },
-    });
-
     return {
-      yearLevel: user.yearLevel,
+      yearLevel: student.yearLevel,
+      programCourse: student.programCourse,
       attempts,
       nextAction,
       diagnosticAvailable: Boolean(diagnosticSet),
       retakeAvailable: Boolean(retakeSet),
       retakesUsed: retakeAttempts.length,
       retakesRemaining: Math.max(0, MAX_RETAKES - retakeAttempts.length),
+      qaMode: false,
     };
   });
 
@@ -93,8 +202,14 @@ export async function examRoutes(app: FastifyInstance) {
     const user = getUser(request);
     requireRoles(user, [Role.STUDENT]);
 
-    if (!user.yearLevel) {
+    const student = await getStudentProfile(user.id);
+
+    if (!student.yearLevel) {
       return reply.code(400).send({ error: "Student year level is not set." });
+    }
+
+    if (!student.programCourse) {
+      return reply.code(400).send({ error: "Student program course is not set." });
     }
 
     const attempts = await prisma.examAttempt.findMany({
@@ -102,14 +217,60 @@ export async function examRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "asc" },
     });
 
-    const firstCount = attempts.filter((a) => a.attemptType === AttemptType.FIRST).length;
-    const retakeCount = attempts.filter((a) => a.attemptType === AttemptType.RETAKE).length;
     const inProgress = attempts.find((a) => !a.submittedAt);
 
     if (inProgress) {
       const questions = await loadAttemptQuestions(inProgress.questionIds);
       return { attempt: inProgress, questions };
     }
+
+    if (student.qaUnlimited) {
+      const body = startExamSchema.parse(request.body ?? {});
+      const examYearLevel = parseQaExamYear(student, body.examYearLevel);
+
+      const questionSet = await prisma.questionSet.findFirst({
+        where: {
+          yearLevel: examYearLevel,
+          programCourse: student.programCourse,
+          type: QuestionSetType.DIAGNOSTIC,
+          status: QuestionSetStatus.DEPLOYED,
+        },
+        include: { configs: true },
+      });
+
+      if (!questionSet) {
+        return reply.code(404).send({
+          error: `No deployed comprehensive set for year level ${examYearLevel}.`,
+        });
+      }
+
+      const submittedAttempts = attempts.filter((a) => a.submittedAt);
+      const attemptNumber = submittedAttempts.length + 1;
+      const attemptType = submittedAttempts.length === 0 ? AttemptType.FIRST : AttemptType.RETAKE;
+
+      const selected = await generateExamQuestions(questionSet.configs);
+      const attempt = await prisma.examAttempt.create({
+        data: {
+          studentId: user.id,
+          questionSetId: questionSet.id,
+          attemptType,
+          attemptNumber,
+          questionIds: JSON.stringify(selected.map((q) => q.id)),
+          totalItems: selected.length,
+          answers: {
+            create: selected.map((q) => ({ questionId: q.id })),
+          },
+        },
+      });
+
+      return reply.code(201).send({
+        attempt,
+        questions: selected.map(stripCorrectAnswer),
+      });
+    }
+
+    const firstCount = attempts.filter((a) => a.attemptType === AttemptType.FIRST).length;
+    const retakeCount = attempts.filter((a) => a.attemptType === AttemptType.RETAKE).length;
 
     let setType: QuestionSetType = QuestionSetType.DIAGNOSTIC;
     let attemptType: AttemptType = AttemptType.FIRST;
@@ -137,7 +298,8 @@ export async function examRoutes(app: FastifyInstance) {
 
     const questionSet = await prisma.questionSet.findFirst({
       where: {
-        yearLevel: user.yearLevel,
+        yearLevel: student.yearLevel,
+        programCourse: student.programCourse,
         type: setType,
         status: QuestionSetStatus.DEPLOYED,
       },
@@ -205,6 +367,7 @@ export async function examRoutes(app: FastifyInstance) {
         data: {
           selectedOption: answer.selectedOption,
           isCorrect,
+          timeSpentSeconds: answer.timeSpentSeconds,
         },
       });
     }
@@ -226,14 +389,21 @@ export async function examRoutes(app: FastifyInstance) {
     });
 
     if (!result.passed && attempt.attemptType === AttemptType.FIRST) {
-      await prisma.retakeApproval.create({
-        data: {
-          studentId: user.id,
-          examAttemptId: attemptId,
-          yearLevel: user.yearLevel!,
-          status: ApprovalStatus.PENDING,
-        },
+      const student = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { qaUnlimited: true },
       });
+
+      if (!student?.qaUnlimited) {
+        await prisma.retakeApproval.create({
+          data: {
+            studentId: user.id,
+            examAttemptId: attemptId,
+            yearLevel: user.yearLevel!,
+            status: ApprovalStatus.PENDING,
+          },
+        });
+      }
     }
 
     return { attempt: updated, result };
@@ -247,9 +417,9 @@ export async function examRoutes(app: FastifyInstance) {
     const approvals = await prisma.retakeApproval.findMany({
       where: status ? { status } : undefined,
       include: {
-        student: { select: { id: true, name: true, email: true, yearLevel: true } },
+        student: { select: { id: true, firstName: true, lastName: true, email: true, yearLevel: true } },
         examAttempt: true,
-        approvedBy: { select: { id: true, name: true } },
+        approvedBy: { select: { id: true, firstName: true, lastName: true } },
       },
       orderBy: { createdAt: "desc" },
     });

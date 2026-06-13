@@ -28,7 +28,11 @@ export async function questionRoutes(app: FastifyInstance) {
     const questions = await prisma.question.findMany({
       where: {
         subjectId: query.subjectId,
-        topicId: query.topicId,
+        ...(query.topicId === ""
+          ? { topicId: null }
+          : query.topicId
+            ? { topicId: query.topicId }
+            : {}),
       },
       include: {
         subject: { select: { courseCode: true, courseTitle: true } },
@@ -92,5 +96,54 @@ export async function questionRoutes(app: FastifyInstance) {
     }
 
     return { success: true };
+  });
+
+  app.patch("/:id", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const { id } = request.params as { id: string };
+    const existing = await prisma.question.findUnique({ where: { id } });
+    if (!existing) return reply.code(404).send({ error: "Question not found." });
+
+    const parts = request.parts();
+    const fields: Record<string, string> = {};
+    let imageBuffer: Buffer | null = null;
+
+    for await (const part of parts) {
+      if (part.type === "file" && part.fieldname === "image") {
+        imageBuffer = await part.toBuffer();
+      } else if (part.type === "field") {
+        fields[part.fieldname] = String(part.value);
+      }
+    }
+
+    const body = questionSchema.parse({
+      ...fields,
+      topicId: fields.topicId || null,
+    });
+
+    let imagePath = existing.imagePath;
+    if (fields.removeImage === "true") {
+      if (existing.imagePath) {
+        await unlink(path.join(uploadDir, existing.imagePath)).catch(() => {});
+      }
+      imagePath = null;
+    } else if (imageBuffer) {
+      if (existing.imagePath) {
+        await unlink(path.join(uploadDir, existing.imagePath)).catch(() => {});
+      }
+      imagePath = await saveOptimizedImage(imageBuffer, uploadDir);
+    }
+
+    const question = await prisma.question.update({
+      where: { id },
+      data: {
+        ...body,
+        imagePath,
+      },
+    });
+
+    return { question };
   });
 }

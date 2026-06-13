@@ -1,9 +1,15 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { lockBodyScroll, unlockBodyScroll } from "../lib/scrollLock";
 
 const CLOSE_MS = 280;
 
 export function useAnimatedModal(onClose: () => void) {
   const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    lockBodyScroll();
+    return () => unlockBodyScroll();
+  }, []);
 
   const requestClose = useCallback(() => {
     if (closing) return;

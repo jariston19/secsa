@@ -4,9 +4,12 @@ import { api } from "./api";
 export interface User {
   id: string;
   email: string;
-  name: string;
+  firstName: string;
+  lastName: string;
   role: "STUDENT" | "TEACHER" | "SUPERADMIN";
   yearLevel?: number | null;
+  programCourse?: string | null;
+  qaUnlimited?: boolean;
 }
 
 interface AuthContextValue {

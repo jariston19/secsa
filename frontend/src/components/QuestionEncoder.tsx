@@ -1,4 +1,6 @@
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
+import { PROGRAM_COURSES, subjectHasProgram, type ProgramCourseId } from "../lib/programCourse";
 
 export interface QuestionDraft {
   id: string;
@@ -17,6 +19,8 @@ interface Subject {
   id: string;
   courseCode: string;
   courseTitle: string;
+  yearLevel: number;
+  programCourses: Array<{ programCourse: ProgramCourseId }>;
 }
 
 interface Topic {
@@ -28,13 +32,25 @@ interface Topic {
 interface Props {
   subjects: Subject[];
   topics: Topic[];
+  programCourse: ProgramCourseId;
   token: string | null;
   onSaved: (message: string) => void;
 }
 
+function createQuestionId() {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // randomUUID is blocked over HTTP on non-localhost hosts (e.g. LAN IP).
+  }
+  return `q-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 function emptyQuestion(): QuestionDraft {
   return {
-    id: crypto.randomUUID(),
+    id: createQuestionId(),
     difficulty: "EASY",
     text: "",
     optionA: "",
@@ -51,7 +67,8 @@ function isComplete(q: QuestionDraft) {
   return q.text.trim() && q.optionA.trim() && q.optionB.trim() && q.optionC.trim() && q.optionD.trim();
 }
 
-export default function QuestionEncoder({ subjects, topics, token, onSaved }: Props) {
+export default function QuestionEncoder({ subjects, topics, programCourse, token, onSaved }: Props) {
+  const [yearLevel, setYearLevel] = useState("1");
   const [subjectId, setSubjectId] = useState("");
   const [topicId, setTopicId] = useState("");
   const [questions, setQuestions] = useState<QuestionDraft[]>([emptyQuestion()]);
@@ -155,18 +172,59 @@ export default function QuestionEncoder({ subjects, topics, token, onSaved }: Pr
   }
 
   const completeCount = questions.filter(isComplete).length;
+
+  const filteredSubjects = useMemo(
+    () =>
+      subjects
+        .filter(
+          (s) => s.yearLevel === Number(yearLevel) && subjectHasProgram(s.programCourses, programCourse)
+        )
+        .sort((a, b) => a.courseCode.localeCompare(b.courseCode)),
+    [subjects, yearLevel, programCourse]
+  );
+
   const filteredTopics = topics.filter((t) => t.subjectId === subjectId);
+
+  useEffect(() => {
+    const subjectStillValid = filteredSubjects.some((s) => s.id === subjectId);
+    if (!subjectStillValid) {
+      setSubjectId("");
+      setTopicId("");
+    }
+  }, [filteredSubjects, subjectId, programCourse]);
+
+  function handleYearLevelChange(value: string) {
+    setYearLevel(value);
+    setSubjectId("");
+    setTopicId("");
+    setError("");
+  }
 
   return (
     <div className="encoder">
       <div className="encoder-header card">
         <h2>Encode Questions</h2>
         <p className="muted section-desc">
-          Like a form builder — add question rows, fill them in, then save all at once.
+          Pick a curriculum year level for{" "}
+          {PROGRAM_COURSES.find((c) => c.id === programCourse)?.label ?? "this program"}, then
+          choose the subject and optional topic for all questions below.
         </p>
         <div className="encoder-meta">
           <label>
-            Subject (applies to all questions below)
+            Curriculum year level
+            <select value={yearLevel} onChange={(e) => handleYearLevelChange(e.target.value)}>
+              {Array.from(
+                { length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 },
+                (_, i) => MIN_YEAR_LEVEL + i
+              ).map((level) => (
+                <option key={level} value={String(level)}>
+                  {level}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Subject
             <select
               value={subjectId}
               onChange={(e) => {
@@ -174,9 +232,14 @@ export default function QuestionEncoder({ subjects, topics, token, onSaved }: Pr
                 setTopicId("");
               }}
               required
+              disabled={filteredSubjects.length === 0}
             >
-              <option value="">Select a subject</option>
-              {subjects.map((s) => (
+              <option value="">
+                {filteredSubjects.length === 0
+                  ? "No subjects for this year and program course"
+                  : "Select a subject"}
+              </option>
+              {filteredSubjects.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.courseCode} — {s.courseTitle}
                 </option>
@@ -184,7 +247,7 @@ export default function QuestionEncoder({ subjects, topics, token, onSaved }: Pr
             </select>
           </label>
           <label>
-            Topic (optional, applies to all)
+            Topic (optional)
             <select
               value={topicId}
               onChange={(e) => setTopicId(e.target.value)}
@@ -303,18 +366,20 @@ export default function QuestionEncoder({ subjects, topics, token, onSaved }: Pr
       </button>
 
       <div className="encoder-footer card">
-        <div>
-          <strong>{completeCount}</strong> of {questions.length} question
-          {questions.length === 1 ? "" : "s"} ready to save
+        <div className="encoder-footer-status">
+          <div>
+            <strong>{completeCount}</strong> of {questions.length} question
+            {questions.length === 1 ? "" : "s"} ready to save
+          </div>
+          {error && <p className="error">{error}</p>}
         </div>
-        {error && <p className="error">{error}</p>}
         <button
           type="button"
           className="btn"
           onClick={saveAll}
           disabled={saving || !subjectId || completeCount === 0}
         >
-          {saving ? "Saving..." : `Save all questions (${completeCount})`}
+          {saving ? "Saving..." : `Save all (${completeCount})`}
         </button>
       </div>
     </div>

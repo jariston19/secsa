@@ -4,6 +4,8 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import { yearLevelSchema, curriculumYearForStudentYear } from "../lib/yearLevel.js";
+import { programCourseSchema } from "../lib/programCourse.js";
+import { subjectIncludesProgram } from "../lib/subjectPrograms.js";
 import {
   getConfigPoolQuestions,
   validateQuestionSetConfigs,
@@ -20,24 +22,110 @@ const configSchema = z.object({
 const createSetSchema = z.object({
   name: z.string().min(1),
   yearLevel: yearLevelSchema,
+  programCourse: programCourseSchema,
   type: z.nativeEnum(QuestionSetType),
   totalItems: z.number().int().min(1),
   passThreshold: z.number().min(0).max(100).optional(),
   configs: z.array(configSchema).min(1),
 });
 
+const updateSetSchema = z.object({
+  name: z.string().min(1),
+  totalItems: z.number().int().min(1),
+  passThreshold: z.number().min(0).max(100).optional(),
+  configs: z.array(configSchema).min(1),
+});
+
+async function validateSetConfigsForYear(
+  yearLevel: number,
+  programCourse: z.infer<typeof programCourseSchema>,
+  configs: z.infer<typeof configSchema>[]
+) {
+  const configTotal = configs.reduce(
+    (sum, c) => sum + c.easyCount + c.mediumCount + c.hardCount,
+    0
+  );
+
+  const curriculumYear = curriculumYearForStudentYear(yearLevel);
+  const subjectIds = [...new Set(configs.map((c) => c.subjectId))];
+  const subjectsInConfigs = await prisma.subject.findMany({
+    where: { id: { in: subjectIds } },
+    select: {
+      id: true,
+      courseCode: true,
+      yearLevel: true,
+      programCourses: { select: { programCourse: true } },
+    },
+  });
+
+  if (subjectsInConfigs.length !== subjectIds.length) {
+    return { error: "One or more subjects in this set were not found." };
+  }
+
+  const mismatchedYear = subjectsInConfigs.find((s) => s.yearLevel !== curriculumYear);
+  if (mismatchedYear) {
+    return {
+      error: `${mismatchedYear.courseCode} is curriculum year ${mismatchedYear.yearLevel}, but student year ${yearLevel} requires curriculum year ${curriculumYear} subjects only.`,
+    };
+  }
+
+  const mismatchedCourse = subjectsInConfigs.find(
+    (s) => !subjectIncludesProgram(s.programCourses, programCourse)
+  );
+  if (mismatchedCourse) {
+    return {
+      error: `${mismatchedCourse.courseCode} is not linked to this program course.`,
+    };
+  }
+
+  const errors = await validateQuestionSetConfigs(
+    configs.map((c, i) => ({
+      id: `draft-${i}`,
+      questionSetId: "draft",
+      subjectId: c.subjectId,
+      topicId: c.topicId ?? null,
+      easyCount: c.easyCount,
+      mediumCount: c.mediumCount,
+      hardCount: c.hardCount,
+    }))
+  );
+
+  if (errors.length > 0) {
+    return { error: "Insufficient questions in pools.", details: errors, configTotal };
+  }
+
+  return { configTotal };
+}
+
 export async function questionSetRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate);
 
   app.get("/", async (request) => {
-    const query = request.query as { yearLevel?: string; type?: QuestionSetType };
+    const query = request.query as {
+      yearLevel?: string;
+      programCourse?: string;
+      type?: QuestionSetType;
+      status?: QuestionSetStatus;
+      includeArchived?: string;
+    };
+    const programCourse = query.programCourse
+      ? programCourseSchema.parse(query.programCourse)
+      : undefined;
+    const status =
+      query.status ??
+      (query.includeArchived === "true" ? undefined : { not: QuestionSetStatus.ARCHIVED });
     const sets = await prisma.questionSet.findMany({
       where: {
         yearLevel: query.yearLevel ? Number(query.yearLevel) : undefined,
+        programCourse,
         type: query.type,
+        status,
       },
-      include: { configs: { include: { subject: true, topic: true } } },
-      orderBy: { createdAt: "desc" },
+      include: {
+        configs: { include: { subject: true, topic: true } },
+        _count: { select: { examAttempts: true } },
+      },
+      orderBy: { updatedAt: "desc" },
     });
     return { questionSets: sets };
   });
@@ -47,48 +135,20 @@ export async function questionSetRoutes(app: FastifyInstance) {
     requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
 
     const body = createSetSchema.parse(request.body);
-    const configTotal = body.configs.reduce(
-      (sum, c) => sum + c.easyCount + c.mediumCount + c.hardCount,
-      0
+    const validation = await validateSetConfigsForYear(
+      body.yearLevel,
+      body.programCourse,
+      body.configs
     );
+    if (validation.error) {
+      return reply
+        .code(400)
+        .send({ error: validation.error, details: validation.details });
+    }
 
-    if (configTotal !== body.totalItems) {
+    if (validation.configTotal !== body.totalItems) {
       return reply.code(400).send({
-        error: `Config counts (${configTotal}) must equal totalItems (${body.totalItems}).`,
-      });
-    }
-
-    const errors = await validateQuestionSetConfigs(
-      body.configs.map((c, i) => ({
-        id: `draft-${i}`,
-        questionSetId: "draft",
-        subjectId: c.subjectId,
-        topicId: c.topicId ?? null,
-        easyCount: c.easyCount,
-        mediumCount: c.mediumCount,
-        hardCount: c.hardCount,
-      }))
-    );
-
-    if (errors.length > 0) {
-      return reply.code(400).send({ error: "Insufficient questions in pools.", details: errors });
-    }
-
-    const curriculumYear = curriculumYearForStudentYear(body.yearLevel);
-    const subjectIds = [...new Set(body.configs.map((c) => c.subjectId))];
-    const subjectsInConfigs = await prisma.subject.findMany({
-      where: { id: { in: subjectIds } },
-      select: { id: true, courseCode: true, yearLevel: true },
-    });
-
-    if (subjectsInConfigs.length !== subjectIds.length) {
-      return reply.code(400).send({ error: "One or more subjects in this set were not found." });
-    }
-
-    const mismatched = subjectsInConfigs.find((s) => s.yearLevel !== curriculumYear);
-    if (mismatched) {
-      return reply.code(400).send({
-        error: `${mismatched.courseCode} is curriculum year ${mismatched.yearLevel}, but student year ${body.yearLevel} requires curriculum year ${curriculumYear} subjects only.`,
+        error: `Config counts (${validation.configTotal}) must equal totalItems (${body.totalItems}).`,
       });
     }
 
@@ -96,6 +156,7 @@ export async function questionSetRoutes(app: FastifyInstance) {
       data: {
         name: body.name,
         yearLevel: body.yearLevel,
+        programCourse: body.programCourse,
         type: body.type,
         totalItems: body.totalItems,
         passThreshold: body.passThreshold ?? 75,
@@ -116,11 +177,74 @@ export async function questionSetRoutes(app: FastifyInstance) {
     return reply.code(201).send({ questionSet });
   });
 
+  app.patch("/:id", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const { id } = request.params as { id: string };
+    const existing = await prisma.questionSet.findUnique({
+      where: { id },
+      include: { configs: true },
+    });
+
+    if (!existing) return reply.code(404).send({ error: "Question set not found." });
+
+    if (existing.status === QuestionSetStatus.ARCHIVED) {
+      return reply.code(400).send({ error: "Archived question sets cannot be edited." });
+    }
+
+    const body = updateSetSchema.parse(request.body);
+    const validation = await validateSetConfigsForYear(
+      existing.yearLevel,
+      existing.programCourse,
+      body.configs
+    );
+    if (validation.error) {
+      return reply
+        .code(400)
+        .send({ error: validation.error, details: validation.details });
+    }
+
+    if (validation.configTotal !== body.totalItems) {
+      return reply.code(400).send({
+        error: `Config counts (${validation.configTotal}) must equal totalItems (${body.totalItems}).`,
+      });
+    }
+
+    const questionSet = await prisma.$transaction(async (tx) => {
+      await tx.questionSetConfig.deleteMany({ where: { questionSetId: id } });
+
+      return tx.questionSet.update({
+        where: { id },
+        data: {
+          name: body.name,
+          totalItems: body.totalItems,
+          passThreshold: body.passThreshold ?? existing.passThreshold,
+          configs: {
+            create: body.configs.map((c) => ({
+              subjectId: c.subjectId,
+              topicId: c.topicId ?? null,
+              easyCount: c.easyCount,
+              mediumCount: c.mediumCount,
+              hardCount: c.hardCount,
+            })),
+          },
+        },
+        include: { configs: { include: { subject: true, topic: true } } },
+      });
+    });
+
+    return { questionSet };
+  });
+
   app.get("/:id/preview", async (request, reply) => {
     const { id } = request.params as { id: string };
     const set = await prisma.questionSet.findUnique({
       where: { id },
-      include: { configs: { include: { subject: true, topic: true } } },
+      include: {
+        configs: { include: { subject: true, topic: true } },
+        _count: { select: { examAttempts: true } },
+      },
     });
 
     if (!set) return reply.code(404).send({ error: "Question set not found." });
@@ -201,6 +325,62 @@ export async function questionSetRoutes(app: FastifyInstance) {
     return { success: true };
   });
 
+  app.post("/:id/archive", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const { id } = request.params as { id: string };
+    const set = await prisma.questionSet.findUnique({ where: { id } });
+
+    if (!set) return reply.code(404).send({ error: "Question set not found." });
+
+    if (set.status === QuestionSetStatus.ARCHIVED) {
+      return reply.code(400).send({ error: "Question set is already archived." });
+    }
+
+    const questionSet = await prisma.questionSet.update({
+      where: { id },
+      data: {
+        status: QuestionSetStatus.ARCHIVED,
+        deployedAt: null,
+      },
+      include: {
+        configs: { include: { subject: true, topic: true } },
+        _count: { select: { examAttempts: true } },
+      },
+    });
+
+    return { questionSet };
+  });
+
+  app.post("/:id/restore", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const { id } = request.params as { id: string };
+    const set = await prisma.questionSet.findUnique({ where: { id } });
+
+    if (!set) return reply.code(404).send({ error: "Question set not found." });
+
+    if (set.status !== QuestionSetStatus.ARCHIVED) {
+      return reply.code(400).send({ error: "Only archived question sets can be restored." });
+    }
+
+    const questionSet = await prisma.questionSet.update({
+      where: { id },
+      data: {
+        status: QuestionSetStatus.DRAFT,
+        deployedAt: null,
+      },
+      include: {
+        configs: { include: { subject: true, topic: true } },
+        _count: { select: { examAttempts: true } },
+      },
+    });
+
+    return { questionSet };
+  });
+
   app.post("/:id/deploy", async (request, reply) => {
     const user = getUser(request);
     requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
@@ -222,6 +402,7 @@ export async function questionSetRoutes(app: FastifyInstance) {
       prisma.questionSet.updateMany({
         where: {
           yearLevel: set.yearLevel,
+          programCourse: set.programCourse,
           type: set.type,
           status: QuestionSetStatus.DEPLOYED,
         },

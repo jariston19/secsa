@@ -1,13 +1,22 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { api } from "../lib/api";
 import { parseYearLevel, sanitizeYearInput } from "../lib/constants";
+import {
+  PROGRAM_COURSES,
+  formatProgramCoursesList,
+  subjectHasProgram,
+  subjectProgramCourseIds,
+  type ProgramCourseFilter,
+  type ProgramCourseId,
+} from "../lib/programCourse";
 
 interface Subject {
   id: string;
   courseCode: string;
   courseTitle: string;
   yearLevel: number;
+  programCourses: Array<{ programCourse: ProgramCourseId }>;
   _count?: { questions: number };
   topics?: Array<{ id: string; name: string }>;
 }
@@ -16,6 +25,7 @@ interface SubjectEditDraft {
   courseCode: string;
   courseTitle: string;
   yearLevel: string;
+  programCourses: ProgramCourseId[];
 }
 
 interface Props {
@@ -26,12 +36,27 @@ interface Props {
 }
 
 export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated }: Props) {
-  const [feedback, setFeedback] = useState<{ text: string; isError: boolean } | null>(null);
+  const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>("ALL");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<SubjectEditDraft | null>(null);
   const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+
+  const filteredSubjects = useMemo(
+    () =>
+      subjects.filter((subject) =>
+        programFilter === "ALL"
+          ? true
+          : subjectHasProgram(subject.programCourses, programFilter)
+      ),
+    [subjects, programFilter]
+  );
+
+  function handleProgramFilterChange(value: ProgramCourseFilter) {
+    setProgramFilter(value);
+    cancelEdit();
+  }
 
   function startEdit(subject: Subject) {
     setEditingId(subject.id);
@@ -39,8 +64,8 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
       courseCode: subject.courseCode,
       courseTitle: subject.courseTitle,
       yearLevel: String(subject.yearLevel),
+      programCourses: subjectProgramCourseIds(subject.programCourses),
     });
-    setFeedback(null);
   }
 
   function cancelEdit() {
@@ -48,11 +73,23 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
     setEditDraft(null);
   }
 
+  function toggleProgramCourse(courseId: ProgramCourseId, checked: boolean) {
+    setEditDraft((draft) => {
+      if (!draft) return draft;
+      const next = checked
+        ? [...draft.programCourses, courseId]
+        : draft.programCourses.filter((id) => id !== courseId);
+      return {
+        ...draft,
+        programCourses: next.length > 0 ? next : ([courseId] as ProgramCourseId[]),
+      };
+    });
+  }
+
   async function saveEdit(id: string) {
     if (!editDraft) return;
 
     setSavingId(id);
-    setFeedback(null);
 
     try {
       await api(
@@ -60,20 +97,20 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
         {
           method: "PATCH",
           body: JSON.stringify({
-            ...editDraft,
+            courseCode: editDraft.courseCode,
+            courseTitle: editDraft.courseTitle,
             yearLevel: parseYearLevel(editDraft.yearLevel),
+            programCourses: editDraft.programCourses,
           }),
         },
         token
       );
       const message = "Subject updated.";
-      setFeedback({ text: message, isError: false });
       setEditingId(null);
       setEditDraft(null);
       onUpdated(message, false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update subject";
-      setFeedback({ text: message, isError: true });
       onUpdated(message, true);
     } finally {
       setSavingId(null);
@@ -92,7 +129,6 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
     if (!confirmed) return;
 
     setDeletingId(id);
-    setFeedback(null);
     if (editingId === id) cancelEdit();
 
     try {
@@ -107,11 +143,9 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
         message += ` ${result.archivedSets} deployed question set(s) were archived.`;
       }
 
-      setFeedback({ text: message, isError: false });
       onUpdated(message, false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to delete subject";
-      setFeedback({ text: message, isError: true });
       onUpdated(message, true);
     } finally {
       setDeletingId(null);
@@ -134,20 +168,39 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
         </div>
 
         <p className="muted section-desc">
-          Edit or delete subjects. Subjects already used in student exams cannot be deleted.
+          Filter by program course, then edit or delete subjects. Subjects already used in
+          student exams cannot be deleted.
         </p>
-
-        {feedback && <p className={feedback.isError ? "error" : "success"}>{feedback.text}</p>}
 
         {subjects.length === 0 ? (
           <p className="muted">No subjects yet. Add one from the Setup tab.</p>
         ) : (
+          <>
+            <label className="saved-subjects-filter">
+              Program course
+              <select
+                value={programFilter}
+                onChange={(e) => handleProgramFilterChange(e.target.value as ProgramCourseFilter)}
+              >
+                <option value="ALL">All</option>
+                {PROGRAM_COURSES.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {filteredSubjects.length === 0 ? (
+              <p className="muted">No subjects linked to this program course.</p>
+            ) : (
           <div className="modal-table-scroll">
             <table>
             <thead>
               <tr>
                 <th>Course code</th>
                 <th className="saved-subjects-title-col">Title</th>
+                <th>Programs</th>
                 <th>Year</th>
                 <th>Topics</th>
                 <th>Questions</th>
@@ -155,7 +208,7 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
               </tr>
             </thead>
             <tbody>
-              {subjects.map((s) => {
+              {filteredSubjects.map((s) => {
                 const isEditing = editingId === s.id;
 
                 return (
@@ -173,7 +226,7 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
                         s.courseCode
                       )}
                     </td>
-                    <td className="saved-subjects-title-col">
+                    <td className="saved-subjects-title-col" title={isEditing ? undefined : s.courseTitle}>
                       {isEditing ? (
                         <input
                           className="table-input"
@@ -184,6 +237,26 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
                         />
                       ) : (
                         s.courseTitle
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <div className="saved-subjects-program-edit">
+                          {PROGRAM_COURSES.map((course) => (
+                            <label key={course.id} className="checkbox-label">
+                              <input
+                                type="checkbox"
+                                checked={editDraft?.programCourses.includes(course.id) ?? false}
+                                onChange={(e) => toggleProgramCourse(course.id, e.target.checked)}
+                              />
+                              {course.abbr}
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <span title={formatProgramCoursesList(subjectProgramCourseIds(s.programCourses))}>
+                          {formatProgramCoursesList(subjectProgramCourseIds(s.programCourses))}
+                        </span>
                       )}
                     </td>
                     <td>
@@ -270,6 +343,8 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
             </tbody>
           </table>
           </div>
+            )}
+          </>
         )}
       </div>
     </div>
