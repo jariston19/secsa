@@ -45,10 +45,10 @@ interface Props {
   setId: string;
   token: string | null;
   onClose: () => void;
-  onQuestionRemoved: () => void;
-  onSetDeleted: () => void;
-  onSetArchived: () => void;
-  onSetUndeployed: () => void;
+  onQuestionRemoved: (questionPreview: string, setName: string) => void;
+  onSetDeleted: (name: string) => void;
+  onSetArchived: (name: string) => void;
+  onSetUndeployed: (name: string) => void;
 }
 
 export default function QuestionSetPreviewModal({
@@ -67,7 +67,7 @@ export default function QuestionSetPreviewModal({
   const [deletingSet, setDeletingSet] = useState(false);
   const [archivingSet, setArchivingSet] = useState(false);
   const [undeployingSet, setUndeployingSet] = useState(false);
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   async function loadPreview() {
     setLoading(true);
@@ -98,7 +98,7 @@ export default function QuestionSetPreviewModal({
     setError("");
     try {
       await api(`/question-sets/${setId}/undeploy`, { method: "POST" }, token);
-      onSetUndeployed();
+      onSetUndeployed(data.questionSet.name);
       await loadPreview();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to cancel deploy");
@@ -119,7 +119,7 @@ export default function QuestionSetPreviewModal({
     setError("");
     try {
       await api(`/question-sets/${setId}/archive`, { method: "POST" }, token);
-      onSetArchived();
+      onSetArchived(data.questionSet.name);
       requestClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to archive question set");
@@ -140,7 +140,7 @@ export default function QuestionSetPreviewModal({
     setError("");
     try {
       await api(`/question-sets/${setId}`, { method: "DELETE" }, token);
-      onSetDeleted();
+      onSetDeleted(data.questionSet.name);
       requestClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete question set");
@@ -159,7 +159,7 @@ export default function QuestionSetPreviewModal({
     try {
       await api(`/questions/${questionId}`, { method: "DELETE" }, token);
       await loadPreview();
-      onQuestionRemoved();
+      onQuestionRemoved(questionText, data!.questionSet.name);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove question");
     } finally {
@@ -167,7 +167,7 @@ export default function QuestionSetPreviewModal({
     }
   }
 
-  return (
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div className={panelClass()} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -295,5 +295,4 @@ export default function QuestionSetPreviewModal({
         </div>
       </div>
     </div>
-  );
-}
+  );}

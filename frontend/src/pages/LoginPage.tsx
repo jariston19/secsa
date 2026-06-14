@@ -29,7 +29,7 @@ export default function LoginPage() {
       </div>
       <form className="card login-card form-grid" onSubmit={handleSubmit}>
         <img className="login-logo" src="/secsa.png" alt="SECSA" />
-        <h1>Welcome Back</h1>
+        <h1>Ready for the Challenge?</h1>
         <p className="muted login-subtext">Sign in to access the SECSA Comprehensive Examination Platform.</p>
         <label>
           Email

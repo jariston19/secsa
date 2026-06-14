@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import { usePagination } from "../hooks/usePagination";
+import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { formatExamType } from "../lib/constants";
 import { formatFullName } from "../lib/names";
@@ -53,7 +55,7 @@ export default function StudentSubmissionDetailModal({ submissionId, token, onCl
   const [submission, setSubmission] = useState<SubmissionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   useEffect(() => {
     setLoading(true);
@@ -65,7 +67,18 @@ export default function StudentSubmissionDetailModal({ submissionId, token, onCl
       .finally(() => setLoading(false));
   }, [submissionId, token]);
 
-  return (
+  const answers = submission?.answers ?? [];
+  const {
+    paginatedItems: paginatedAnswers,
+    page,
+    setPage,
+    totalPages,
+    pageStart,
+    pageEnd,
+    totalItems,
+  } = usePagination(answers, { resetKey: submissionId });
+
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div
         className={panelClass("student-submission-detail-modal")}
@@ -91,7 +104,7 @@ export default function StudentSubmissionDetailModal({ submissionId, token, onCl
         ) : error ? (
           <p className="error">{error}</p>
         ) : submission ? (
-          <>
+          <div className="student-submission-detail-body">
             <div className="submission-detail-summary">
               <div>
                 <strong>
@@ -110,6 +123,15 @@ export default function StudentSubmissionDetailModal({ submissionId, token, onCl
               </div>
             </div>
 
+            <ModalPagination
+              page={page}
+              totalPages={totalPages}
+              pageStart={pageStart}
+              pageEnd={pageEnd}
+              totalItems={totalItems}
+              onPageChange={setPage}
+            />
+
             <div className="modal-table-scroll student-submission-answers-scroll">
               <table>
                 <thead>
@@ -123,9 +145,9 @@ export default function StudentSubmissionDetailModal({ submissionId, token, onCl
                   </tr>
                 </thead>
                 <tbody>
-                  {submission.answers.map((answer, index) => (
+                  {paginatedAnswers.map((answer, index) => (
                     <tr key={answer.id}>
-                      <td>{index + 1}</td>
+                      <td>{pageStart + index}</td>
                       <td>
                         <div className="submission-question-text">{answer.text}</div>
                         {answer.topic && (
@@ -147,7 +169,7 @@ export default function StudentSubmissionDetailModal({ submissionId, token, onCl
                 </tbody>
               </table>
             </div>
-          </>
+          </div>
         ) : null}
       </div>
     </div>

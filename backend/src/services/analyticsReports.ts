@@ -334,20 +334,6 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
     })
     .sort((a, b) => a.correctRate - b.correctRate);
 
-  const mostMissed = [...questionStats.values()]
-    .filter((row) => row.incorrect > 0)
-    .map((row) => ({
-      questionId: row.questionId,
-      text: row.text,
-      subject: row.subject,
-      topic: row.topic,
-      incorrect: row.incorrect,
-      correctRate: pct(row.correct, row.total),
-      attempts: row.total,
-    }))
-    .sort((a, b) => b.incorrect - a.incorrect)
-    .slice(0, 10);
-
   const distractorAnalysis = [...questionStats.values()]
     .filter((row) => row.incorrect > 0 && row.total >= 5)
     .map((row) => {
@@ -540,7 +526,6 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
       hasTimedData: questionTimeRows.length > 0,
     },
     questionAnalysis,
-    mostMissed,
     distractorAnalysis,
     readinessDistribution: readinessBuckets,
     atRiskStudents,

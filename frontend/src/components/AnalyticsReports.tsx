@@ -78,15 +78,6 @@ interface ReportsData {
     attempts: number;
     flag: "too_easy" | "too_hard" | null;
   }>;
-  mostMissed: Array<{
-    questionId: string;
-    text: string;
-    subject: string;
-    topic: string | null;
-    incorrect: number;
-    correctRate: number;
-    attempts: number;
-  }>;
   distractorAnalysis: Array<{
     questionId: string;
     text: string;
@@ -408,36 +399,6 @@ export default function AnalyticsReports({ token }: Props) {
             </tbody>
           </table>
         </div>
-      </section>
-
-      <section className="card analytics-report-section">
-        <h2>Most Missed Questions</h2>
-        {reports.mostMissed.length === 0 ? (
-          <p className="muted">No missed-question data yet.</p>
-        ) : (
-          <div className="table-responsive">
-            <table>
-              <thead>
-                <tr>
-                  <th>Question</th>
-                  <th>Subject</th>
-                  <th>Incorrect</th>
-                  <th>Correct %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reports.mostMissed.map((row) => (
-                  <tr key={row.questionId}>
-                    <td className="analytics-question-cell">{truncate(row.text)}</td>
-                    <td>{row.subject}</td>
-                    <td>{row.incorrect}</td>
-                    <td>{row.correctRate.toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
 
       <section className="card analytics-report-section">

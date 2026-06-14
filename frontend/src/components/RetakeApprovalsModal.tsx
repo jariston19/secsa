@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import { usePagination } from "../hooks/usePagination";
+import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { formatFullName } from "../lib/names";
+import { toastApproved } from "../lib/toastMessages";
 
 interface RetakeApproval {
   id: string;
@@ -28,7 +31,7 @@ export default function RetakeApprovalsModal({ token, onClose, onUpdated }: Prop
   const [approvals, setApprovals] = useState<RetakeApproval[]>([]);
   const [loading, setLoading] = useState(true);
   const [approvingId, setApprovingId] = useState<string | null>(null);
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   async function loadApprovals() {
     setLoading(true);
@@ -51,6 +54,16 @@ export default function RetakeApprovalsModal({ token, onClose, onUpdated }: Prop
     loadApprovals().catch(() => {});
   }, [token]);
 
+  const {
+    paginatedItems: paginatedApprovals,
+    page,
+    setPage,
+    totalPages,
+    pageStart,
+    pageEnd,
+    totalItems,
+  } = usePagination(approvals, { resetKey: approvals.length });
+
   async function approveRetake(id: string, studentName: string) {
     const confirmed = window.confirm(`Approve retake for ${studentName}?`);
     if (!confirmed) return;
@@ -59,7 +72,7 @@ export default function RetakeApprovalsModal({ token, onClose, onUpdated }: Prop
 
     try {
       await api(`/exams/retakes/${id}/approve`, { method: "POST", body: "{}" }, token);
-      const message = `Retake approved for ${studentName}.`;
+      const message = toastApproved("retake request", studentName);
       onUpdated(message, false);
       await loadApprovals();
     } catch (err) {
@@ -70,7 +83,7 @@ export default function RetakeApprovalsModal({ token, onClose, onUpdated }: Prop
     }
   }
 
-  return (
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div className={panelClass("retake-approvals-modal")} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -90,8 +103,17 @@ export default function RetakeApprovalsModal({ token, onClose, onUpdated }: Prop
         ) : approvals.length === 0 ? (
           <p className="muted">No pending retake approvals.</p>
         ) : (
-          <div className="modal-table-scroll">
-            <table>
+          <>
+            <ModalPagination
+              page={page}
+              totalPages={totalPages}
+              pageStart={pageStart}
+              pageEnd={pageEnd}
+              totalItems={totalItems}
+              onPageChange={setPage}
+            />
+            <div className="modal-table-wrap">
+              <table>
             <thead>
               <tr>
                 <th>Student</th>
@@ -102,7 +124,7 @@ export default function RetakeApprovalsModal({ token, onClose, onUpdated }: Prop
               </tr>
             </thead>
             <tbody>
-              {approvals.map((approval) => (
+              {paginatedApprovals.map((approval) => (
                 <tr key={approval.id}>
                   <td>
                     <strong>
@@ -138,9 +160,9 @@ export default function RetakeApprovalsModal({ token, onClose, onUpdated }: Prop
               ))}
             </tbody>
           </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>
-  );
-}
+  );}

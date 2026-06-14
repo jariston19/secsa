@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { lockBodyScroll, unlockBodyScroll } from "../lib/scrollLock";
 
 const CLOSE_MS = 280;
@@ -23,5 +24,7 @@ export function useAnimatedModal(onClose: () => void) {
   const panelClass = (...extra: string[]) =>
     ["modal", "card", ...extra, closing ? "is-closing" : ""].filter(Boolean).join(" ");
 
-  return { requestClose, overlayClass, panelClass };
+  const portal = (node: ReactNode) => createPortal(node, document.body);
+
+  return { requestClose, overlayClass, panelClass, portal };
 }

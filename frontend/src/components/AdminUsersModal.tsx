@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import AdminUserGroupTable, { type UserEditDraft, type UserRow } from "./AdminUserGroupTable";
+import ModalPagination from "./ModalPagination";
 import SegmentedControl from "./SegmentedControl";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import { usePagination } from "../hooks/usePagination";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { parseYearLevel } from "../lib/constants";
 import { compareByName, formatFullName } from "../lib/names";
 import { DEFAULT_PROGRAM_COURSE } from "../lib/programCourse";
+import { toastDeleted, toastUpdated } from "../lib/toastMessages";
 
 type RoleTab = "all" | "students" | "teachers" | "admins";
 
@@ -48,7 +50,7 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   async function loadUsers() {
     setLoading(true);
@@ -95,6 +97,17 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
     const year = Number(studentYearTab);
     return students.filter((user) => user.yearLevel === year);
   }, [roleTab, studentYearTab, allUsers, teachers, admins, students]);
+
+  const usersResetKey = `${roleTab}-${studentYearTab}-${visibleUsers.length}`;
+  const {
+    paginatedItems: paginatedUsers,
+    page,
+    setPage,
+    totalPages,
+    pageStart,
+    pageEnd,
+    totalItems,
+  } = usePagination(visibleUsers, { resetKey: usersResetKey });
 
   const tableGroup = useMemo(() => {
     if (roleTab === "all") return "all" as const;
@@ -178,7 +191,10 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
         },
         token
       );
-      const message = "User updated.";
+      const message = toastUpdated(
+        "user",
+        formatFullName(editDraft.firstName.trim(), editDraft.lastName.trim())
+      );
       onUpdated(message, false);
       cancelEdit();
       await loadUsers();
@@ -204,7 +220,11 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
         { method: "PATCH", body: JSON.stringify({ isActive }) },
         token
       );
-      const message = isActive ? "User enabled." : "User disabled.";
+      const message = toastUpdated(
+        "user",
+        formatFullName(user.firstName, user.lastName),
+        isActive ? "Account enabled." : "Account disabled."
+      );
       onUpdated(message, false);
     } catch (err) {
       setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, isActive: previous } : u)));
@@ -229,7 +249,7 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
 
     try {
       await api(`/users/${user.id}`, { method: "DELETE" }, token);
-      const message = "User deleted.";
+      const message = toastDeleted("user", formatFullName(user.firstName, user.lastName));
       onUpdated(message, false);
       await loadUsers();
     } catch (err) {
@@ -249,7 +269,7 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
           ? "No admin accounts."
           : "No accounts found.";
 
-  return createPortal(
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div className={panelClass("admin-users-modal")} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -283,28 +303,37 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
           {loading ? (
             <p className="muted">Loading users...</p>
           ) : (
-            <AdminUserGroupTable
-              users={visibleUsers}
-              group={tableGroup}
-              hideYearColumn={roleTab === "students"}
-              emptyMessage={emptyMessage}
-              editingId={editingId}
-              editDraft={editDraft}
-              savingId={savingId}
-              deletingId={deletingId}
-              togglingId={togglingId}
-              currentUserId={currentUser?.id ?? null}
-              onStartEdit={startEdit}
-              onCancelEdit={cancelEdit}
-              onSaveEdit={saveEdit}
-              onDelete={deleteUser}
-              onToggleActive={toggleActive}
-              setEditDraft={setEditDraft}
-            />
+            <>
+              <ModalPagination
+                page={page}
+                totalPages={totalPages}
+                pageStart={pageStart}
+                pageEnd={pageEnd}
+                totalItems={totalItems}
+                onPageChange={setPage}
+              />
+              <AdminUserGroupTable
+                users={paginatedUsers}
+                group={tableGroup}
+                hideYearColumn={roleTab === "students"}
+                emptyMessage={emptyMessage}
+                editingId={editingId}
+                editDraft={editDraft}
+                savingId={savingId}
+                deletingId={deletingId}
+                togglingId={togglingId}
+                currentUserId={currentUser?.id ?? null}
+                onStartEdit={startEdit}
+                onCancelEdit={cancelEdit}
+                onSaveEdit={saveEdit}
+                onDelete={deleteUser}
+                onToggleActive={toggleActive}
+                setEditDraft={setEditDraft}
+              />
+            </>
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import AnalyticsReports from "../components/AnalyticsReports";
 import CohortScorecard, { type CohortsData } from "../components/CohortScorecard";
 import QuestionPerformanceModal from "../components/QuestionPerformanceModal";
 import SegmentedControl from "../components/SegmentedControl";
+import StudentSubmissionDetailModal from "../components/StudentSubmissionDetailModal";
 import StudentSubmissionsSection from "../components/StudentSubmissionsSection";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -11,6 +12,7 @@ import { useToast } from "../lib/toast";
 import { parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import { formatFullName } from "../lib/names";
 import { DEFAULT_PROGRAM_COURSE, PROGRAM_COURSES, type ProgramCourseId } from "../lib/programCourse";
+import { toastApproved, toastCreated } from "../lib/toastMessages";
 
 type Tab = "users" | "analytics" | "submissions";
 
@@ -30,6 +32,7 @@ export default function AdminDashboard() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
   const [showQuestionPerformance, setShowQuestionPerformance] = useState(false);
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
 
   const [userForm, setUserForm] = useState({
     email: "",
@@ -69,6 +72,12 @@ export default function AdminDashboard() {
     });
   }, [token, activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== "submissions") {
+      setSelectedSubmissionId(null);
+    }
+  }, [activeTab]);
+
   function showMessage(text: string, isError = false) {
     if (isError) toast.error(text);
     else toast.success(text);
@@ -94,6 +103,7 @@ export default function AdminDashboard() {
         },
         token
       );
+      const createdName = formatFullName(userForm.firstName.trim(), userForm.lastName.trim());
       setUserForm({
         email: "",
         password: "",
@@ -104,15 +114,15 @@ export default function AdminDashboard() {
         programCourse: DEFAULT_PROGRAM_COURSE,
         qaUnlimited: false,
       });
-      showMessage("User created.");
+      showMessage(toastCreated("user", createdName));
     } catch (err) {
       showMessage(err instanceof Error ? err.message : "Failed to create user", true);
     }
   }
 
-  async function approveRetake(id: string) {
+  async function approveRetake(id: string, studentName: string) {
     await api(`/exams/retakes/${id}/approve`, { method: "POST", body: "{}" }, token);
-    showMessage("Retake approved.");
+    showMessage(toastApproved("retake request", studentName));
     await refreshAnalytics();
   }
 
@@ -255,14 +265,6 @@ export default function AdminDashboard() {
           <button className="btn">Create User</button>
         </form>
       </section>
-
-      {showUsers && (
-        <AdminUsersModal
-          token={token}
-          onClose={() => setShowUsers(false)}
-          onUpdated={showMessage}
-        />
-      )}
       </div>
       )}
 
@@ -312,13 +314,6 @@ export default function AdminDashboard() {
         </div>
       </section>
 
-      {showQuestionPerformance && (
-        <QuestionPerformanceModal
-          token={token}
-          onClose={() => setShowQuestionPerformance(false)}
-        />
-      )}
-
       <AnalyticsReports token={token} />
 
       <section className="card">
@@ -338,7 +333,18 @@ export default function AdminDashboard() {
                 )}{" "}
                 · Year {(a.student as { yearLevel: number }).yearLevel}
               </span>
-              <button className="btn secondary" onClick={() => approveRetake(String(a.id))}>
+              <button
+                className="btn secondary"
+                onClick={() =>
+                  approveRetake(
+                    String(a.id),
+                    formatFullName(
+                      (a.student as { firstName: string }).firstName,
+                      (a.student as { lastName: string }).lastName
+                    )
+                  )
+                }
+              >
                 Approve Retake
               </button>
             </div>
@@ -352,10 +358,36 @@ export default function AdminDashboard() {
 
       {activeTab === "submissions" && (
       <div className="grid">
-        <StudentSubmissionsSection token={token} />
+        <StudentSubmissionsSection
+          token={token}
+          onViewSubmission={setSelectedSubmissionId}
+        />
       </div>
       )}
       </div>
+
+      {showUsers && (
+        <AdminUsersModal
+          token={token}
+          onClose={() => setShowUsers(false)}
+          onUpdated={showMessage}
+        />
+      )}
+
+      {showQuestionPerformance && (
+        <QuestionPerformanceModal
+          token={token}
+          onClose={() => setShowQuestionPerformance(false)}
+        />
+      )}
+
+      {selectedSubmissionId && (
+        <StudentSubmissionDetailModal
+          submissionId={selectedSubmissionId}
+          token={token}
+          onClose={() => setSelectedSubmissionId(null)}
+        />
+      )}
     </div>
   );
 }

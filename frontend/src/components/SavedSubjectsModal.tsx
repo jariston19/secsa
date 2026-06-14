@@ -1,7 +1,14 @@
 import { useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import { usePagination } from "../hooks/usePagination";
+import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { parseYearLevel, sanitizeYearInput } from "../lib/constants";
+import {
+  subjectLabel,
+  toastDeleted,
+  toastUpdated,
+} from "../lib/toastMessages";
 import {
   PROGRAM_COURSES,
   formatProgramCoursesList,
@@ -41,7 +48,7 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<SubjectEditDraft | null>(null);
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   const filteredSubjects = useMemo(
     () =>
@@ -52,6 +59,16 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
       ),
     [subjects, programFilter]
   );
+
+  const {
+    paginatedItems: paginatedSubjects,
+    page,
+    setPage,
+    totalPages,
+    pageStart,
+    pageEnd,
+    totalItems,
+  } = usePagination(filteredSubjects, { resetKey: programFilter });
 
   function handleProgramFilterChange(value: ProgramCourseFilter) {
     setProgramFilter(value);
@@ -105,7 +122,10 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
         },
         token
       );
-      const message = "Subject updated.";
+      const message = toastUpdated(
+        "subject",
+        subjectLabel(editDraft.courseCode, editDraft.courseTitle)
+      );
       setEditingId(null);
       setEditDraft(null);
       onUpdated(message, false);
@@ -138,7 +158,7 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
         token
       );
 
-      let message = "Subject deleted.";
+      let message = toastDeleted("subject", label);
       if (result.archivedSets && result.archivedSets > 0) {
         message += ` ${result.archivedSets} deployed question set(s) were archived.`;
       }
@@ -152,7 +172,7 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
     }
   }
 
-  return (
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div className={panelClass("saved-subjects-modal")} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -194,8 +214,17 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
             {filteredSubjects.length === 0 ? (
               <p className="muted">No subjects linked to this program course.</p>
             ) : (
-          <div className="modal-table-scroll">
-            <table>
+              <>
+                <ModalPagination
+                  page={page}
+                  totalPages={totalPages}
+                  pageStart={pageStart}
+                  pageEnd={pageEnd}
+                  totalItems={totalItems}
+                  onPageChange={setPage}
+                />
+                <div className="modal-table-wrap">
+                  <table>
             <thead>
               <tr>
                 <th>Course code</th>
@@ -208,7 +237,7 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
               </tr>
             </thead>
             <tbody>
-              {filteredSubjects.map((s) => {
+              {paginatedSubjects.map((s) => {
                 const isEditing = editingId === s.id;
 
                 return (
@@ -342,11 +371,11 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
               })}
             </tbody>
           </table>
-          </div>
+                </div>
+              </>
             )}
           </>
         )}
       </div>
     </div>
-  );
-}
+  );}

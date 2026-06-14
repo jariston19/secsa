@@ -13,6 +13,17 @@ import { useAuth } from "../lib/auth";
 import { useToast } from "../lib/toast";
 import { formatExamType, parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import {
+  subjectLabel,
+  toastArchived,
+  toastBatchCreated,
+  toastCreated,
+  toastDeleted,
+  toastDeployed,
+  toastLinked,
+  toastRemoved,
+  toastUndeployed,
+} from "../lib/toastMessages";
+import {
   DEFAULT_PROGRAM_COURSE,
   PROGRAM_COURSES,
   formatProgramCourse,
@@ -24,6 +35,8 @@ import {
 } from "../lib/programCourse";
 
 type Tab = "setup" | "encode" | "sets";
+
+type SetStatusFilter = "ALL" | "DRAFT" | "DEPLOYED";
 
 interface TopicDraftRow {
   key: string;
@@ -87,6 +100,7 @@ export default function TeacherDashboard() {
   const [activeProgramCourse, setActiveProgramCourse] =
     useState<ProgramCourseId>(DEFAULT_PROGRAM_COURSE);
   const [setsProgramFilter, setSetsProgramFilter] = useState<ProgramCourseFilter>("ALL");
+  const [setsStatusFilter, setSetsStatusFilter] = useState<SetStatusFilter>("ALL");
 
   const [subjectForm, setSubjectForm] = useState({
     courseCode: "",
@@ -152,10 +166,11 @@ export default function TeacherDashboard() {
         },
         token
       );
+      const label = subjectLabel(subjectForm.courseCode, subjectForm.courseTitle);
       toast.success(
         result.linkedPrograms
-          ? "Subject linked to additional program course(s)."
-          : "Subject created."
+          ? toastLinked("subject", label, "Linked to additional program course(s).")
+          : toastCreated("subject", label)
       );
       setSubjectForm((form) => ({
         courseCode: "",
@@ -191,9 +206,24 @@ export default function TeacherDashboard() {
         skipped: Array<{ subjectId: string; name: string; reason: string }>;
       }>("/topics/batch", { method: "POST", body: JSON.stringify({ topics: payload }) }, token);
 
-      let message = `${result.created} topic${result.created === 1 ? "" : "s"} saved.`;
-      if (result.skipped.length > 0) {
-        message += ` ${result.skipped.length} skipped (duplicate or already exists).`;
+      const subjectIds = new Set(payload.map((row) => row.subjectId));
+      let message: string;
+
+      if (subjectIds.size === 1) {
+        const subject = subjects.find((s) => s.id === payload[0].subjectId);
+        const contextLabel = subject
+          ? subjectLabel(subject.courseCode, subject.courseTitle)
+          : "selected subject";
+        const extra =
+          result.skipped.length > 0
+            ? `${result.skipped.length} skipped (duplicate or already exists).`
+            : undefined;
+        message = toastBatchCreated("topics", result.created, contextLabel, extra);
+      } else {
+        message = `Created ${result.created} topics across ${subjectIds.size} subjects.`;
+        if (result.skipped.length > 0) {
+          message += ` ${result.skipped.length} skipped (duplicate or already exists).`;
+        }
       }
       toast.success(message);
 
@@ -240,10 +270,10 @@ export default function TeacherDashboard() {
     }));
   }
 
-  async function deploySet(id: string) {
+  async function deploySet(id: string, name: string) {
     try {
       await api(`/question-sets/${id}/deploy`, { method: "POST" }, token);
-      toast.success("Question set deployed.");
+      toast.success(toastDeployed("question set", name));
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to deploy question set");
@@ -258,7 +288,7 @@ export default function TeacherDashboard() {
 
     try {
       await api(`/question-sets/${id}/undeploy`, { method: "POST" }, token);
-      toast.success("Deploy cancelled. Question set is back to draft.");
+      toast.success(toastUndeployed("question set", name));
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to cancel deploy");
@@ -274,7 +304,7 @@ export default function TeacherDashboard() {
     try {
       await api(`/question-sets/${id}/archive`, { method: "POST" }, token);
       if (previewSetId === id) setPreviewSetId(null);
-      toast.success("Question set archived.");
+      toast.success(toastArchived("question set", name));
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to archive question set");
@@ -290,7 +320,7 @@ export default function TeacherDashboard() {
     try {
       await api(`/question-sets/${id}`, { method: "DELETE" }, token);
       if (previewSetId === id) setPreviewSetId(null);
-      toast.success("Question set deleted.");
+      toast.success(toastDeleted("question set", name));
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete question set");
@@ -337,9 +367,10 @@ export default function TeacherDashboard() {
       sets.filter(
         (s) =>
           s.status !== "ARCHIVED" &&
-          (setsProgramFilter === "ALL" || s.programCourse === setsProgramFilter)
+          (setsProgramFilter === "ALL" || s.programCourse === setsProgramFilter) &&
+          (setsStatusFilter === "ALL" || s.status === setsStatusFilter)
       ),
-    [sets, setsProgramFilter]
+    [sets, setsProgramFilter, setsStatusFilter]
   );
 
   const topicBatchCount = useMemo(
@@ -612,22 +643,37 @@ export default function TeacherDashboard() {
               <p className="muted section-desc">
                 Create a set with per-topic difficulty assignments, then deploy when ready.
               </p>
-              <label className="sets-program-filter">
-                Program filter
-                <select
-                  value={setsProgramFilter}
-                  onChange={(e) =>
-                    setSetsProgramFilter(e.target.value as ProgramCourseFilter)
-                  }
-                >
-                  <option value="ALL">All</option>
-                  {PROGRAM_COURSES.map((course) => (
-                    <option key={course.id} value={course.id}>
-                      {course.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="sets-filters">
+                <label className="sets-program-filter">
+                  Program filter
+                  <select
+                    value={setsProgramFilter}
+                    onChange={(e) =>
+                      setSetsProgramFilter(e.target.value as ProgramCourseFilter)
+                    }
+                  >
+                    <option value="ALL">All</option>
+                    {PROGRAM_COURSES.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="sets-status-filter">
+                  Status
+                  <select
+                    value={setsStatusFilter}
+                    onChange={(e) =>
+                      setSetsStatusFilter(e.target.value as SetStatusFilter)
+                    }
+                  >
+                    <option value="ALL">All</option>
+                    <option value="DRAFT">Draft</option>
+                    <option value="DEPLOYED">Deployed</option>
+                  </select>
+                </label>
+              </div>
             </div>
             <div className="sets-header-actions">
               <button
@@ -664,7 +710,15 @@ export default function TeacherDashboard() {
               </tr>
             </thead>
             <tbody>
-              {courseSets.map((set) => (
+              {courseSets.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="muted sets-empty-row">
+                    No question sets match these filters. Set Program to &quot;All&quot; and Status
+                    to &quot;All&quot; or &quot;Deployed&quot; to see existing sets.
+                  </td>
+                </tr>
+              ) : (
+              courseSets.map((set) => (
                 <tr key={set.id}>
                   <td>{set.name}</td>
                   <td>{set.yearLevel}</td>
@@ -703,7 +757,7 @@ export default function TeacherDashboard() {
                         <button
                           type="button"
                           className="btn secondary"
-                          onClick={() => deploySet(set.id)}
+                          onClick={() => deploySet(set.id, set.name)}
                         >
                           Deploy
                         </button>
@@ -731,7 +785,8 @@ export default function TeacherDashboard() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
           </div>
@@ -832,18 +887,22 @@ export default function TeacherDashboard() {
           setId={previewSetId}
           token={token}
           onClose={() => setPreviewSetId(null)}
-          onQuestionRemoved={() => toast.success("Question removed from pool.")}
-          onSetDeleted={() => {
-            toast.success("Question set deleted.");
+          onQuestionRemoved={(questionPreview, setName) =>
+            toast.success(
+              toastRemoved("question", questionPreview.slice(0, 72), setName)
+            )
+          }
+          onSetDeleted={(name) => {
+            toast.success(toastDeleted("question set", name));
             refresh().catch(() => {});
           }}
-          onSetArchived={() => {
-            toast.success("Question set archived.");
+          onSetArchived={(name) => {
+            toast.success(toastArchived("question set", name));
             setPreviewSetId(null);
             refresh().catch(() => {});
           }}
-          onSetUndeployed={() => {
-            toast.success("Deploy cancelled. Question set is back to draft.");
+          onSetUndeployed={(name) => {
+            toast.success(toastUndeployed("question set", name));
             refresh().catch(() => {});
           }}
         />

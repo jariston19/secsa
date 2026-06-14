@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import { usePagination } from "../hooks/usePagination";
+import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 
 interface QuestionRow {
@@ -20,7 +22,7 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
   const [questions, setQuestions] = useState<QuestionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   useEffect(() => {
     setLoading(true);
@@ -32,7 +34,17 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
       .finally(() => setLoading(false));
   }, [token]);
 
-  return (
+  const {
+    paginatedItems: paginatedQuestions,
+    page,
+    setPage,
+    totalPages,
+    pageStart,
+    pageEnd,
+    totalItems,
+  } = usePagination(questions, { resetKey: questions.length });
+
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div className={panelClass("question-performance-modal")} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -55,8 +67,17 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
           ) : questions.length === 0 ? (
             <p className="muted">No question data yet.</p>
           ) : (
-            <div className="table-responsive question-performance-table-scroll">
-              <table>
+            <>
+              <ModalPagination
+                page={page}
+                totalPages={totalPages}
+                pageStart={pageStart}
+                pageEnd={pageEnd}
+                totalItems={totalItems}
+                onPageChange={setPage}
+              />
+              <div className="modal-table-wrap">
+                <table>
                 <thead>
                   <tr>
                     <th>Subject</th>
@@ -67,7 +88,7 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {questions.map((question) => (
+                  {paginatedQuestions.map((question) => (
                     <tr key={question.questionId}>
                       <td>{question.subject}</td>
                       <td>{question.topic ?? "—"}</td>
@@ -78,10 +99,10 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>
     </div>
-  );
-}
+  );}

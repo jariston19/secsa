@@ -17,11 +17,11 @@ export default function ExamInstructionsModal({
   error = "",
 }: Props) {
   const [acknowledged, setAcknowledged] = useState(false);
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onCancel);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onCancel);
 
   const title = examType === "retake" ? "Retake Exam Instructions" : "Comprehensive Exam Instructions";
 
-  return (
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div className={panelClass("instructions-modal")} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -117,5 +117,4 @@ export default function ExamInstructionsModal({
         </div>
       </div>
     </div>
-  );
-}
+  );}

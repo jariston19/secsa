@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import { usePagination } from "../hooks/usePagination";
+import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
+import { toastDeleted, toastUpdated } from "../lib/toastMessages";
 import {
   PROGRAM_COURSES,
   subjectHasProgram,
@@ -49,7 +52,7 @@ export default function SavedTopicsModal({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   const sortedSubjects = useMemo(
     () => [...subjects].sort((a, b) => a.courseCode.localeCompare(b.courseCode)),
@@ -88,6 +91,17 @@ export default function SavedTopicsModal({
         .sort((a, b) => a.name.localeCompare(b.name)),
     [topics, selectedSubjectId]
   );
+
+  const topicsResetKey = `${programFilter}-${yearFilter}-${selectedSubjectId}`;
+  const {
+    paginatedItems: paginatedTopics,
+    page,
+    setPage,
+    totalPages,
+    pageStart,
+    pageEnd,
+    totalItems,
+  } = usePagination(filteredTopics, { resetKey: topicsResetKey });
 
   function handleProgramFilterChange(value: ProgramCourseFilter) {
     setProgramFilter(value);
@@ -131,7 +145,7 @@ export default function SavedTopicsModal({
         },
         token
       );
-      const message = "Topic updated.";
+      const message = toastUpdated("topic", editName.trim());
       cancelEdit();
       onUpdated(message, false);
     } catch (err) {
@@ -158,7 +172,7 @@ export default function SavedTopicsModal({
         token
       );
 
-      let message = "Topic deleted.";
+      let message = toastDeleted("topic", label);
       if (result.archivedSets && result.archivedSets > 0) {
         message += ` ${result.archivedSets} deployed question set(s) were archived.`;
       }
@@ -172,7 +186,7 @@ export default function SavedTopicsModal({
     }
   }
 
-  return (
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div className={panelClass("saved-topics-modal")} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -251,20 +265,27 @@ export default function SavedTopicsModal({
 
         {subjects.length > 0 && selectedSubject && (
           <>
-            <p className="saved-topics-subject-heading">
+            <div className="saved-topics-subject-heading">
               <strong>
                 {selectedSubject.courseCode} — {selectedSubject.courseTitle}
               </strong>
-              <span className="muted">
-                Yr {selectedSubject.yearLevel} · {filteredTopics.length} topic
-                {filteredTopics.length === 1 ? "" : "s"}
-              </span>
-            </p>
+              {filteredTopics.length > 0 && (
+                <ModalPagination
+                  variant="inline"
+                  page={page}
+                  totalPages={totalPages}
+                  pageStart={pageStart}
+                  pageEnd={pageEnd}
+                  totalItems={totalItems}
+                  onPageChange={setPage}
+                />
+              )}
+            </div>
 
             {filteredTopics.length === 0 ? (
               <p className="muted">No topics for this subject yet. Add one from the Setup tab.</p>
             ) : (
-              <div className="modal-table-scroll">
+              <div className="modal-table-wrap">
                 <table>
                 <thead>
                   <tr>
@@ -275,7 +296,7 @@ export default function SavedTopicsModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTopics.map((t) => {
+                  {paginatedTopics.map((t) => {
                     const isEditing = editingId === t.id;
 
                     return (
@@ -347,5 +368,4 @@ export default function SavedTopicsModal({
         )}
       </div>
     </div>
-  );
-}
+  );}

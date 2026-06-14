@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import ModalPagination from "./ModalPagination";
 import SegmentedControl from "./SegmentedControl";
-import StudentSubmissionDetailModal from "./StudentSubmissionDetailModal";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, formatExamType } from "../lib/constants";
 
@@ -37,6 +37,7 @@ const PAGE_SIZE = 20;
 
 interface Props {
   token: string | null;
+  onViewSubmission: (submissionId: string) => void;
 }
 
 function formatAttemptType(type: string) {
@@ -48,7 +49,7 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleString();
 }
 
-export default function StudentSubmissionsSection({ token }: Props) {
+export default function StudentSubmissionsSection({ token, onViewSubmission }: Props) {
   const [yearFilter, setYearFilter] = useState("all");
   const [firstNameFilter, setFirstNameFilter] = useState("");
   const [lastNameFilter, setLastNameFilter] = useState("");
@@ -56,8 +57,6 @@ export default function StudentSubmissionsSection({ token }: Props) {
   const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
-
   useEffect(() => {
     setLoading(true);
     setError("");
@@ -139,6 +138,17 @@ export default function StudentSubmissionsSection({ token }: Props) {
         </div>
       </div>
 
+      {!loading && !error && filteredSubmissions.length > 0 && (
+        <ModalPagination
+          page={page}
+          totalPages={totalPages}
+          pageStart={pageStart}
+          pageEnd={pageEnd}
+          totalItems={filteredSubmissions.length}
+          onPageChange={setPage}
+        />
+      )}
+
       <div className="student-submissions-table-wrap">
         {loading ? (
           <p className="muted">Loading submissions...</p>
@@ -194,7 +204,7 @@ export default function StudentSubmissionsSection({ token }: Props) {
                     <button
                       type="button"
                       className="btn secondary btn-sm"
-                      onClick={() => setSelectedSubmissionId(submission.id)}
+                      onClick={() => onViewSubmission(submission.id)}
                     >
                       View
                     </button>
@@ -206,42 +216,6 @@ export default function StudentSubmissionsSection({ token }: Props) {
         )}
       </div>
 
-      {!loading && !error && filteredSubmissions.length > 0 && (
-        <div className="student-submissions-pagination">
-          <span className="muted">
-            Showing {pageStart}–{pageEnd} of {filteredSubmissions.length}
-          </span>
-          <div className="student-submissions-pagination-actions">
-            <button
-              type="button"
-              className="btn secondary btn-sm"
-              disabled={page <= 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-            >
-              Previous
-            </button>
-            <span className="student-submissions-page-label">
-              Page {page} of {totalPages}
-            </span>
-            <button
-              type="button"
-              className="btn secondary btn-sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
-
-      {selectedSubmissionId && (
-        <StudentSubmissionDetailModal
-          submissionId={selectedSubmissionId}
-          token={token}
-          onClose={() => setSelectedSubmissionId(null)}
-        />
-      )}
     </section>
   );
 }

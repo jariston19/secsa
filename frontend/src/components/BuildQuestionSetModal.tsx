@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { api } from "../lib/api";
 import { curriculumYearForStudentYear, parseYearLevel, sanitizeYearInput } from "../lib/constants";
+import { toastCreated, toastUpdated } from "../lib/toastMessages";
 import {
   PROGRAM_COURSES,
   abbreviateProgramCourse,
@@ -124,7 +125,7 @@ export default function BuildQuestionSetModal({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(Boolean(setId));
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   useEffect(() => {
     if (isEditing) return;
@@ -368,7 +369,7 @@ export default function BuildQuestionSetModal({
           method: "PATCH",
           body: JSON.stringify(payload),
         }, token);
-        onCreated("Question set updated.");
+        onCreated(toastUpdated("question set", name.trim()));
       } else {
         await api(
           "/question-sets",
@@ -383,7 +384,7 @@ export default function BuildQuestionSetModal({
           },
           token
         );
-        onCreated("Question set created.");
+        onCreated(toastCreated("question set", name.trim()));
       }
       requestClose();
     } catch (err) {
@@ -403,7 +404,7 @@ export default function BuildQuestionSetModal({
     .map((id) => subjects.find((s) => s.id === id))
     .filter(Boolean) as Subject[];
 
-  return (
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div className={panelClass("build-set-modal")} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -692,5 +693,4 @@ export default function BuildQuestionSetModal({
         )}
       </div>
     </div>
-  );
-}
+  );}

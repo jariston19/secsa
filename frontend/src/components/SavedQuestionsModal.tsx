@@ -1,7 +1,10 @@
 import { ChangeEvent, Fragment, useEffect, useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import { usePagination } from "../hooks/usePagination";
+import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
+import { toastDeleted, toastUpdated, truncateLabel } from "../lib/toastMessages";
 import {
   PROGRAM_COURSES,
   subjectHasProgram,
@@ -88,7 +91,7 @@ export default function SavedQuestionsModal({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<QuestionEditDraft | null>(null);
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   const totalQuestions = useMemo(
     () => subjects.reduce((sum, subject) => sum + (subject._count?.questions ?? 0), 0),
@@ -177,6 +180,17 @@ export default function SavedQuestionsModal({
   useEffect(() => {
     loadQuestions().catch(() => {});
   }, [selectedSubjectId, selectedTopicId, token]);
+
+  const questionsResetKey = `${programFilter}-${yearFilter}-${selectedSubjectId}-${selectedTopicId}`;
+  const {
+    paginatedItems: paginatedQuestions,
+    page,
+    setPage,
+    totalPages,
+    pageStart,
+    pageEnd,
+    totalItems,
+  } = usePagination(questions, { resetKey: questionsResetKey });
 
   function cancelEdit() {
     if (editDraft?.imagePreview?.startsWith("blob:")) {
@@ -269,7 +283,7 @@ export default function SavedQuestionsModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to update question");
 
-      const message = "Question updated.";
+      const message = toastUpdated("question", truncateLabel(question.text));
       cancelEdit();
       onUpdated(message, false);
       await loadQuestions();
@@ -292,7 +306,7 @@ export default function SavedQuestionsModal({
 
     try {
       await api(`/questions/${id}`, { method: "DELETE" }, token);
-      const message = "Question deleted.";
+      const message = toastDeleted("question", truncateLabel(preview, 120));
       onUpdated(message, false);
       await loadQuestions();
     } catch (err) {
@@ -305,7 +319,7 @@ export default function SavedQuestionsModal({
 
   const selectedSubject = courseSubjects.find((s) => s.id === selectedSubjectId);
 
-  return (
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div className={panelClass("saved-questions-modal")} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -403,14 +417,22 @@ export default function SavedQuestionsModal({
 
         {subjects.length > 0 && selectedSubject && (
           <>
-            <p className="saved-questions-subject-heading">
+            <div className="saved-questions-subject-heading">
               <strong>
                 {selectedSubject.courseCode} — {selectedSubject.courseTitle}
               </strong>
-              <span className="muted">
-                {loading ? "Loading…" : `${questions.length} question${questions.length === 1 ? "" : "s"}`}
-              </span>
-            </p>
+              {!loading && questions.length > 0 && (
+                <ModalPagination
+                  variant="inline"
+                  page={page}
+                  totalPages={totalPages}
+                  pageStart={pageStart}
+                  pageEnd={pageEnd}
+                  totalItems={totalItems}
+                  onPageChange={setPage}
+                />
+              )}
+            </div>
 
             {loading ? (
               <p className="muted saved-questions-empty">Loading questions…</p>
@@ -419,7 +441,7 @@ export default function SavedQuestionsModal({
                 No questions found for this filter. Encode questions from the Encode tab.
               </p>
             ) : (
-              <div className="modal-table-scroll saved-questions-table-scroll">
+              <div className="modal-table-wrap saved-questions-table-wrap">
                 <table>
                   <thead>
                     <tr>
@@ -431,7 +453,7 @@ export default function SavedQuestionsModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {questions.map((question) => {
+                    {paginatedQuestions.map((question) => {
                       const isEditing = editingId === question.id;
 
                       return (
@@ -619,5 +641,4 @@ export default function SavedQuestionsModal({
         )}
       </div>
     </div>
-  );
-}
+  );}

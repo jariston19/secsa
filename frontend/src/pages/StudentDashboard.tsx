@@ -14,6 +14,7 @@ interface QaExamOption {
 
 interface ExamStatus {
   nextAction: string;
+  inProgressAttemptId?: string | null;
   diagnosticAvailable: boolean;
   retakeAvailable: boolean;
   retakesRemaining: number | null;
@@ -82,8 +83,37 @@ export default function StudentDashboard() {
   const canStartExam =
     status?.nextAction === "take_diagnostic" || status?.nextAction === "take_retake";
 
+  const canResumeExam = status?.nextAction === "resume_exam";
+
   const examType: "diagnostic" | "retake" =
     status?.nextAction === "take_retake" ? "retake" : "diagnostic";
+
+  async function resumeExam() {
+    setStartingExam(true);
+    setStartError("");
+    setError("");
+    try {
+      const data = await api<{ attempt: { id: string }; questions: ExamQuestion[] }>(
+        "/exams/start",
+        {
+          method: "POST",
+          body: isQa ? JSON.stringify({ examYearLevel: Number(qaExamYear) }) : undefined,
+        },
+        token
+      );
+      setAttemptId(data.attempt.id);
+      setQuestions(data.questions);
+      setAnswers({});
+      setAnswerTimes({});
+      setExamStartedAt(Date.now());
+      setResult(null);
+      setShowInstructions(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resume exam");
+    } finally {
+      setStartingExam(false);
+    }
+  }
 
   function openInstructions() {
     setStartError("");
@@ -209,12 +239,22 @@ export default function StudentDashboard() {
             {status.qaMode || user?.qaUnlimited ? "Unlimited" : status.retakesRemaining}
           </li>
         </ul>
+        {!attemptId && !result && canResumeExam && (
+          <>
+            <p className="muted">
+              You have an exam in progress. Resume to continue where you left off.
+            </p>
+            <button className="btn" onClick={resumeExam} disabled={startingExam}>
+              {startingExam ? "Resuming..." : "Resume Exam"}
+            </button>
+          </>
+        )}
         {!attemptId && !result && canStartExam && (
           <button className="btn" onClick={openInstructions}>
             Start Exam
           </button>
         )}
-        {!attemptId && !result && !canStartExam && (
+        {!attemptId && !result && !canStartExam && !canResumeExam && (
           <p className="muted">
             {status.nextAction === "wait_approval"
               ? "Waiting for retake approval from your teacher or superadmin."

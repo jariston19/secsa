@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { Difficulty, PrismaClient, Role } from "@prisma/client";
+import { seedTrigonometryDemo } from "./seed-trigonometry-demo.js";
 
 const prisma = new PrismaClient();
 
@@ -149,12 +150,19 @@ async function main() {
     }
   }
 
+  const trigDemo = await seedTrigonometryDemo({
+    teacher,
+    student,
+    resetStudentAttempts: false,
+  });
+
   console.log("Seed complete.");
   console.log({
     superadmin: superadmin.email,
     teacher: teacher.email,
     student: student.email,
     qaStudent: qaStudent.email,
+    trigonometryDemo: trigDemo,
   });
   console.log("Default password: password123");
   console.log("QA student (unlimited exam takes): qa@secsa.local / password123 (year level 2)");

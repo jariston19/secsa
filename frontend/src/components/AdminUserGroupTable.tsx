@@ -219,7 +219,7 @@ export default function AdminUserGroupTable({
   }
 
   return (
-    <div className="modal-table-scroll admin-users-table-scroll">
+    <div className="modal-table-wrap admin-users-table-wrap">
       <table className="admin-users-table">
         <thead>
           <tr>

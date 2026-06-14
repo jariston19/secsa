@@ -1,6 +1,7 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import { PROGRAM_COURSES, subjectHasProgram, type ProgramCourseId } from "../lib/programCourse";
+import { subjectLabel, toastBatchCreated, toastCreated, truncateLabel } from "../lib/toastMessages";
 
 export interface QuestionDraft {
   id: string;
@@ -161,7 +162,15 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
         if (q.imagePreview) URL.revokeObjectURL(q.imagePreview);
       });
       setQuestions([emptyQuestion()]);
-      onSaved(`Saved ${saved} question${saved === 1 ? "" : "s"} successfully.`);
+      const subject = subjects.find((s) => s.id === subjectId);
+      const contextLabel = subject
+        ? subjectLabel(subject.courseCode, subject.courseTitle)
+        : "selected subject";
+      const message =
+        saved === 1
+          ? toastCreated("question", truncateLabel(toSave[0].text))
+          : toastBatchCreated("questions", saved, contextLabel);
+      onSaved(message);
     }
 
     if (failures.length > 0) {

@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import { usePagination } from "../hooks/usePagination";
+import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { formatExamType } from "../lib/constants";
+import { toastRestored } from "../lib/toastMessages";
 import { formatProgramCourse, type ProgramCourseFilter, type ProgramCourseId } from "../lib/programCourse";
 
 interface QuestionSet {
@@ -34,7 +37,7 @@ export default function ArchivedQuestionSetsModal({
   const [sets, setSets] = useState<QuestionSet[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
-  const { requestClose, overlayClass, panelClass } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   async function loadArchived() {
     setLoading(true);
@@ -60,6 +63,16 @@ export default function ArchivedQuestionSetsModal({
     loadArchived().catch(() => {});
   }, [programCourse, token]);
 
+  const {
+    paginatedItems: paginatedSets,
+    page,
+    setPage,
+    totalPages,
+    pageStart,
+    pageEnd,
+    totalItems,
+  } = usePagination(sets, { resetKey: `${programCourse}-${sets.length}` });
+
   async function restoreSet(id: string, name: string) {
     const confirmed = window.confirm(
       `Restore question set "${name}"?\n\nIt will return to your Build list as a draft. You can edit and deploy it again.`
@@ -69,7 +82,7 @@ export default function ArchivedQuestionSetsModal({
     setRestoringId(id);
     try {
       await api(`/question-sets/${id}/restore`, { method: "POST" }, token);
-      onUpdated("Question set restored to draft.");
+      onUpdated(toastRestored("question set", name));
       await loadArchived();
     } catch (err) {
       onUpdated(err instanceof Error ? err.message : "Failed to restore question set", true);
@@ -78,7 +91,7 @@ export default function ArchivedQuestionSetsModal({
     }
   }
 
-  return (
+  return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div
         className={panelClass("saved-subjects-modal archived-sets-modal")}
@@ -109,8 +122,17 @@ export default function ArchivedQuestionSetsModal({
         )}
 
         {!loading && sets.length > 0 && (
-          <div className="table-responsive">
-            <table>
+          <>
+            <ModalPagination
+              page={page}
+              totalPages={totalPages}
+              pageStart={pageStart}
+              pageEnd={pageEnd}
+              totalItems={totalItems}
+              onPageChange={setPage}
+            />
+            <div className="modal-table-wrap">
+              <table>
               <thead>
                 <tr>
                   <th>Name</th>
@@ -123,7 +145,7 @@ export default function ArchivedQuestionSetsModal({
                 </tr>
               </thead>
               <tbody>
-                {sets.map((set) => (
+                {paginatedSets.map((set) => (
                   <tr key={set.id}>
                     <td>{set.name}</td>
                     <td>{set.yearLevel}</td>
@@ -154,9 +176,9 @@ export default function ArchivedQuestionSetsModal({
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>
-  );
-}
+  );}

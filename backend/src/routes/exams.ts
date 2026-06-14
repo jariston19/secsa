@@ -104,6 +104,8 @@ export async function examRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "asc" },
     });
 
+    const inProgressAttempt = attempts.find((a) => !a.submittedAt);
+
     const diagnosticSet = await prisma.questionSet.findFirst({
       where: {
         yearLevel: student.yearLevel,
@@ -150,7 +152,12 @@ export async function examRoutes(app: FastifyInstance) {
         programCourse: student.programCourse,
         examYearLevel,
         attempts,
-        nextAction: qaDiagnosticSet ? "take_diagnostic" : "completed",
+        nextAction: inProgressAttempt
+          ? "resume_exam"
+          : qaDiagnosticSet
+            ? "take_diagnostic"
+            : "completed",
+        inProgressAttemptId: inProgressAttempt?.id ?? null,
         diagnosticAvailable: Boolean(qaDiagnosticSet),
         retakeAvailable: Boolean(qaRetakeSet),
         retakesUsed: attempts.filter((a) => a.attemptType === AttemptType.RETAKE).length,
@@ -170,10 +177,16 @@ export async function examRoutes(app: FastifyInstance) {
       where: { studentId: user.id, status: ApprovalStatus.APPROVED },
     });
 
-    let nextAction: "take_diagnostic" | "take_retake" | "wait_approval" | "completed" =
-      "take_diagnostic";
+    let nextAction:
+      | "take_diagnostic"
+      | "take_retake"
+      | "wait_approval"
+      | "completed"
+      | "resume_exam" = "take_diagnostic";
 
-    if (firstAttempts.length === 0) {
+    if (inProgressAttempt) {
+      nextAction = "resume_exam";
+    } else if (firstAttempts.length === 0) {
       nextAction = "take_diagnostic";
     } else if (latest?.passed) {
       nextAction = "completed";
@@ -190,6 +203,7 @@ export async function examRoutes(app: FastifyInstance) {
       programCourse: student.programCourse,
       attempts,
       nextAction,
+      inProgressAttemptId: inProgressAttempt?.id ?? null,
       diagnosticAvailable: Boolean(diagnosticSet),
       retakeAvailable: Boolean(retakeSet),
       retakesUsed: retakeAttempts.length,
