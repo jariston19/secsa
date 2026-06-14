@@ -153,6 +153,12 @@ export async function questionSetRoutes(app: FastifyInstance) {
       });
     }
 
+    if (body.type === QuestionSetType.DIAGNOSTIC && body.yearLevel !== 1) {
+      return reply.code(400).send({
+        error: "Incoming diagnostic sets must use year level 1.",
+      });
+    }
+
     const questionSet = await prisma.questionSet.create({
       data: {
         name: body.name,

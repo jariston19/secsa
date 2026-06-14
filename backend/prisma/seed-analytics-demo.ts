@@ -447,10 +447,10 @@ async function loadProgramExamSets() {
   for (const programCourse of ANALYTICS_DEMO_PROGRAMS) {
     const diagnostic = await prisma.questionSet.findFirst({
       where: {
-        name: comprehensiveSetName(programCourse, QuestionSetType.DIAGNOSTIC),
+        name: comprehensiveSetName(programCourse, QuestionSetType.COMPREHENSIVE),
         yearLevel: 2,
         programCourse,
-        type: QuestionSetType.DIAGNOSTIC,
+        type: QuestionSetType.COMPREHENSIVE,
         status: "DEPLOYED",
       },
       orderBy: { deployedAt: "desc" },

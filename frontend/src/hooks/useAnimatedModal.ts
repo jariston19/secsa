@@ -1,16 +1,23 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { lockBodyScroll, unlockBodyScroll } from "../lib/scrollLock";
 
 const CLOSE_MS = 280;
 
-export function useAnimatedModal(onClose: () => void) {
+export function useAnimatedModal(onClose: () => void, active = true) {
   const [closing, setClosing] = useState(false);
 
+  useLayoutEffect(() => {
+    if (active) {
+      setClosing(false);
+    }
+  }, [active]);
+
   useEffect(() => {
+    if (!active) return;
     lockBodyScroll();
     return () => unlockBodyScroll();
-  }, []);
+  }, [active]);
 
   const requestClose = useCallback(() => {
     if (closing) return;

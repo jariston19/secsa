@@ -6,6 +6,8 @@ import {
   type Question,
   type User,
 } from "@prisma/client";
+import { validateQuestionSetConfigs } from "../src/services/examGenerator.js";
+import { ensureDemoImage } from "./seed-demo-images.js";
 
 const prisma = new PrismaClient();
 
@@ -17,6 +19,7 @@ type DemoQuestion = {
   optionD: string;
   correctOption: string;
   difficulty: Difficulty;
+  imageKey?: string;
 };
 
 type DemoTopic = {
@@ -61,8 +64,13 @@ export const PROGRAM_COURSE_ABBREV: Record<string, string> = {
 export function comprehensiveSetName(programCourse: string, type: QuestionSetType) {
   const abbrev = PROGRAM_COURSE_ABBREV[programCourse];
   const label =
-    type === QuestionSetType.DIAGNOSTIC ? "Comprehensive Review" : "Comprehensive Retake";
+    type === QuestionSetType.COMPREHENSIVE ? "Comprehensive Review" : "Comprehensive Retake";
   return `${abbrev} Y2 ${label}`;
+}
+
+export function diagnosticSetName(programCourse: string) {
+  const abbrev = PROGRAM_COURSE_ABBREV[programCourse];
+  return `${abbrev} Y1 Incoming Diagnostic`;
 }
 
 const DEMO_SUBJECTS: DemoSubject[] = [
@@ -133,6 +141,16 @@ const DEMO_SUBJECTS: DemoSubject[] = [
       {
         name: "Reading Comprehension",
         questions: [
+          {
+            text: "[Demo] Based on the chart shown, which category has the largest share?",
+            optionA: "Category A",
+            optionB: "Category B",
+            optionC: "Category C",
+            optionD: "Category D",
+            correctOption: "B",
+            difficulty: Difficulty.EASY,
+            imageKey: "bar-chart",
+          },
           {
             text: "[Demo] A passage states the author 'resents bureaucracy.' The tone is best described as:",
             optionA: "celebratory",
@@ -259,6 +277,16 @@ const DEMO_SUBJECTS: DemoSubject[] = [
         name: "Biology",
         questions: [
           {
+            text: "[Demo] Refer to the cell diagram. Which label points to the nucleus?",
+            optionA: "A",
+            optionB: "B",
+            optionC: "C",
+            optionD: "D",
+            correctOption: "B",
+            difficulty: Difficulty.EASY,
+            imageKey: "cell-diagram",
+          },
+          {
             text: "[Demo] The basic unit of life is the:",
             optionA: "Tissue",
             optionB: "Cell",
@@ -318,6 +346,16 @@ const DEMO_SUBJECTS: DemoSubject[] = [
         name: "Chemistry",
         questions: [
           {
+            text: "[Demo] On the pH scale shown, Sample X is best described as:",
+            optionA: "Strongly basic",
+            optionB: "Neutral",
+            optionC: "Acidic",
+            optionD: "Exactly pH 14",
+            correctOption: "C",
+            difficulty: Difficulty.EASY,
+            imageKey: "ph-scale",
+          },
+          {
             text: "[Demo] The chemical symbol for water is:",
             optionA: "HO2",
             optionB: "H2O",
@@ -376,6 +414,16 @@ const DEMO_SUBJECTS: DemoSubject[] = [
       {
         name: "Physics",
         questions: [
+          {
+            text: "[Demo] Using the force diagram, the net horizontal force on the block points:",
+            optionA: "Left",
+            optionB: "Right",
+            optionC: "Up",
+            optionD: "There is no net force",
+            correctOption: "B",
+            difficulty: Difficulty.EASY,
+            imageKey: "force-diagram",
+          },
           {
             text: "[Demo] The SI unit of force is the:",
             optionA: "Joule",
@@ -567,6 +615,16 @@ const DEMO_SUBJECTS: DemoSubject[] = [
       {
         name: "Pre-colonial Era",
         questions: [
+          {
+            text: "[Demo] According to the timeline shown, which event happened first?",
+            optionA: "Philippine Independence (1898)",
+            optionB: "Establishment of the Republic (1946)",
+            optionC: "EDSA People Power (1986)",
+            optionD: "All occurred in the same year",
+            correctOption: "A",
+            difficulty: Difficulty.EASY,
+            imageKey: "timeline",
+          },
           {
             text: "[Demo] Pre-colonial Filipinos traded using:",
             optionA: "Barter and coastal exchange",
@@ -854,19 +912,28 @@ async function seedSubjectContent(teacherId: string, plan: DemoSubject) {
     topicsCreated += 1;
 
     for (const question of topicPlan.questions) {
+      const { imageKey, ...questionData } = question;
+      const imagePath = imageKey ? await ensureDemoImage(imageKey) : undefined;
+
       const existing = await prisma.question.findFirst({
         where: { subjectId: subject.id, text: question.text },
       });
       if (!existing) {
         await prisma.question.create({
           data: {
-            ...question,
+            ...questionData,
+            imagePath,
             subjectId: subject.id,
             topicId: topic.id,
             createdById: teacherId,
           },
         });
         questionsCreated += 1;
+      } else if (imagePath && existing.imagePath !== imagePath) {
+        await prisma.question.update({
+          where: { id: existing.id },
+          data: { imagePath },
+        });
       }
     }
   }
@@ -898,13 +965,9 @@ async function upsertComprehensiveQuestionSet({
 
   const configCreates = [];
   for (const subjectId of subjectIds) {
-    const topic = await prisma.topic.findFirst({
-      where: { subjectId },
-      orderBy: { name: "asc" },
-    });
     configCreates.push({
       subjectId,
-      topicId: topic?.id ?? null,
+      topicId: null,
       easyCount: perSubjectEasy,
       mediumCount: perSubjectMedium,
       hardCount: perSubjectHard,
@@ -946,6 +1009,118 @@ async function upsertComprehensiveQuestionSet({
   });
 }
 
+async function upsertDiagnosticQuestionSet({
+  teacherId,
+  programCourse,
+  subjectIds,
+}: {
+  teacherId: string;
+  programCourse: string;
+  subjectIds: string[];
+}) {
+  const yearLevel = 1;
+  const name = diagnosticSetName(programCourse);
+  const perSubjectEasy = 2;
+  const perSubjectMedium = 2;
+  const perSubjectHard = 1;
+  const totalItems = subjectIds.length * (perSubjectEasy + perSubjectMedium + perSubjectHard);
+
+  const existing = await prisma.questionSet.findFirst({
+    where: { name, yearLevel, programCourse, type: QuestionSetType.DIAGNOSTIC },
+  });
+
+  const configCreates = [];
+  for (const subjectId of subjectIds) {
+    configCreates.push({
+      subjectId,
+      topicId: null,
+      easyCount: perSubjectEasy,
+      mediumCount: perSubjectMedium,
+      hardCount: perSubjectHard,
+    });
+  }
+
+  if (existing) {
+    await prisma.questionSetConfig.deleteMany({ where: { questionSetId: existing.id } });
+    return prisma.questionSet.update({
+      where: { id: existing.id },
+      data: {
+        totalItems,
+        passThreshold: 75,
+        status: QuestionSetStatus.DEPLOYED,
+        deployedAt: new Date(),
+        configs: { create: configCreates },
+      },
+    });
+  }
+
+  await prisma.questionSet.updateMany({
+    where: {
+      yearLevel,
+      programCourse,
+      type: QuestionSetType.DIAGNOSTIC,
+      status: QuestionSetStatus.DEPLOYED,
+    },
+    data: { status: QuestionSetStatus.ARCHIVED },
+  });
+
+  return prisma.questionSet.create({
+    data: {
+      name,
+      yearLevel,
+      programCourse,
+      type: QuestionSetType.DIAGNOSTIC,
+      status: QuestionSetStatus.DEPLOYED,
+      totalItems,
+      passThreshold: 75,
+      deployedAt: new Date(),
+      createdById: teacherId,
+      configs: { create: configCreates },
+    },
+  });
+}
+
+function countsForQuestionSet(type: QuestionSetType) {
+  if (type === QuestionSetType.DIAGNOSTIC) {
+    return { easyCount: 2, mediumCount: 2, hardCount: 1 };
+  }
+  return { easyCount: 3, mediumCount: 3, hardCount: 2 };
+}
+
+export async function repairIncompleteQuestionSetPools() {
+  const sets = await prisma.questionSet.findMany({
+    include: { configs: true },
+  });
+
+  let repaired = 0;
+
+  for (const set of sets) {
+    const errors = await validateQuestionSetConfigs(set.configs);
+    if (!errors.length) continue;
+
+    const subjectIds = [...new Set(set.configs.map((config) => config.subjectId))];
+    const counts = countsForQuestionSet(set.type);
+    const perSubjectTotal = counts.easyCount + counts.mediumCount + counts.hardCount;
+    const configCreates = subjectIds.map((subjectId) => ({
+      subjectId,
+      topicId: null,
+      ...counts,
+    }));
+
+    await prisma.questionSetConfig.deleteMany({ where: { questionSetId: set.id } });
+    await prisma.questionSet.update({
+      where: { id: set.id },
+      data: {
+        totalItems: subjectIds.length * perSubjectTotal,
+        configs: { create: configCreates },
+      },
+    });
+    repaired += 1;
+  }
+
+  return repaired;
+}
+
 export async function ensureAnalyticsSubjects(teacher: Pick<User, "id">) {
   let questionsCreated = 0;
   const subjectIds: string[] = [];
@@ -965,15 +1140,26 @@ export async function ensureAnalyticsSubjects(teacher: Pick<User, "id">) {
     await upsertSubjectPrograms(mathSubject.id);
   }
 
-  const questionSets: Array<{ programCourse: string; diagnostic: string; retake: string }> =
-    [];
-  let itemsPerExam = 0;
+  const questionSets: Array<{
+    programCourse: string;
+    diagnostic: string;
+    comprehensive: string;
+    retake: string;
+  }> = [];
+  let itemsPerComprehensiveExam = 0;
+  let itemsPerDiagnosticExam = 0;
 
   for (const programCourse of DEMO_PROGRAM_COURSES) {
-    const diagnostic = await upsertComprehensiveQuestionSet({
+    const diagnostic = await upsertDiagnosticQuestionSet({
       teacherId: teacher.id,
       programCourse,
-      type: QuestionSetType.DIAGNOSTIC,
+      subjectIds,
+    });
+
+    const comprehensive = await upsertComprehensiveQuestionSet({
+      teacherId: teacher.id,
+      programCourse,
+      type: QuestionSetType.COMPREHENSIVE,
       subjectIds,
     });
 
@@ -984,20 +1170,26 @@ export async function ensureAnalyticsSubjects(teacher: Pick<User, "id">) {
       subjectIds,
     });
 
-    if (itemsPerExam === 0) itemsPerExam = diagnostic.totalItems;
+    if (itemsPerComprehensiveExam === 0) itemsPerComprehensiveExam = comprehensive.totalItems;
+    if (itemsPerDiagnosticExam === 0) itemsPerDiagnosticExam = diagnostic.totalItems;
 
     questionSets.push({
       programCourse,
       diagnostic: diagnostic.name,
+      comprehensive: comprehensive.name,
       retake: retake.name,
     });
   }
+
+  const repairedSets = await repairIncompleteQuestionSetPools();
 
   return {
     subjects: subjectIds.length,
     questionsCreated,
     questionSets,
-    itemsPerExam,
+    itemsPerComprehensiveExam,
+    itemsPerDiagnosticExam,
+    repairedSets,
   };
 }
 

@@ -16,10 +16,15 @@ const submitSchema = z.object({
   answers: z.array(
     z.object({
       questionId: z.string(),
-      selectedOption: z.enum(["A", "B", "C", "D"]),
+      selectedOption: z.enum(["A", "B", "C", "D"]).optional(),
       timeSpentSeconds: z.number().int().min(0).optional(),
     })
   ),
+  focusWarningCount: z.number().int().min(0).optional(),
+});
+
+const focusWarningSchema = z.object({
+  count: z.number().int().min(0),
 });
 
 const saveAnswerSchema = z.object({
@@ -29,6 +34,7 @@ const saveAnswerSchema = z.object({
 
 const startExamSchema = z.object({
   examYearLevel: yearLevelSchema.optional(),
+  examKind: z.enum(["comprehensive", "incoming_diagnostic"]).optional(),
 });
 
 const MAX_RETAKES = 2;
@@ -49,23 +55,44 @@ async function getStudentProfile(userId: string) {
 async function getQaExamOptions(programCourse: string) {
   const deployedSets = await prisma.questionSet.findMany({
     where: {
-      type: QuestionSetType.DIAGNOSTIC,
       status: QuestionSetStatus.DEPLOYED,
       programCourse,
+      OR: [
+        { yearLevel: MIN_YEAR_LEVEL, type: QuestionSetType.DIAGNOSTIC },
+        { type: QuestionSetType.COMPREHENSIVE },
+      ],
     },
-    orderBy: { yearLevel: "asc" },
-    select: { yearLevel: true, name: true },
+    orderBy: [{ yearLevel: "asc" }, { type: "asc" }],
+    select: { yearLevel: true, name: true, type: true },
   });
 
-  const byYear = new Map(deployedSets.map((set) => [set.yearLevel, set.name]));
+  const diagnosticSet = deployedSets.find(
+    (set) => set.yearLevel === MIN_YEAR_LEVEL && set.type === QuestionSetType.DIAGNOSTIC
+  );
+  const comprehensiveByYear = new Map(
+    deployedSets
+      .filter((set) => set.type === QuestionSetType.COMPREHENSIVE)
+      .map((set) => [set.yearLevel, set.name])
+  );
 
   return Array.from({ length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 }, (_, i) => {
     const yearLevel = MIN_YEAR_LEVEL + i;
-    const setName = byYear.get(yearLevel) ?? null;
+
+    if (yearLevel === MIN_YEAR_LEVEL) {
+      return {
+        yearLevel,
+        setName: diagnosticSet?.name ?? null,
+        deployed: Boolean(diagnosticSet),
+        examKind: "incoming_diagnostic" as const,
+      };
+    }
+
+    const setName = comprehensiveByYear.get(yearLevel) ?? null;
     return {
       yearLevel,
       setName,
       deployed: Boolean(setName),
+      examKind: "comprehensive" as const,
     };
   });
 }
@@ -110,14 +137,26 @@ export async function examRoutes(app: FastifyInstance) {
 
     const inProgressAttempt = attempts.find((a) => !a.submittedAt);
 
-    const diagnosticSet = await prisma.questionSet.findFirst({
+    const comprehensiveSet = await prisma.questionSet.findFirst({
       where: {
         yearLevel: student.yearLevel,
         programCourse: student.programCourse,
-        type: QuestionSetType.DIAGNOSTIC,
+        type: QuestionSetType.COMPREHENSIVE,
         status: QuestionSetStatus.DEPLOYED,
       },
     });
+
+    const incomingDiagnosticSet =
+      student.yearLevel === MIN_YEAR_LEVEL
+        ? await prisma.questionSet.findFirst({
+            where: {
+              yearLevel: MIN_YEAR_LEVEL,
+              programCourse: student.programCourse,
+              type: QuestionSetType.DIAGNOSTIC,
+              status: QuestionSetStatus.DEPLOYED,
+            },
+          })
+        : null;
 
     const retakeSet = await prisma.questionSet.findFirst({
       where: {
@@ -133,23 +172,43 @@ export async function examRoutes(app: FastifyInstance) {
       const examYearLevel = parseQaExamYear(student, query.examYearLevel);
       const qaExamOptions = await getQaExamOptions(student.programCourse);
 
-      const qaDiagnosticSet = await prisma.questionSet.findFirst({
-        where: {
-          yearLevel: examYearLevel,
-          programCourse: student.programCourse,
-          type: QuestionSetType.DIAGNOSTIC,
-          status: QuestionSetStatus.DEPLOYED,
-        },
-      });
+      const qaDiagnosticSet =
+        examYearLevel === MIN_YEAR_LEVEL
+          ? await prisma.questionSet.findFirst({
+              where: {
+                yearLevel: MIN_YEAR_LEVEL,
+                programCourse: student.programCourse,
+                type: QuestionSetType.DIAGNOSTIC,
+                status: QuestionSetStatus.DEPLOYED,
+              },
+            })
+          : null;
 
-      const qaRetakeSet = await prisma.questionSet.findFirst({
-        where: {
-          yearLevel: examYearLevel,
-          programCourse: student.programCourse,
-          type: QuestionSetType.RETAKE,
-          status: QuestionSetStatus.DEPLOYED,
-        },
-      });
+      const qaComprehensiveSet =
+        examYearLevel !== MIN_YEAR_LEVEL
+          ? await prisma.questionSet.findFirst({
+              where: {
+                yearLevel: examYearLevel,
+                programCourse: student.programCourse,
+                type: QuestionSetType.COMPREHENSIVE,
+                status: QuestionSetStatus.DEPLOYED,
+              },
+            })
+          : null;
+
+      const qaRetakeSet =
+        examYearLevel !== MIN_YEAR_LEVEL
+          ? await prisma.questionSet.findFirst({
+              where: {
+                yearLevel: examYearLevel,
+                programCourse: student.programCourse,
+                type: QuestionSetType.RETAKE,
+                status: QuestionSetStatus.DEPLOYED,
+              },
+            })
+          : null;
+
+      const activeSet = qaDiagnosticSet ?? qaComprehensiveSet;
 
       return {
         yearLevel: student.yearLevel,
@@ -159,22 +218,32 @@ export async function examRoutes(app: FastifyInstance) {
         nextAction: inProgressAttempt
           ? "resume_exam"
           : qaDiagnosticSet
-            ? "take_diagnostic"
-            : "completed",
+            ? "take_incoming_diagnostic"
+            : qaComprehensiveSet
+              ? "take_comprehensive"
+              : "completed",
         inProgressAttemptId: inProgressAttempt?.id ?? null,
-        diagnosticAvailable: Boolean(qaDiagnosticSet),
+        comprehensiveAvailable: Boolean(qaComprehensiveSet),
+        incomingDiagnosticAvailable: Boolean(qaDiagnosticSet),
         retakeAvailable: Boolean(qaRetakeSet),
         retakesUsed: attempts.filter((a) => a.attemptType === AttemptType.RETAKE).length,
         retakesRemaining: null,
         qaMode: true,
-        usingSetYearLevel: qaDiagnosticSet?.yearLevel ?? examYearLevel,
-        usingSetName: qaDiagnosticSet?.name ?? null,
+        usingSetYearLevel: activeSet?.yearLevel ?? examYearLevel,
+        usingSetName: activeSet?.name ?? null,
         qaExamOptions,
       };
     }
 
-    const firstAttempts = attempts.filter((a) => a.attemptType === AttemptType.FIRST);
+    const firstComprehensiveAttempts = attempts.filter(
+      (a) =>
+        a.attemptType === AttemptType.FIRST &&
+        a.questionSet.type === QuestionSetType.COMPREHENSIVE
+    );
     const retakeAttempts = attempts.filter((a) => a.attemptType === AttemptType.RETAKE);
+    const submittedIncomingDiagnosticAttempts = attempts.filter(
+      (a) => a.questionSet.type === QuestionSetType.DIAGNOSTIC && a.submittedAt
+    );
     const latest = attempts[attempts.length - 1];
 
     const approvedRetakes = await prisma.retakeApproval.count({
@@ -182,16 +251,17 @@ export async function examRoutes(app: FastifyInstance) {
     });
 
     let nextAction:
-      | "take_diagnostic"
+      | "take_comprehensive"
+      | "take_incoming_diagnostic"
       | "take_retake"
       | "wait_approval"
       | "completed"
-      | "resume_exam" = "take_diagnostic";
+      | "resume_exam" = "take_comprehensive";
 
     if (inProgressAttempt) {
       nextAction = "resume_exam";
-    } else if (firstAttempts.length === 0) {
-      nextAction = "take_diagnostic";
+    } else if (firstComprehensiveAttempts.length === 0) {
+      nextAction = "take_comprehensive";
     } else if (latest?.passed) {
       nextAction = "completed";
     } else if (retakeAttempts.length >= MAX_RETAKES) {
@@ -202,13 +272,19 @@ export async function examRoutes(app: FastifyInstance) {
       nextAction = "wait_approval";
     }
 
+    const incomingDiagnosticAvailable =
+      student.yearLevel === MIN_YEAR_LEVEL &&
+      Boolean(incomingDiagnosticSet) &&
+      submittedIncomingDiagnosticAttempts.length === 0;
+
     return {
       yearLevel: student.yearLevel,
       programCourse: student.programCourse,
       attempts,
       nextAction,
       inProgressAttemptId: inProgressAttempt?.id ?? null,
-      diagnosticAvailable: Boolean(diagnosticSet),
+      comprehensiveAvailable: Boolean(comprehensiveSet),
+      incomingDiagnosticAvailable,
       retakeAvailable: Boolean(retakeSet),
       retakesUsed: retakeAttempts.length,
       retakesRemaining: Math.max(0, MAX_RETAKES - retakeAttempts.length),
@@ -265,11 +341,53 @@ export async function examRoutes(app: FastifyInstance) {
       const body = startExamSchema.parse(request.body ?? {});
       const examYearLevel = parseQaExamYear(student, body.examYearLevel);
 
+      if (examYearLevel === MIN_YEAR_LEVEL || body.examKind === "incoming_diagnostic") {
+        const diagnosticSet = await prisma.questionSet.findFirst({
+          where: {
+            yearLevel: MIN_YEAR_LEVEL,
+            programCourse: student.programCourse,
+            type: QuestionSetType.DIAGNOSTIC,
+            status: QuestionSetStatus.DEPLOYED,
+          },
+          include: { configs: true },
+        });
+
+        if (!diagnosticSet) {
+          return reply.code(404).send({
+            error: "No deployed incoming diagnostic set for your program.",
+          });
+        }
+
+        const submittedDiagnosticAttempts = attempts.filter((a) => a.submittedAt);
+        const attemptNumber = submittedDiagnosticAttempts.length + 1;
+        const selected = await generateExamQuestions(diagnosticSet.configs);
+        const attempt = await prisma.examAttempt.create({
+          data: {
+            studentId: user.id,
+            questionSetId: diagnosticSet.id,
+            attemptType: AttemptType.FIRST,
+            attemptNumber,
+            questionIds: JSON.stringify(selected.map((q) => q.id)),
+            totalItems: selected.length,
+            answers: {
+              create: selected.map((q) => ({ questionId: q.id })),
+            },
+          },
+        });
+
+        return reply.code(201).send({
+          attempt,
+          questions: selected.map(stripCorrectAnswer),
+          savedAnswers: [],
+          resumeIndex: 0,
+        });
+      }
+
       const questionSet = await prisma.questionSet.findFirst({
         where: {
           yearLevel: examYearLevel,
           programCourse: student.programCourse,
-          type: QuestionSetType.DIAGNOSTIC,
+          type: QuestionSetType.COMPREHENSIVE,
           status: QuestionSetStatus.DEPLOYED,
         },
         include: { configs: true },
@@ -308,15 +426,95 @@ export async function examRoutes(app: FastifyInstance) {
       });
     }
 
-    const firstCount = attempts.filter((a) => a.attemptType === AttemptType.FIRST).length;
+    const body = startExamSchema.parse(request.body ?? {});
+
+    if (body.examKind === "incoming_diagnostic") {
+      if (student.yearLevel !== MIN_YEAR_LEVEL) {
+        return reply.code(403).send({
+          error: "Incoming diagnostic exams are only for 1st-year students.",
+        });
+      }
+
+      const existingIncoming = await prisma.examAttempt.findFirst({
+        where: {
+          studentId: user.id,
+          submittedAt: { not: null },
+          questionSet: {
+            type: QuestionSetType.DIAGNOSTIC,
+            programCourse: student.programCourse,
+            yearLevel: MIN_YEAR_LEVEL,
+          },
+        },
+      });
+
+      if (existingIncoming) {
+        return reply.code(403).send({ error: "Incoming diagnostic exam already completed." });
+      }
+
+      const questionSet = await prisma.questionSet.findFirst({
+        where: {
+          yearLevel: MIN_YEAR_LEVEL,
+          programCourse: student.programCourse,
+          type: QuestionSetType.DIAGNOSTIC,
+          status: QuestionSetStatus.DEPLOYED,
+        },
+        include: { configs: true },
+      });
+
+      if (!questionSet) {
+        return reply.code(404).send({
+          error: "No deployed incoming diagnostic set for your program.",
+        });
+      }
+
+      const priorIncomingAttempts = await prisma.examAttempt.count({
+        where: {
+          studentId: user.id,
+          questionSet: {
+            type: QuestionSetType.DIAGNOSTIC,
+            programCourse: student.programCourse,
+          },
+        },
+      });
+
+      const selected = await generateExamQuestions(questionSet.configs);
+      const attempt = await prisma.examAttempt.create({
+        data: {
+          studentId: user.id,
+          questionSetId: questionSet.id,
+          attemptType: AttemptType.FIRST,
+          attemptNumber: priorIncomingAttempts + 1,
+          questionIds: JSON.stringify(selected.map((q) => q.id)),
+          totalItems: selected.length,
+          answers: {
+            create: selected.map((q) => ({ questionId: q.id })),
+          },
+        },
+      });
+
+      return reply.code(201).send({
+        attempt,
+        questions: selected.map(stripCorrectAnswer),
+        savedAnswers: [],
+        resumeIndex: 0,
+      });
+    }
+
+    const firstComprehensiveCount = await prisma.examAttempt.count({
+      where: {
+        studentId: user.id,
+        attemptType: AttemptType.FIRST,
+        questionSet: { type: QuestionSetType.COMPREHENSIVE },
+      },
+    });
     const retakeCount = attempts.filter((a) => a.attemptType === AttemptType.RETAKE).length;
 
-    let setType: QuestionSetType = QuestionSetType.DIAGNOSTIC;
+    let setType: QuestionSetType = QuestionSetType.COMPREHENSIVE;
     let attemptType: AttemptType = AttemptType.FIRST;
     let attemptNumber = 1;
 
-    if (firstCount === 0) {
-      setType = QuestionSetType.DIAGNOSTIC;
+    if (firstComprehensiveCount === 0) {
+      setType = QuestionSetType.COMPREHENSIVE;
       attemptType = AttemptType.FIRST;
       attemptNumber = 1;
     } else if (retakeCount < MAX_RETAKES) {
@@ -428,6 +626,35 @@ export async function examRoutes(app: FastifyInstance) {
     return { answer: updated };
   });
 
+  app.patch("/:attemptId/focus-warnings", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.STUDENT]);
+
+    const { attemptId } = request.params as { attemptId: string };
+    const body = focusWarningSchema.parse(request.body);
+
+    const attempt = await prisma.examAttempt.findUnique({
+      where: { id: attemptId },
+      select: { id: true, studentId: true, submittedAt: true },
+    });
+
+    if (!attempt || attempt.studentId !== user.id) {
+      return reply.code(404).send({ error: "Attempt not found." });
+    }
+
+    if (attempt.submittedAt) {
+      return reply.code(400).send({ error: "Attempt already submitted." });
+    }
+
+    const updated = await prisma.examAttempt.update({
+      where: { id: attemptId },
+      data: { focusWarningCount: body.count },
+      select: { id: true, focusWarningCount: true },
+    });
+
+    return { attempt: updated };
+  });
+
   app.post("/:attemptId/submit", async (request, reply) => {
     const user = getUser(request);
     requireRoles(user, [Role.STUDENT]);
@@ -456,6 +683,17 @@ export async function examRoutes(app: FastifyInstance) {
       const existing = attempt.answers.find((a) => a.questionId === answer.questionId);
       if (!existing) continue;
 
+      if (!answer.selectedOption) {
+        await prisma.examAnswer.update({
+          where: { id: existing.id },
+          data: {
+            isCorrect: false,
+            timeSpentSeconds: answer.timeSpentSeconds,
+          },
+        });
+        continue;
+      }
+
       const isCorrect = existing.question.correctOption === answer.selectedOption;
       if (isCorrect) score += 1;
 
@@ -482,6 +720,9 @@ export async function examRoutes(app: FastifyInstance) {
         percentage: result.percentage,
         passed: result.passed,
         submittedAt: new Date(),
+        ...(body.focusWarningCount != null
+          ? { focusWarningCount: body.focusWarningCount }
+          : {}),
       },
     });
 
@@ -491,7 +732,11 @@ export async function examRoutes(app: FastifyInstance) {
         select: { qaUnlimited: true },
       });
 
-      if (!student?.qaUnlimited) {
+      const isComprehensiveFirst =
+        attempt.questionSet.type === QuestionSetType.COMPREHENSIVE &&
+        attempt.attemptType === AttemptType.FIRST;
+
+      if (!student?.qaUnlimited && isComprehensiveFirst) {
         await prisma.retakeApproval.create({
           data: {
             studentId: user.id,

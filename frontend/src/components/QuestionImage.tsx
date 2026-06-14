@@ -8,7 +8,10 @@ interface Props {
 
 export default function QuestionImage({ src, alt = "Question image" }: Props) {
   const [open, setOpen] = useState(false);
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(() => setOpen(false));
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
+    () => setOpen(false),
+    open
+  );
 
   return (
     <>
@@ -24,7 +27,7 @@ export default function QuestionImage({ src, alt = "Question image" }: Props) {
 
       {open &&
         portal(
-          <div className={overlayClass} onClick={requestClose}>
+          <div className={`${overlayClass} question-image-overlay`} onClick={requestClose}>
             <div
               className={panelClass("question-image-lightbox")}
               onClick={(e) => e.stopPropagation()}

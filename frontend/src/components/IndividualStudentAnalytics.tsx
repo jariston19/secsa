@@ -55,6 +55,7 @@ interface IndividualReport {
     passThreshold: number;
     score: number | null;
     totalItems: number;
+    focusWarningCount: number;
   };
   summary?: {
     overallScore: number;
@@ -66,6 +67,8 @@ interface IndividualReport {
     classAvgMinutes: number | null;
     weakTopicsCount: number;
     passed: boolean | null;
+    focusWarningCount: number;
+    classAvgFocusWarnings: number | null;
   };
   byTopic?: Array<{
     topicId: string;
@@ -396,6 +399,31 @@ export default function IndividualStudentAnalytics({ token }: Props) {
                       }
                     >
                       {report.summary.weakTopicsCount > 0 ? "Needs attention" : "On track"}
+                    </span>
+                  </article>
+                  <article className="individual-student-stat-card">
+                    <span className="individual-student-stat-label">Focus warnings</span>
+                    <span className="individual-student-stat-value">
+                      {report.summary.focusWarningCount}
+                    </span>
+                    <span
+                      className={
+                        report.summary.focusWarningCount >= 2
+                          ? "individual-student-badge-warn"
+                          : "individual-student-badge-ok"
+                      }
+                    >
+                      {report.summary.focusWarningCount >= 5
+                        ? "High — review proctoring"
+                        : report.summary.focusWarningCount >= 2
+                          ? "Left exam focus"
+                          : "None recorded"}
+                    </span>
+                    <span className="muted">
+                      Class avg{" "}
+                      {report.summary.classAvgFocusWarnings != null
+                        ? report.summary.classAvgFocusWarnings
+                        : "—"}
                     </span>
                   </article>
                 </div>

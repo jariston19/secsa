@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { api } from "../lib/api";
-import { curriculumYearForStudentYear, parseYearLevel, sanitizeYearInput } from "../lib/constants";
+import { curriculumYearForStudentYear, formatExamType, parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import { toastCreated, toastUpdated } from "../lib/toastMessages";
 import {
   abbreviateProgramCourse,
@@ -117,7 +117,7 @@ export default function BuildQuestionSetModal({
   const [name, setName] = useState("");
   const [yearLevel, setYearLevel] = useState("2");
   const [setProgramCourse, setSetProgramCourse] = useState<ProgramCourseId>(programCourse);
-  const [type, setType] = useState<"DIAGNOSTIC" | "RETAKE">("DIAGNOSTIC");
+  const [type, setType] = useState<"COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE">("COMPREHENSIVE");
   const [setStatus, setSetStatus] = useState<string | null>(null);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [rows, setRows] = useState<ConfigRow[]>([]);
@@ -151,7 +151,7 @@ export default function BuildQuestionSetModal({
         name: string;
         yearLevel: number;
         programCourse: ProgramCourseId;
-        type: "DIAGNOSTIC" | "RETAKE";
+        type: "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE";
         status: string;
         configs: Array<{
           subjectId: string;
@@ -198,6 +198,25 @@ export default function BuildQuestionSetModal({
 
   const parsedStudentYear = parseYearLevel(yearLevel);
   const curriculumYear = curriculumYearForStudentYear(parsedStudentYear);
+  const isIncomingDiagnosticYear = parsedStudentYear === 1;
+
+  useEffect(() => {
+    if (isEditing) return;
+    if (isIncomingDiagnosticYear) {
+      setType("DIAGNOSTIC");
+      return;
+    }
+    setType((current) => (current === "DIAGNOSTIC" ? "COMPREHENSIVE" : current));
+  }, [isIncomingDiagnosticYear, isEditing]);
+
+  function updateYearLevel(value: string) {
+    setYearLevel(value);
+  }
+
+  function commitYearLevel() {
+    const nextYear = String(parseYearLevel(yearLevel));
+    setYearLevel(nextYear);
+  }
   const curriculumSubjects = useMemo(
     () =>
       subjects.filter(
@@ -417,7 +436,7 @@ export default function BuildQuestionSetModal({
                 : "Set item targets per topic, then split them across easy, medium, and hard."}
             </p>
             {isEditing && setStatus === "DEPLOYED" && (
-              <p className="success build-set-status-note">This set is currently deployed.</p>
+              <span className="build-set-deployed-badge">Deployed</span>
             )}
           </div>
           <button type="button" className="btn secondary" onClick={requestClose}>
@@ -428,67 +447,99 @@ export default function BuildQuestionSetModal({
         {loading ? (
           <p className="muted">Loading question set...</p>
         ) : (
-        <form onSubmit={handleSubmit}>
-          <div className="build-set-meta">
-            <label className="build-set-meta-name">
-              Set name
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Incoming 2nd Year Comprehensive 2026"
-                required
-              />
-            </label>
-            <label className="build-set-meta-year">
-              Year level
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="2"
-                value={yearLevel}
-                onChange={(e) => setYearLevel(sanitizeYearInput(e.target.value))}
-                onBlur={() => setYearLevel(String(parseYearLevel(yearLevel)))}
-                disabled={isEditing}
-                required
-              />
-            </label>
-            <label className="build-set-meta-course">
-              Program course
-              <select
-                value={setProgramCourse}
-                onChange={(e) => setSetProgramCourse(e.target.value as ProgramCourseId)}
-                disabled={isEditing}
-                required
+        <form className="build-set-form" onSubmit={handleSubmit}>
+          <div className="build-set-form-body">
+          <section className="build-set-details">
+            <h3 className="build-set-section-title">Set details</h3>
+            <div className="build-set-meta">
+              <label className="build-set-meta-name">
+                <span className="build-set-field-label">Set name</span>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Incoming 2nd Year Comprehensive 2026"
+                  required
+                />
+              </label>
+              <label className="build-set-meta-year">
+                <span className="build-set-field-label">Year level</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="2"
+                  value={yearLevel}
+                  onChange={(e) => updateYearLevel(sanitizeYearInput(e.target.value))}
+                  onBlur={commitYearLevel}
+                  disabled={isEditing}
+                  required
+                />
+              </label>
+              <label className="build-set-meta-course">
+                <span className="build-set-field-label">Program course</span>
+                <select
+                  value={setProgramCourse}
+                  onChange={(e) => setSetProgramCourse(e.target.value as ProgramCourseId)}
+                  disabled={isEditing}
+                  required
+                >
+                  {programCourseOptions.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="build-set-meta-type">
+                <span className="build-set-field-label">Exam type</span>
+                <select
+                  value={type}
+                  onChange={(e) =>
+                    setType(e.target.value as "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE")
+                  }
+                  disabled={isEditing || isIncomingDiagnosticYear}
+                >
+                  {isIncomingDiagnosticYear ? (
+                    <option value="DIAGNOSTIC">Diagnostic</option>
+                  ) : (
+                    <>
+                      <option value="COMPREHENSIVE">Comprehensive</option>
+                      <option value="RETAKE">Retake</option>
+                    </>
+                  )}
+                </select>
+              </label>
+            </div>
+            <div className="build-set-details-bar">
+              <span className={`build-set-exam-badge build-set-exam-badge-${type.toLowerCase()}`}>
+                {formatExamType(type)}
+              </span>
+              <span className="build-set-details-bar-copy">
+                {isIncomingDiagnosticYear
+                  ? "Incoming 1st-year placement diagnostic."
+                  : "Comprehensive or retake exam for year levels 2–4."}
+              </span>
+              <span
+                className="build-set-details-bar-meta"
+                title={`Uses curriculum year ${curriculumYear} subjects for ${formatProgramCourse(setProgramCourse)} when available.`}
               >
-                {programCourseOptions.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="build-set-meta-type">
-              Exam type
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as "DIAGNOSTIC" | "RETAKE")}
-                disabled={isEditing}
-              >
-                <option value="DIAGNOSTIC">Comprehensive</option>
-                <option value="RETAKE">Retake</option>
-              </select>
-            </label>
-            <span
-              className="field-hint build-set-meta-hint"
-              title={`Uses curriculum year ${curriculumYear} subjects for ${formatProgramCourse(setProgramCourse)} when available.`}
-            >
-              Curriculum yr {curriculumYear} · {abbreviateProgramCourse(setProgramCourse)}
-            </span>
-          </div>
+                Curriculum yr {curriculumYear} · {abbreviateProgramCourse(setProgramCourse)}
+              </span>
+            </div>
+          </section>
+
+          <section className="build-set-subjects">
+            <div className="build-set-subjects-header">
+              <h3 className="build-set-section-title">Subjects</h3>
+              {groupedSubjects.length > 0 && (
+                <span className="build-set-subjects-count">
+                  {groupedSubjects.length} subject{groupedSubjects.length === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
 
           <div className="build-set-add-subject">
             <label>
-              Add subject
+              <span className="build-set-field-label">Add subject</span>
               <select
                 value={addSubjectId}
                 onChange={(e) => setAddSubjectId(e.target.value)}
@@ -513,45 +564,50 @@ export default function BuildQuestionSetModal({
             </button>
           </div>
 
-          {curriculumSubjects.length === 0 && (
-            <p className="muted">
-              No subjects found for {formatProgramCourse(setProgramCourse)} curriculum year{" "}
-              {curriculumYear}. Add subjects for this program and year in Setup first.
-            </p>
-          )}
-
           {groupedSubjects.length === 0 ? (
-            <p className="muted">Add subjects to configure topic difficulty counts.</p>
+            <p className="build-set-empty muted">
+              {curriculumSubjects.length === 0
+                ? `No ${abbreviateProgramCourse(setProgramCourse)} yr ${curriculumYear} subjects in Setup.`
+                : "Add a subject above to set difficulty counts."}
+            </p>
           ) : (
             groupedSubjects.map((subject) => {
               const subjectRows = rows.filter((row) => row.subjectId === subject.id);
 
               return (
-                <div key={subject.id} className="build-set-subject card">
+                <div key={subject.id} className="build-set-subject">
                   <div className="build-set-subject-header">
-                    <h3>
-                      {subject.courseCode} — {subject.courseTitle}
-                    </h3>
+                    <div className="build-set-subject-title">
+                      <span className="build-set-subject-code">{subject.courseCode}</span>
+                      <span className="build-set-subject-name">{subject.courseTitle}</span>
+                    </div>
                     <button
                       type="button"
                       className="btn secondary btn-sm"
                       onClick={() => removeSubject(subject.id)}
                     >
-                      Remove subject
+                      Remove
                     </button>
                   </div>
 
-                  <table>
+                  <div className="build-set-subject-table-wrap modal-table-wrap">
+                  <table className="build-set-subject-table">
                     <thead>
                       <tr>
                         <th className="build-set-topic-col">Topic</th>
-                        <th>Items</th>
-                        <th>Easy</th>
-                        <th>Medium</th>
-                        <th>Hard</th>
-                        <th>Subtotal</th>
-                        <th>Remaining</th>
-                        <th>Available</th>
+                        <th className="build-set-num-col">Items</th>
+                        <th className="build-set-num-col">
+                          <span className="difficulty-badge easy">Easy</span>
+                        </th>
+                        <th className="build-set-num-col">
+                          <span className="difficulty-badge medium">Medium</span>
+                        </th>
+                        <th className="build-set-num-col">
+                          <span className="difficulty-badge hard">Hard</span>
+                        </th>
+                        <th className="build-set-num-col">Subtotal</th>
+                        <th className="build-set-num-col">Remaining</th>
+                        <th className="build-set-num-col build-set-avail-col">Available</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -573,7 +629,7 @@ export default function BuildQuestionSetModal({
                         return (
                           <tr key={row.key}>
                             <td className="build-set-topic-col">{row.label}</td>
-                            <td>
+                            <td className="build-set-num-col">
                               <input
                                 className="table-input table-input-narrow"
                                 type="text"
@@ -587,7 +643,7 @@ export default function BuildQuestionSetModal({
                                 }
                               />
                             </td>
-                            <td>
+                            <td className="build-set-num-col">
                               <input
                                 className="table-input table-input-narrow"
                                 type="text"
@@ -601,7 +657,7 @@ export default function BuildQuestionSetModal({
                                 }
                               />
                             </td>
-                            <td>
+                            <td className="build-set-num-col">
                               <input
                                 className="table-input table-input-narrow"
                                 type="text"
@@ -615,7 +671,7 @@ export default function BuildQuestionSetModal({
                                 }
                               />
                             </td>
-                            <td>
+                            <td className="build-set-num-col">
                               <input
                                 className="table-input table-input-narrow"
                                 type="text"
@@ -629,11 +685,11 @@ export default function BuildQuestionSetModal({
                                 }
                               />
                             </td>
-                            <td>{subtotal}</td>
-                            <td className={remainingClass}>
+                            <td className="build-set-num-col build-set-num-readout">{subtotal}</td>
+                            <td className={`build-set-num-col build-set-num-readout ${remainingClass}`}>
                               {rowItemCount(row) > 0 ? remaining : "—"}
                             </td>
-                            <td className="muted">
+                            <td className="build-set-num-col build-set-avail-col muted">
                               {availEasy} / {availMedium} / {availHard}
                             </td>
                           </tr>
@@ -641,54 +697,57 @@ export default function BuildQuestionSetModal({
                       })}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               );
             })
           )}
-
-          <div className="build-set-summary">
-            <div className="build-set-summary-row">
-              <strong>Target items:</strong>
-              <span>{targetItems > 0 ? targetItems : "—"}</span>
-            </div>
-            <div className="build-set-summary-row">
-              <strong>Assigned:</strong>
-              <span>{totalItems}</span>
-            </div>
-            <div className="build-set-summary-row">
-              <strong>Remaining:</strong>
-              <span
-                className={
-                  targetItems <= 0
-                    ? "counter-neutral"
-                    : remainingItems === 0
-                      ? "counter-done"
-                      : remainingItems < 0
-                        ? "counter-over"
-                        : "counter-pending"
-                }
-              >
-                {targetItems > 0 ? remainingItems : "—"}
-              </span>
-            </div>
-            <span className="field-hint">
-              Set item targets per topic; remaining counts down as you assign difficulties.
-            </span>
+          </section>
           </div>
 
-          {error && <p className="error">{error}</p>}
+          <div className="build-set-form-footer">
+          <div className="build-set-summary">
+            <div className="build-set-summary-stats">
+              <div className="build-set-stat">
+                <span className="build-set-stat-label">Target items</span>
+                <span className="build-set-stat-value">{targetItems > 0 ? targetItems : "—"}</span>
+              </div>
+              <div className="build-set-stat">
+                <span className="build-set-stat-label">Assigned</span>
+                <span className="build-set-stat-value">{totalItems}</span>
+              </div>
+              <div className="build-set-stat">
+                <span className="build-set-stat-label">Remaining</span>
+                <span
+                  className={`build-set-stat-value ${
+                    targetItems <= 0
+                      ? "counter-neutral"
+                      : remainingItems === 0
+                        ? "counter-done"
+                        : remainingItems < 0
+                          ? "counter-over"
+                          : "counter-pending"
+                  }`}
+                >
+                  {targetItems > 0 ? remainingItems : "—"}
+                </span>
+              </div>
+            </div>
+            <p className="field-hint build-set-summary-hint">
+              Set item targets per topic; remaining counts down as you assign difficulties.
+            </p>
+          </div>
 
-          <div className="modal-footer">
+          {error && <p className="error build-set-form-error">{error}</p>}
+
+          <div className="modal-footer build-set-form-actions">
             <button type="button" className="btn secondary" onClick={requestClose}>
               Cancel
             </button>
             <button type="submit" className="btn" disabled={saving || loading}>
-              {saving
-                ? "Saving..."
-                : isEditing
-                  ? "Save changes"
-                  : "Save question set"}
+              {saving ? "Saving..." : "Save"}
             </button>
+          </div>
           </div>
         </form>
         )}

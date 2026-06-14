@@ -1,5 +1,6 @@
 export const MIN_YEAR_LEVEL = 1;
 export const MAX_YEAR_LEVEL = 4;
+export const EXAM_SECONDS_PER_QUESTION = 60;
 
 export function sanitizeYearInput(value: string): string {
   return value.replace(/\D/g, "");
@@ -16,8 +17,11 @@ export function curriculumYearForStudentYear(studentYear: number): number {
   return Math.max(MIN_YEAR_LEVEL, studentYear - 1);
 }
 
+export type QuestionSetExamType = "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE";
+
 export function formatExamType(type: string): string {
-  if (type === "DIAGNOSTIC") return "Comprehensive";
+  if (type === "COMPREHENSIVE") return "Comprehensive";
+  if (type === "DIAGNOSTIC") return "Diagnostic";
   if (type === "RETAKE") return "Retake";
   return type;
 }

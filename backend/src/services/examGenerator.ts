@@ -51,8 +51,33 @@ export async function getConfigPoolQuestions(
 export async function validateQuestionSetConfigs(configs: QuestionSetConfig[]) {
   const errors: string[] = [];
 
+  const subjectIds = [...new Set(configs.map((config) => config.subjectId))];
+  const topicIds = [
+    ...new Set(configs.map((config) => config.topicId).filter((id): id is string => Boolean(id))),
+  ];
+
+  const [subjects, topics] = await Promise.all([
+    prisma.subject.findMany({
+      where: { id: { in: subjectIds } },
+      select: { id: true, courseCode: true },
+    }),
+    topicIds.length > 0
+      ? prisma.topic.findMany({
+          where: { id: { in: topicIds } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const subjectLabels = new Map(subjects.map((subject) => [subject.id, subject.courseCode]));
+  const topicLabels = new Map(topics.map((topic) => [topic.id, topic.name]));
+
   for (const config of configs) {
-    const label = config.topicId ? `topic ${config.topicId}` : `subject ${config.subjectId}`;
+    const courseCode = subjectLabels.get(config.subjectId) ?? "Unknown subject";
+    const topicName = config.topicId ? topicLabels.get(config.topicId) : null;
+    const label = config.topicId
+      ? `${courseCode} — ${topicName ?? "Unknown topic"}`
+      : `${courseCode} (whole subject)`;
     const checks: Array<[Difficulty, number]> = [
       [Difficulty.EASY, config.easyCount],
       [Difficulty.MEDIUM, config.mediumCount],
@@ -63,7 +88,9 @@ export async function validateQuestionSetConfigs(configs: QuestionSetConfig[]) {
       if (count <= 0) continue;
       const pool = await getPool(config.subjectId, config.topicId, difficulty);
       if (pool.length < count) {
-        errors.push(`${label} needs ${count} ${difficulty} questions but only ${pool.length} available.`);
+        errors.push(
+          `${label} needs ${count} ${difficulty.toLowerCase()} questions but only ${pool.length} available.`
+        );
       }
     }
   }

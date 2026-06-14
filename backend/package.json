@@ -13,6 +13,7 @@
     "db:seed-analytics": "tsx prisma/seed-analytics-demo.ts",
     "db:seed-demo": "tsx prisma/seed.ts && tsx prisma/seed-analytics-demo.ts",
     "db:reset-content": "tsx prisma/reset-content.ts",
+    "db:reset-qa-diagnostics": "tsx prisma/reset-qa-diagnostics.ts",
     "db:generate": "prisma generate"
   },
   "dependencies": {

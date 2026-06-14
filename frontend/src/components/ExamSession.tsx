@@ -25,6 +25,10 @@ async function exitFullscreen() {
   }
 }
 
+function isAllowedExamOverlayOpen() {
+  return Boolean(document.querySelector(".question-image-overlay:not(.is-closing)"));
+}
+
 function useExamLockdown(active: boolean) {
   const [lockedOut, setLockedOut] = useState(false);
   const [lockReason, setLockReason] = useState<LockReason>(null);
@@ -77,7 +81,12 @@ function useExamLockdown(active: boolean) {
 
     function handleBlur() {
       window.setTimeout(() => {
-        if (active && !document.hidden && !document.hasFocus()) {
+        if (
+          active &&
+          !document.hidden &&
+          !document.hasFocus() &&
+          !isAllowedExamOverlayOpen()
+        ) {
           pauseExam("tab");
         }
       }, 0);
@@ -111,6 +120,15 @@ interface Props {
   title?: string;
   children: ReactNode;
   footer?: ReactNode;
+  onFocusWarningCountChange?: (count: number) => void;
+  secondsRemaining?: number | null;
+  examTimeLimitSeconds?: number | null;
+}
+
+function formatExamCountdown(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 export default function ExamSession({
@@ -118,9 +136,16 @@ export default function ExamSession({
   title = "Exam in Progress",
   children,
   footer,
+  onFocusWarningCountChange,
+  secondsRemaining = null,
+  examTimeLimitSeconds = null,
 }: Props) {
   const { lockedOut, lockReason, violationCount, resumeExam } = useExamLockdown(active);
   const [resumeError, setResumeError] = useState("");
+
+  useEffect(() => {
+    onFocusWarningCountChange?.(violationCount);
+  }, [violationCount, onFocusWarningCountChange]);
 
   if (!active) return null;
 
@@ -141,11 +166,28 @@ export default function ExamSession({
             Fullscreen exam mode is active. Finish and submit before leaving this page.
           </p>
         </div>
-        {violationCount > 0 && (
-          <span className="exam-session-warning">
-            Focus warnings: {violationCount}
-          </span>
-        )}
+        <div className="exam-session-header-meta">
+          {violationCount > 0 && (
+            <span className="exam-session-warning">
+              Focus warnings: {violationCount}
+            </span>
+          )}
+          {secondsRemaining != null && examTimeLimitSeconds != null ? (
+            <div
+              className={`exam-session-timer${
+                secondsRemaining <= 60 ? " exam-session-timer-urgent" : ""
+              }`}
+              role="timer"
+              aria-live="polite"
+              aria-label={`${secondsRemaining} seconds remaining`}
+            >
+              <span className="exam-session-timer-value">
+                {formatExamCountdown(secondsRemaining)}
+              </span>
+              <span className="exam-session-timer-label">remaining</span>
+            </div>
+          ) : null}
+        </div>
       </header>
 
       <div className={`exam-session-content${lockedOut ? " exam-session-content-locked" : ""}`}>

@@ -8,10 +8,29 @@ import {
   Role,
   type User,
 } from "@prisma/client";
+import { ensureDemoImage } from "./seed-demo-images.js";
 
 const prisma = new PrismaClient();
 
+const DEMO_PROGRAM_COURSES = [
+  "INFORMATION_TECHNOLOGY",
+  "CIVIL_ENGINEERING",
+  "MECHANICAL_ENGINEERING",
+  "ELECTRICAL_ENGINEERING",
+  "ARCHITECTURE",
+] as const;
+
 const TRIG_QUESTIONS = [
+  {
+    text: "[Demo] On the unit circle shown, cos(θ) at the marked angle equals:",
+    optionA: "0",
+    optionB: "1",
+    optionC: "√2/2",
+    optionD: "-1",
+    correctOption: "C",
+    difficulty: Difficulty.EASY,
+    imageKey: "unit-circle",
+  },
   {
     text: "What is sin(90°)?",
     optionA: "0",
@@ -309,10 +328,12 @@ export async function seedTrigonometryDemo({
   teacher,
   student,
   resetStudentAttempts = true,
+  skipQuestionSets = false,
 }: {
   teacher: Pick<User, "id">;
   student: Pick<User, "id">;
   resetStudentAttempts?: boolean;
+  skipQuestionSets?: boolean;
 }) {
   const subject = await prisma.subject.upsert({
     where: {
@@ -332,19 +353,21 @@ export async function seedTrigonometryDemo({
     },
   });
 
-  await prisma.subjectProgramCourse.upsert({
-    where: {
-      subjectId_programCourse: {
-        subjectId: subject.id,
-        programCourse: "INFORMATION_TECHNOLOGY",
+  for (const programCourse of DEMO_PROGRAM_COURSES) {
+    await prisma.subjectProgramCourse.upsert({
+      where: {
+        subjectId_programCourse: {
+          subjectId: subject.id,
+          programCourse,
+        },
       },
-    },
-    update: {},
-    create: {
-      subjectId: subject.id,
-      programCourse: "INFORMATION_TECHNOLOGY",
-    },
-  });
+      update: {},
+      create: {
+        subjectId: subject.id,
+        programCourse,
+      },
+    });
+  }
 
   const topic = await prisma.topic.upsert({
     where: { subjectId_name: { subjectId: subject.id, name: "Trigonometry" } },
@@ -357,41 +380,57 @@ export async function seedTrigonometryDemo({
 
   let createdQuestions = 0;
   for (const q of TRIG_QUESTIONS) {
+    const { imageKey, ...questionData } = q as (typeof TRIG_QUESTIONS)[number] & {
+      imageKey?: string;
+    };
+    const imagePath = imageKey ? await ensureDemoImage(imageKey) : undefined;
+
     const existing = await prisma.question.findFirst({
       where: { subjectId: subject.id, text: q.text },
     });
     if (!existing) {
       await prisma.question.create({
         data: {
-          ...q,
+          ...questionData,
+          imagePath,
           subjectId: subject.id,
           topicId: topic.id,
           createdById: teacher.id,
         },
       });
       createdQuestions += 1;
+    } else if (imagePath && existing.imagePath !== imagePath) {
+      await prisma.question.update({
+        where: { id: existing.id },
+        data: { imagePath },
+      });
     }
   }
 
-  const diagnostic = await upsertQuestionSet({
-    name: "IT Y2 Trigonometry Diagnostic",
-    type: QuestionSetType.DIAGNOSTIC,
-    yearLevel: 2,
-    programCourse: "INFORMATION_TECHNOLOGY",
-    teacherId: teacher.id,
-    subjectId: subject.id,
-    topicId: topic.id,
-  });
+  let diagnostic = null;
+  let retake = null;
 
-  const retake = await upsertQuestionSet({
-    name: "IT Y2 Trigonometry Retake 1",
-    type: QuestionSetType.RETAKE,
-    yearLevel: 2,
-    programCourse: "INFORMATION_TECHNOLOGY",
-    teacherId: teacher.id,
-    subjectId: subject.id,
-    topicId: topic.id,
-  });
+  if (!skipQuestionSets) {
+    diagnostic = await upsertQuestionSet({
+      name: "IT Y2 Trigonometry Diagnostic",
+      type: QuestionSetType.COMPREHENSIVE,
+      yearLevel: 2,
+      programCourse: "INFORMATION_TECHNOLOGY",
+      teacherId: teacher.id,
+      subjectId: subject.id,
+      topicId: topic.id,
+    });
+
+    retake = await upsertQuestionSet({
+      name: "IT Y2 Trigonometry Retake 1",
+      type: QuestionSetType.RETAKE,
+      yearLevel: 2,
+      programCourse: "INFORMATION_TECHNOLOGY",
+      teacherId: teacher.id,
+      subjectId: subject.id,
+      topicId: topic.id,
+    });
+  }
 
   if (resetStudentAttempts) {
     await resetStudentExamState(student.id);
@@ -406,8 +445,8 @@ export async function seedTrigonometryDemo({
     topic: topic.name,
     questionsInTopic: questionCount,
     newQuestionsAdded: createdQuestions,
-    diagnosticSet: diagnostic.name,
-    retakeSet: retake.name,
+    diagnosticSet: diagnostic?.name ?? null,
+    retakeSet: retake?.name ?? null,
     student: student.id,
   };
 }

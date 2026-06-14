@@ -1,0 +1,1 @@
+ALTER TABLE "ExamAttempt" ADD COLUMN "focusWarningCount" INTEGER NOT NULL DEFAULT 0;

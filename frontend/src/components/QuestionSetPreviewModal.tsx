@@ -241,16 +241,26 @@ export default function QuestionSetPreviewModal({
               </ul>
             )}
 
-            {data.sections.map((section) => (
-              <div key={section.configId} className="preview-section">
+            {data.sections.map((section) => {
+              const sectionReady =
+                section.available.easy >= section.required.easy &&
+                section.available.medium >= section.required.medium &&
+                section.available.hard >= section.required.hard;
+
+              return (
+              <div
+                key={section.configId}
+                className={`preview-section${sectionReady ? "" : " preview-section-incomplete"}`}
+              >
                 <h3>
                   {section.subject.courseCode} — {section.subject.courseTitle}
                   {section.topic ? ` / ${section.topic.name}` : " / Whole subject"}
                 </h3>
-                <p className="field-hint">
+                <p className={`field-hint${sectionReady ? "" : " preview-pool-gap"}`}>
                   Required: {section.required.easy} easy, {section.required.medium} medium,{" "}
                   {section.required.hard} hard · Available: {section.available.easy} easy,{" "}
                   {section.available.medium} medium, {section.available.hard} hard
+                  {!sectionReady && " · Pool short"}
                 </p>
 
                 {section.questions.length === 0 ? (
@@ -289,7 +299,8 @@ export default function QuestionSetPreviewModal({
                   </div>
                 )}
               </div>
-            ))}
+            );
+            })}
           </>
         )}
         </div>

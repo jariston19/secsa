@@ -12,7 +12,7 @@ interface QuestionSet {
   name: string;
   yearLevel: number;
   programCourse: ProgramCourseId;
-  type: "DIAGNOSTIC" | "RETAKE";
+  type: "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE";
   status: string;
   totalItems: number;
   updatedAt: string;

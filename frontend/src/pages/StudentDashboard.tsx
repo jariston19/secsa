@@ -4,18 +4,20 @@ import ExamSession from "../components/ExamSession";
 import QuestionImage from "../components/QuestionImage";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
+import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, EXAM_SECONDS_PER_QUESTION, formatExamType } from "../lib/constants";
 
 interface QaExamOption {
   yearLevel: number;
   setName: string | null;
   deployed: boolean;
+  examKind: "incoming_diagnostic" | "comprehensive";
 }
 
 interface ExamStatus {
   nextAction: string;
   inProgressAttemptId?: string | null;
-  diagnosticAvailable: boolean;
+  comprehensiveAvailable: boolean;
+  incomingDiagnosticAvailable: boolean;
   retakeAvailable: boolean;
   retakesRemaining: number | null;
   examYearLevel?: number;
@@ -30,6 +32,7 @@ interface ExamStatus {
     passed: boolean | null;
     attemptType: string;
     attemptNumber: number;
+    questionSet?: { type: string; name: string };
   }>;
 }
 
@@ -51,7 +54,7 @@ interface SavedAnswer {
 }
 
 interface ExamStartResponse {
-  attempt: { id: string };
+  attempt: { id: string; startedAt: string };
   questions: ExamQuestion[];
   savedAnswers: SavedAnswer[];
   resumeIndex: number;
@@ -72,12 +75,21 @@ export default function StudentDashboard() {
     percentage: number;
     passed: boolean;
     totalItems: number;
+    timedOut?: boolean;
   } | null>(null);
   const [error, setError] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
   const [startingExam, setStartingExam] = useState(false);
   const [startError, setStartError] = useState("");
+  const [submittingExam, setSubmittingExam] = useState(false);
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
+  const [pendingExamKind, setPendingExamKind] = useState<
+    "comprehensive" | "incoming_diagnostic" | "retake"
+  >("comprehensive");
   const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
+  const focusWarningCountRef = useRef(0);
+  const examDeadlineMsRef = useRef<number | null>(null);
+  const submittingExamRef = useRef(false);
 
   const answerTimesRef = useRef<Record<string, number>>({});
   const questionShownAtRef = useRef(Date.now());
@@ -98,16 +110,21 @@ export default function StudentDashboard() {
     loadStatus(qaExamYear).catch((err) => setError(err.message));
   }, [token, isQa, qaExamYear]);
 
-  const canStartExam =
-    status?.nextAction === "take_diagnostic" || status?.nextAction === "take_retake";
+  const canStartComprehensive =
+    status?.nextAction === "take_comprehensive" || status?.nextAction === "take_retake";
+
+  const canStartIncomingDiagnostic =
+    status?.nextAction === "take_incoming_diagnostic" ||
+    Boolean(status?.incomingDiagnosticAvailable);
 
   const canResumeExam = status?.nextAction === "resume_exam";
 
-  const examType: "diagnostic" | "retake" =
-    status?.nextAction === "take_retake" ? "retake" : "diagnostic";
+  const examType: "comprehensive" | "incoming_diagnostic" | "retake" = pendingExamKind;
 
   const currentQuestion = questions[currentIndex];
   const allAnswered = questions.length > 0 && questions.every((q) => answers[q.id]);
+  const examTimeLimitSeconds =
+    questions.length > 0 ? questions.length * EXAM_SECONDS_PER_QUESTION : null;
 
   const flushCurrentQuestionTime = useCallback(() => {
     const question = questions[currentIndex];
@@ -138,6 +155,12 @@ export default function StudentDashboard() {
       }
     }
 
+    focusWarningCountRef.current = 0;
+    submittingExamRef.current = false;
+    const durationMs = data.questions.length * EXAM_SECONDS_PER_QUESTION * 1000;
+    const startedMs = new Date(data.attempt.startedAt).getTime();
+    examDeadlineMsRef.current = startedMs + durationMs;
+    setSecondsRemaining(Math.max(0, Math.ceil((examDeadlineMsRef.current - Date.now()) / 1000)));
     setAttemptId(data.attempt.id);
     setQuestions(data.questions);
     setAnswers(answersMap);
@@ -170,7 +193,8 @@ export default function StudentDashboard() {
     }
   }
 
-  function openInstructions() {
+  function openInstructions(kind: "comprehensive" | "incoming_diagnostic" | "retake") {
+    setPendingExamKind(kind);
     setStartError("");
     setShowInstructions(true);
   }
@@ -179,11 +203,24 @@ export default function StudentDashboard() {
     setStartingExam(true);
     setStartError("");
     try {
+      const body: Record<string, unknown> = {};
+      if (isQa) {
+        body.examYearLevel = Number(qaExamYear);
+        if (
+          Number(qaExamYear) === MIN_YEAR_LEVEL ||
+          pendingExamKind === "incoming_diagnostic"
+        ) {
+          body.examKind = "incoming_diagnostic";
+        }
+      } else if (pendingExamKind === "incoming_diagnostic") {
+        body.examKind = "incoming_diagnostic";
+      }
+
       const data = await api<ExamStartResponse>(
         "/exams/start",
         {
           method: "POST",
-          body: isQa ? JSON.stringify({ examYearLevel: Number(qaExamYear) }) : undefined,
+          body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
         },
         token
       );
@@ -218,7 +255,7 @@ export default function StudentDashboard() {
   }
 
   async function selectAnswer(option: "A" | "B" | "C" | "D") {
-    if (!currentQuestion || !attemptId) return;
+    if (!currentQuestion || !attemptId || submittingExam) return;
 
     flushCurrentQuestionTime();
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: option }));
@@ -226,37 +263,94 @@ export default function StudentDashboard() {
   }
 
   function goToQuestion(index: number) {
-    if (index < 0 || index >= questions.length || index === currentIndex) return;
+    if (index < 0 || index >= questions.length || index === currentIndex || submittingExam) return;
     flushCurrentQuestionTime();
     setCurrentIndex(index);
   }
 
-  async function submitExam() {
-    if (!attemptId) return;
+  const syncFocusWarnings = useCallback(
+    async (count: number) => {
+      focusWarningCountRef.current = count;
+      if (!attemptId || !token) return;
+      try {
+        await api(
+          `/exams/${attemptId}/focus-warnings`,
+          { method: "PATCH", body: JSON.stringify({ count }) },
+          token
+        );
+      } catch {
+        // Best-effort sync during the exam; submit also persists the final count.
+      }
+    },
+    [attemptId, token]
+  );
 
-    flushCurrentQuestionTime();
+  const submitExam = useCallback(
+    async (options?: { timedOut?: boolean }) => {
+      if (!attemptId || submittingExamRef.current) return;
 
-    const payload = {
-      answers: questions.map((q) => ({
-        questionId: q.id,
-        selectedOption: answers[q.id] as "A" | "B" | "C" | "D",
-        timeSpentSeconds: answerTimesRef.current[q.id] ?? 1,
-      })),
-    };
+      submittingExamRef.current = true;
+      setSubmittingExam(true);
+      setError("");
 
-    const data = await api<{
-      result: { score: number; percentage: number; passed: boolean; totalItems: number };
-    }>(`/exams/${attemptId}/submit`, { method: "POST", body: JSON.stringify(payload) }, token);
+      try {
+        flushCurrentQuestionTime();
 
-    setResult(data.result);
-    setAttemptId(null);
-    setQuestions([]);
-    setCurrentIndex(0);
-    setAnswers({});
-    setAnswerTimes({});
-    answerTimesRef.current = {};
-    await loadStatus(qaExamYear);
-  }
+        const payload = {
+          answers: questions.map((q) => {
+            const selected = answers[q.id] as "A" | "B" | "C" | "D" | undefined;
+            return {
+              questionId: q.id,
+              ...(selected ? { selectedOption: selected } : {}),
+              timeSpentSeconds: answerTimesRef.current[q.id] ?? 1,
+            };
+          }),
+          focusWarningCount: focusWarningCountRef.current,
+        };
+
+        const data = await api<{
+          result: { score: number; percentage: number; passed: boolean; totalItems: number };
+        }>(`/exams/${attemptId}/submit`, { method: "POST", body: JSON.stringify(payload) }, token);
+
+        setResult({ ...data.result, timedOut: options?.timedOut });
+        setAttemptId(null);
+        setQuestions([]);
+        setCurrentIndex(0);
+        setAnswers({});
+        setAnswerTimes({});
+        answerTimesRef.current = {};
+        examDeadlineMsRef.current = null;
+        setSecondsRemaining(null);
+        await loadStatus(qaExamYear);
+      } catch (err) {
+        submittingExamRef.current = false;
+        setError(err instanceof Error ? err.message : "Failed to submit exam");
+      } finally {
+        setSubmittingExam(false);
+      }
+    },
+    [attemptId, answers, flushCurrentQuestionTime, questions, qaExamYear, token]
+  );
+
+  useEffect(() => {
+    if (!attemptId || examDeadlineMsRef.current == null) return;
+
+    function tick() {
+      const deadline = examDeadlineMsRef.current;
+      if (deadline == null) return;
+
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setSecondsRemaining(remaining);
+
+      if (remaining === 0 && !submittingExamRef.current) {
+        void submitExam({ timedOut: true });
+      }
+    }
+
+    tick();
+    const handle = window.setInterval(tick, 1000);
+    return () => window.clearInterval(handle);
+  }, [attemptId, questions.length, submitExam]);
 
   const selectedQaOption = status?.qaExamOptions?.find(
     (option) => option.yearLevel === Number(qaExamYear)
@@ -275,7 +369,8 @@ export default function StudentDashboard() {
             <h2>Your Exam</h2>
             {(status.qaMode || user?.qaUnlimited) && (
               <p className="qa-profile-banner">
-                QA profile — pick a year level and take unlimited comprehensive exams.
+                QA profile — year 1 runs the incoming diagnostic; years 2–4 run comprehensive
+                exams. Unlimited attempts.
               </p>
             )}
             {(status.qaMode || user?.qaUnlimited) && (
@@ -307,14 +402,24 @@ export default function StudentDashboard() {
                 </select>
                 <span className="field-hint">
                   {selectedQaOption?.deployed
-                    ? `Ready: ${selectedQaOption.setName}`
-                    : "No deployed comprehensive set for this year level yet."}
+                    ? selectedQaOption.examKind === "incoming_diagnostic"
+                      ? `Ready: ${selectedQaOption.setName} (incoming diagnostic)`
+                      : `Ready: ${selectedQaOption.setName}`
+                    : selectedQaOption?.examKind === "incoming_diagnostic"
+                      ? "No deployed incoming diagnostic set for this program yet."
+                      : "No deployed comprehensive set for this year level yet."}
                 </span>
               </label>
             )}
-            <p className="muted">One question at a time with per-question timing.</p>
+            <p className="muted">
+              One question at a time. You have {EXAM_SECONDS_PER_QUESTION} seconds per question; the
+              exam auto-submits when time runs out.
+            </p>
             <ul className="stats">
-              <li>Comprehensive available: {status.diagnosticAvailable ? "Yes" : "No"}</li>
+              <li>Comprehensive available: {status.comprehensiveAvailable ? "Yes" : "No"}</li>
+              <li>
+                Incoming diagnostic available: {status.incomingDiagnosticAvailable ? "Yes" : "No"}
+              </li>
               {status.qaMode && status.usingSetName && (
                 <li>
                   Selected set: {status.usingSetName}
@@ -337,20 +442,35 @@ export default function StudentDashboard() {
                 </button>
               </>
             )}
-            {!attemptId && !result && canStartExam && (
-              <button className="btn" onClick={openInstructions}>
-                Start Exam
+            {!attemptId && !result && canStartComprehensive && (
+              <button
+                className="btn"
+                onClick={() =>
+                  openInstructions(status.nextAction === "take_retake" ? "retake" : "comprehensive")
+                }
+              >
+                {status.nextAction === "take_retake" ? "Start Retake Exam" : "Start Comprehensive Exam"}
               </button>
             )}
-            {!attemptId && !result && !canStartExam && !canResumeExam && (
+            {!attemptId && !result && canStartIncomingDiagnostic && (
+              <button
+                className="btn secondary"
+                onClick={() => openInstructions("incoming_diagnostic")}
+              >
+                Start Incoming Diagnostic
+              </button>
+            )}
+            {!attemptId && !result && !canStartComprehensive && !canStartIncomingDiagnostic && !canResumeExam && (
               <p className="muted">
                 {status.nextAction === "wait_approval"
                   ? "Waiting for retake approval from your teacher or superadmin."
                   : status.nextAction === "completed"
                     ? status.qaMode
                       ? selectedQaOption?.deployed
-                        ? "No deployed comprehensive set for the selected year level."
-                        : "Choose a year level with a deployed comprehensive set."
+                        ? "No exam action available for the selected year level."
+                        : selectedQaOption?.examKind === "incoming_diagnostic"
+                          ? "Choose year 1 after deploying an incoming diagnostic set."
+                          : "Choose a year level with a deployed comprehensive set."
                       : "No deployed comprehensive set is available. Deploy one from the teacher Build tab."
                     : "No exam is currently available for your year level."}
               </p>
@@ -360,6 +480,12 @@ export default function StudentDashboard() {
           {result && (
             <section className="card">
               <h2>Result</h2>
+              {result.timedOut ? (
+                <p className="exam-timed-out-notice">
+                  Time expired — your exam was submitted automatically. Unanswered items were marked
+                  incorrect.
+                </p>
+              ) : null}
               <p>
                 Score: {result.score} / {result.totalItems}
               </p>
@@ -373,7 +499,16 @@ export default function StudentDashboard() {
                 </p>
               )}
               {(status.qaMode || user?.qaUnlimited) && (
-                <button className="btn qa-retake-btn" onClick={openInstructions}>
+                <button
+                  className="btn qa-retake-btn"
+                  onClick={() =>
+                    openInstructions(
+                      Number(qaExamYear) === MIN_YEAR_LEVEL
+                        ? "incoming_diagnostic"
+                        : "comprehensive"
+                    )
+                  }
+                >
                   Take another exam
                 </button>
               )}
@@ -399,7 +534,11 @@ export default function StudentDashboard() {
                   <tbody>
                     {status.attempts.map((a) => (
                       <tr key={a.id}>
-                        <td>{a.attemptType}</td>
+                        <td>
+                          {a.questionSet?.type
+                            ? formatExamType(a.questionSet.type)
+                            : a.attemptType}
+                        </td>
                         <td>{a.attemptNumber}</td>
                         <td>{a.score ?? "-"}</td>
                         <td>{a.percentage ?? "-"}</td>
@@ -417,13 +556,16 @@ export default function StudentDashboard() {
       {attemptId && currentQuestion && (
         <ExamSession
           active
+          onFocusWarningCountChange={syncFocusWarnings}
+          secondsRemaining={secondsRemaining}
+          examTimeLimitSeconds={examTimeLimitSeconds}
           footer={
             <div className="exam-session-footer">
               <div className="exam-session-nav-buttons">
                 <button
                   type="button"
                   className="btn secondary"
-                  disabled={currentIndex === 0}
+                  disabled={currentIndex === 0 || submittingExam}
                   onClick={() => goToQuestion(currentIndex - 1)}
                 >
                   Previous
@@ -431,14 +573,18 @@ export default function StudentDashboard() {
                 <button
                   type="button"
                   className="btn secondary"
-                  disabled={currentIndex >= questions.length - 1}
+                  disabled={currentIndex >= questions.length - 1 || submittingExam}
                   onClick={() => goToQuestion(currentIndex + 1)}
                 >
                   Next
                 </button>
               </div>
-              <button className="btn" onClick={submitExam} disabled={!allAnswered}>
-                Submit Exam
+              <button
+                className="btn"
+                onClick={() => void submitExam()}
+                disabled={!allAnswered || submittingExam}
+              >
+                {submittingExam ? "Submitting..." : "Submit Exam"}
               </button>
             </div>
           }
@@ -449,23 +595,41 @@ export default function StudentDashboard() {
             </span>
             <span className="muted">
               {Object.keys(answers).length}/{questions.length} answered
+              {examTimeLimitSeconds != null
+                ? ` · ${Math.round(examTimeLimitSeconds / 60)} min total`
+                : ""}
             </span>
           </div>
 
-          <div className="exam-question-nav">
-            {questions.map((q, index) => (
-              <button
-                key={q.id}
-                type="button"
-                className={`exam-question-pill${
-                  index === currentIndex ? " active" : ""
-                }${answers[q.id] ? " answered" : ""}`}
-                onClick={() => goToQuestion(index)}
-                aria-label={`Go to question ${index + 1}`}
-              >
-                {index + 1}
-              </button>
-            ))}
+          <div
+            className="exam-progress-bar"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={questions.length}
+            aria-valuenow={Object.keys(answers).length}
+            aria-label={`${Object.keys(answers).length} of ${questions.length} questions answered`}
+          >
+            <div
+              className="exam-progress-bar-fill"
+              style={{
+                width: `${
+                  questions.length > 0
+                    ? (Object.keys(answers).length / questions.length) * 100
+                    : 0
+                }%`,
+              }}
+            />
+            <div
+              className="exam-progress-bar-marker"
+              style={{
+                left: `${
+                  questions.length > 1
+                    ? (currentIndex / (questions.length - 1)) * 100
+                    : 0
+                }%`,
+              }}
+              aria-hidden="true"
+            />
           </div>
 
           <div className="question-block exam-question-single">
@@ -480,8 +644,9 @@ export default function StudentDashboard() {
                 alt={`Question ${currentIndex + 1} image`}
               />
             )}
+            <div className="exam-option-list">
             {(["A", "B", "C", "D"] as const).map((key) => (
-              <label key={key} className="option">
+              <label key={key} className="option exam-option">
                 <input
                   type="radio"
                   name={currentQuestion.id}
@@ -492,6 +657,7 @@ export default function StudentDashboard() {
                 {key}. {currentQuestion[`option${key}` as keyof ExamQuestion] as string}
               </label>
             ))}
+            </div>
           </div>
         </ExamSession>
       )}

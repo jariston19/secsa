@@ -12,7 +12,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useSidebar } from "../lib/sidebar";
 import { useToast } from "../lib/toast";
-import { formatExamType, parseYearLevel, sanitizeYearInput } from "../lib/constants";
+import { formatExamType, parseYearLevel, sanitizeYearInput, type QuestionSetExamType } from "../lib/constants";
 import {
   subjectLabel,
   toastArchived,
@@ -45,6 +45,7 @@ type Tab =
   | "retake-approvals";
 
 type SetStatusFilter = "ALL" | "DRAFT" | "DEPLOYED";
+type SetTypeFilter = "ALL" | QuestionSetExamType;
 
 interface TopicDraftRow {
   key: string;
@@ -80,7 +81,7 @@ interface QuestionSet {
   name: string;
   yearLevel: number;
   programCourse: ProgramCourseId;
-  type: "DIAGNOSTIC" | "RETAKE";
+  type: "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE";
   status: string;
   totalItems: number;
   _count?: { examAttempts: number };
@@ -152,6 +153,7 @@ export default function TeacherDashboard() {
   }, [programCourseOptions, defaultSlug]);
 
   const [setsStatusFilter, setSetsStatusFilter] = useState<SetStatusFilter>("ALL");
+  const [setsTypeFilter, setSetsTypeFilter] = useState<SetTypeFilter>("ALL");
 
   const [subjectForm, setSubjectForm] = useState({
     courseCode: "",
@@ -477,9 +479,10 @@ export default function TeacherDashboard() {
         (s) =>
           s.status !== "ARCHIVED" &&
           (setsProgramFilter === "ALL" || s.programCourse === setsProgramFilter) &&
-          (setsStatusFilter === "ALL" || s.status === setsStatusFilter)
+          (setsStatusFilter === "ALL" || s.status === setsStatusFilter) &&
+          (setsTypeFilter === "ALL" || s.type === setsTypeFilter)
       ),
-    [sets, setsProgramFilter, setsStatusFilter]
+    [sets, setsProgramFilter, setsStatusFilter, setsTypeFilter]
   );
 
   const topicBatchCount = useMemo(
@@ -751,6 +754,18 @@ export default function TeacherDashboard() {
                     <option value="DEPLOYED">Deployed</option>
                   </select>
                 </label>
+                <label className="sets-type-filter">
+                  Exam type
+                  <select
+                    value={setsTypeFilter}
+                    onChange={(e) => setSetsTypeFilter(e.target.value as SetTypeFilter)}
+                  >
+                    <option value="ALL">All</option>
+                    <option value="COMPREHENSIVE">{formatExamType("COMPREHENSIVE")}</option>
+                    <option value="DIAGNOSTIC">{formatExamType("DIAGNOSTIC")}</option>
+                    <option value="RETAKE">{formatExamType("RETAKE")}</option>
+                  </select>
+                </label>
               </div>
             </div>
             <div className="sets-header-actions">
@@ -779,11 +794,11 @@ export default function TeacherDashboard() {
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Year</th>
+                <th className="sets-col-center">Year</th>
                 <th>Course</th>
                 <th>Type</th>
                 <th>Status</th>
-                <th>Items</th>
+                <th className="sets-col-center">Items</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -791,19 +806,19 @@ export default function TeacherDashboard() {
               {courseSets.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="muted sets-empty-row">
-                    No question sets match these filters. Set Program to &quot;All&quot; and Status
-                    to &quot;All&quot; or &quot;Deployed&quot; to see existing sets.
+                    No question sets match these filters. Try Program, Status, or Exam type
+                    set to &quot;All&quot;.
                   </td>
                 </tr>
               ) : (
               courseSets.map((set) => (
                 <tr key={set.id}>
                   <td>{set.name}</td>
-                  <td>{set.yearLevel}</td>
+                  <td className="sets-col-center">{set.yearLevel}</td>
                   <td>{formatProgramCourse(set.programCourse)}</td>
                   <td>{formatExamType(set.type)}</td>
                   <td>{set.status}</td>
-                  <td>{set.totalItems}</td>
+                  <td className="sets-col-center">{set.totalItems}</td>
                   <td>
                     <div className="action-buttons">
                       <button

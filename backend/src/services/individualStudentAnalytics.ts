@@ -162,14 +162,20 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
       studentId: true,
       percentage: true,
       submittedAt: true,
+      focusWarningCount: true,
     },
     orderBy: [{ studentId: "asc" }, { submittedAt: "desc" }],
   });
+
+  let cohortFocusWarningTotal = 0;
+  let cohortFocusWarningCount = 0;
 
   for (const attempt of cohortAttempts) {
     if (!cohortLatestScores.has(attempt.studentId)) {
       cohortLatestScores.set(attempt.studentId, attempt.percentage ?? 0);
       latestCohortAttemptIds.add(attempt.id);
+      cohortFocusWarningTotal += attempt.focusWarningCount;
+      cohortFocusWarningCount += 1;
     }
   }
 
@@ -399,6 +405,24 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
     });
   }
 
+  const focusWarnings = latestAttempt.focusWarningCount;
+  const classAvgFocusWarnings =
+    cohortFocusWarningCount > 0
+      ? Math.round((cohortFocusWarningTotal / cohortFocusWarningCount) * 10) / 10
+      : null;
+
+  if (focusWarnings >= 5) {
+    insights.push({
+      type: "risk",
+      message: `${focusWarnings} focus warnings during the exam (left fullscreen or switched tabs) — review proctoring notes before retake decisions.`,
+    });
+  } else if (focusWarnings >= 2) {
+    insights.push({
+      type: "watch",
+      message: `${focusWarnings} focus warnings recorded — student left exam focus during the attempt.`,
+    });
+  }
+
   for (const subject of bySubject) {
     if (subject.classAverage != null && subject.score < subject.classAverage - 5 && subject.score >= WATCH_THRESHOLD) {
       insights.push({
@@ -442,6 +466,7 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
       percentage: studentScore,
       passed: latestAttempt.passed,
       passThreshold: latestAttempt.questionSet.passThreshold,
+      focusWarningCount: latestAttempt.focusWarningCount,
     },
     summary: {
       overallScore: studentScore,
@@ -453,6 +478,8 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
       classAvgMinutes,
       weakTopicsCount: weakTopics.length,
       passed: latestAttempt.passed,
+      focusWarningCount: latestAttempt.focusWarningCount,
+      classAvgFocusWarnings,
     },
     byTopic,
     bySubject,

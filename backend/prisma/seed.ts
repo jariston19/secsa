@@ -1,5 +1,7 @@
 import bcrypt from "bcryptjs";
 import { PrismaClient, Role } from "@prisma/client";
+import { ensureAnalyticsSubjects } from "./seed-analytics-subjects.js";
+import { seedTrigonometryDemo } from "./seed-trigonometry-demo.js";
 
 const prisma = new PrismaClient();
 
@@ -80,6 +82,15 @@ async function main() {
     },
   });
 
+  await seedTrigonometryDemo({
+    teacher,
+    student,
+    resetStudentAttempts: false,
+    skipQuestionSets: true,
+  });
+
+  const demoContent = await ensureAnalyticsSubjects(teacher);
+
   console.log("Seed complete.");
   console.log({
     superadmin: superadmin.email,
@@ -88,7 +99,7 @@ async function main() {
     qaStudent: qaStudent.email,
   });
   console.log("Default password: password123");
-  console.log("No subjects, topics, questions, or exam data — start fresh from Saved.");
+  console.log("Demo content:", demoContent);
 }
 
 main()

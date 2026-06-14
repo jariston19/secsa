@@ -18,7 +18,7 @@ export async function api<T>(
     throw new Error("Network error — check your connection to the server.");
   }
 
-  let data: { error?: string };
+  let data: { error?: string; details?: string[] };
   try {
     data = await response.json();
   } catch {
@@ -26,7 +26,11 @@ export async function api<T>(
   }
 
   if (!response.ok) {
-    throw new Error(data.error || "Request failed");
+    const detailText =
+      Array.isArray(data.details) && data.details.length > 0
+        ? `\n${data.details.join("\n")}`
+        : "";
+    throw new Error(`${data.error || "Request failed"}${detailText}`);
   }
 
   return data as T;

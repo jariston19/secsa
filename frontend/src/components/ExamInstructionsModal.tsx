@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 
 interface Props {
-  examType: "diagnostic" | "retake";
+  examType: "comprehensive" | "incoming_diagnostic" | "retake";
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
@@ -19,7 +19,12 @@ export default function ExamInstructionsModal({
   const [acknowledged, setAcknowledged] = useState(false);
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onCancel);
 
-  const title = examType === "retake" ? "Retake Exam Instructions" : "Comprehensive Exam Instructions";
+  const title =
+    examType === "retake"
+      ? "Retake Exam Instructions"
+      : examType === "incoming_diagnostic"
+        ? "Incoming Diagnostic Instructions"
+        : "Comprehensive Exam Instructions";
 
   return portal(
     <div className={overlayClass} onClick={requestClose}>
@@ -34,9 +39,20 @@ export default function ExamInstructionsModal({
         <div className="instructions-body">
           <h3>Before you start</h3>
           <ul className="instructions-list">
-            <li>This is a multiple-choice comprehensive exam. Each question has one correct answer.</li>
+            <li>
+              This is a multiple-choice{" "}
+              {examType === "incoming_diagnostic" ? "diagnostic" : "comprehensive"} exam. Each
+              question has one correct answer.
+            </li>
             <li>Questions are presented in a <strong>random order</strong> unique to you.</li>
-            <li>Answer <strong>all questions</strong> before submitting. You cannot submit with blank answers.</li>
+            <li>
+              You have <strong>1 minute per question</strong>. Total time = number of questions × 1
+              minute. The exam <strong>auto-submits</strong> when time runs out.
+            </li>
+            <li>
+              Answer <strong>all questions</strong> before submitting early. Unanswered items count
+              as incorrect if time expires.
+            </li>
             <li>You may change your answers before clicking <strong>Submit Exam</strong>.</li>
             <li>Once submitted, your answers are <strong>final</strong> and cannot be changed.</li>
           </ul>
@@ -62,6 +78,15 @@ export default function ExamInstructionsModal({
                 <li>This is an approved <strong>retake attempt</strong>.</li>
                 <li>You may have up to <strong>2 retake chances</strong> in total, subject to teacher or superadmin approval.</li>
                 <li>Retake questions may differ from your first attempt.</li>
+              </ul>
+            </>
+          ) : examType === "incoming_diagnostic" ? (
+            <>
+              <h3>About this diagnostic</h3>
+              <ul className="instructions-list">
+                <li>This <strong>incoming diagnostic</strong> measures readiness for incoming 1st-year students.</li>
+                <li>It is separate from the comprehensive exam and does not use your retake allowance.</li>
+                <li>Your result helps teachers identify strengths and topics to reinforce early.</li>
               </ul>
             </>
           ) : (

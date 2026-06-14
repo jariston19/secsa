@@ -10,7 +10,8 @@
     "db:seed": "npm run db:seed --workspace=backend",
     "db:seed-analytics": "npm run db:seed-analytics --workspace=backend",
     "db:seed-demo": "npm run db:seed-demo --workspace=backend",
-    "db:reset-content": "npm run db:reset-content --workspace=backend"
+    "db:reset-content": "npm run db:reset-content --workspace=backend",
+    "db:reset-qa-diagnostics": "npm run db:reset-qa-diagnostics --workspace=backend"
   },
   "workspaces": [
     "backend",

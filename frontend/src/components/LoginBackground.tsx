@@ -1,7 +1,7 @@
 import { useMemo, type CSSProperties } from "react";
 
 type BlobColor = "silver" | "blue" | "orange";
-type BlobShape = "circle" | "ellipse" | "blob";
+type BlobShape = "circle" | "ellipse";
 
 interface Blob {
   id: number;
@@ -17,29 +17,33 @@ interface Blob {
   rotate: number;
 }
 
-const BLOB_COUNT = 9;
+const BLOB_COUNT = 14;
 
 function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
 }
 
-function pick<T>(items: readonly T[]) {
-  return items[Math.floor(Math.random() * items.length)];
+function pickRoundShape(): BlobShape {
+  return Math.random() < 0.72 ? "circle" : "ellipse";
+}
+
+function pickBlobColor(): BlobColor {
+  const roll = Math.random();
+  if (roll < 0.6) return "orange";
+  if (roll < 0.82) return "blue";
+  return "silver";
 }
 
 function createBlobs(): Blob[] {
-  const colors: BlobColor[] = ["silver", "blue", "orange"];
-  const shapes: BlobShape[] = ["circle", "ellipse", "blob"];
-
   return Array.from({ length: BLOB_COUNT }, (_, id) => ({
     id,
-    color: colors[id % colors.length] ?? pick(colors),
-    shape: pick(shapes),
-    x: randomBetween(4, 82),
-    y: randomBetween(6, 78),
-    size: randomBetween(140, 340),
-    duration: randomBetween(22, 42),
-    delay: randomBetween(0, 12),
+    color: pickBlobColor(),
+    shape: pickRoundShape(),
+    x: randomBetween(2, 88),
+    y: randomBetween(4, 84),
+    size: randomBetween(100, 320),
+    duration: randomBetween(4, 9),
+    delay: randomBetween(0, 2),
     driftX: randomBetween(-18, 18),
     driftY: randomBetween(-14, 14),
     rotate: randomBetween(-25, 25),
@@ -48,13 +52,7 @@ function createBlobs(): Blob[] {
 
 function BlobShapeGraphic({ shape }: { shape: BlobShape }) {
   if (shape === "ellipse") {
-    return <ellipse cx="50" cy="50" rx="46" ry="34" />;
-  }
-
-  if (shape === "blob") {
-    return (
-      <path d="M48 6c14 2 28 10 36 24 9 16 8 34-2 48-11 15-30 24-48 22C16 97 4 82 4 62 4 40 18 18 36 10 40 8 44 7 48 6z" />
-    );
+    return <ellipse cx="50" cy="50" rx="42" ry="38" />;
   }
 
   return <circle cx="50" cy="50" r="42" />;
