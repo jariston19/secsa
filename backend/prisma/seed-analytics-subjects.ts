@@ -981,6 +981,7 @@ async function upsertComprehensiveQuestionSet({
       data: {
         totalItems,
         passThreshold: 75,
+        timeLimitMinutes: 60,
         status: QuestionSetStatus.DEPLOYED,
         deployedAt: new Date(),
         configs: { create: configCreates },
@@ -1002,6 +1003,7 @@ async function upsertComprehensiveQuestionSet({
       status: QuestionSetStatus.DEPLOYED,
       totalItems,
       passThreshold: 75,
+      timeLimitMinutes: 60,
       deployedAt: new Date(),
       createdById: teacherId,
       configs: { create: configCreates },
@@ -1047,6 +1049,7 @@ async function upsertDiagnosticQuestionSet({
       data: {
         totalItems,
         passThreshold: 75,
+        timeLimitMinutes: 30,
         status: QuestionSetStatus.DEPLOYED,
         deployedAt: new Date(),
         configs: { create: configCreates },
@@ -1073,6 +1076,7 @@ async function upsertDiagnosticQuestionSet({
       status: QuestionSetStatus.DEPLOYED,
       totalItems,
       passThreshold: 75,
+      timeLimitMinutes: 30,
       deployedAt: new Date(),
       createdById: teacherId,
       configs: { create: configCreates },

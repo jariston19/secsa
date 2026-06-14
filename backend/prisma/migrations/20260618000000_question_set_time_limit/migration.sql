@@ -1,0 +1,1 @@
+ALTER TABLE "QuestionSet" ADD COLUMN "timeLimitMinutes" INTEGER NOT NULL DEFAULT 60;

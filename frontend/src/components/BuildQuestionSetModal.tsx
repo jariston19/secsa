@@ -126,6 +126,8 @@ export default function BuildQuestionSetModal({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(Boolean(setId));
+  const [timeLimitHours, setTimeLimitHours] = useState("1");
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState("0");
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   useEffect(() => {
@@ -153,6 +155,7 @@ export default function BuildQuestionSetModal({
         programCourse: ProgramCourseId;
         type: "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE";
         status: string;
+        timeLimitMinutes: number;
         configs: Array<{
           subjectId: string;
           topicId: string | null;
@@ -171,6 +174,8 @@ export default function BuildQuestionSetModal({
         setSetProgramCourse(set.programCourse);
         setType(set.type);
         setSetStatus(set.status);
+        setTimeLimitHours(String(Math.floor(set.timeLimitMinutes / 60)));
+        setTimeLimitMinutes(String(set.timeLimitMinutes % 60));
 
         const subjectIds = [...new Set(set.configs.map((c) => c.subjectId))];
         const loadedRows: ConfigRow[] = set.configs.map((config) => {
@@ -376,11 +381,24 @@ export default function BuildQuestionSetModal({
       return;
     }
 
+    const hours = Math.max(0, Number(timeLimitHours) || 0);
+    const minutes = Math.max(0, Number(timeLimitMinutes) || 0);
+    const timeLimitTotal = hours * 60 + minutes;
+    if (timeLimitTotal < 1) {
+      setError("Set a time limit of at least 1 minute.");
+      return;
+    }
+    if (timeLimitTotal > 480) {
+      setError("Time limit cannot exceed 8 hours.");
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
         name: name.trim(),
         totalItems,
+        timeLimitMinutes: timeLimitTotal,
         configs,
       };
 
@@ -508,6 +526,36 @@ export default function BuildQuestionSetModal({
                   )}
                 </select>
               </label>
+            </div>
+            <div className="build-set-meta-time">
+              <span className="build-set-field-label">Time limit</span>
+              <div className="build-set-time-inputs">
+                <label>
+                  Hours
+                  <input
+                    type="number"
+                    min={0}
+                    max={8}
+                    inputMode="numeric"
+                    value={timeLimitHours}
+                    onChange={(e) => setTimeLimitHours(e.target.value.replace(/\D/g, ""))}
+                    required
+                  />
+                </label>
+                <label>
+                  Minutes
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    inputMode="numeric"
+                    value={timeLimitMinutes}
+                    onChange={(e) => setTimeLimitMinutes(e.target.value.replace(/\D/g, ""))}
+                    required
+                  />
+                </label>
+              </div>
+              <span className="field-hint">Total exam duration for students. Auto-submits when time expires.</span>
             </div>
             <div className="build-set-details-bar">
               <span className={`build-set-exam-badge build-set-exam-badge-${type.toLowerCase()}`}>

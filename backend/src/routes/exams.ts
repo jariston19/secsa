@@ -209,19 +209,26 @@ export async function examRoutes(app: FastifyInstance) {
           : null;
 
       const activeSet = qaDiagnosticSet ?? qaComprehensiveSet;
+      const qaNextAction = inProgressAttempt
+        ? "resume_exam"
+        : qaDiagnosticSet
+          ? "take_incoming_diagnostic"
+          : qaComprehensiveSet
+            ? "take_comprehensive"
+            : "completed";
+      const examTimeLimitMinutes = nextActionSetTimeLimit(qaNextAction, {
+        incomingDiagnostic: qaDiagnosticSet,
+        comprehensive: qaComprehensiveSet,
+        retake: qaRetakeSet,
+        inProgress: inProgressAttempt,
+      });
 
       return {
         yearLevel: student.yearLevel,
         programCourse: student.programCourse,
         examYearLevel,
         attempts,
-        nextAction: inProgressAttempt
-          ? "resume_exam"
-          : qaDiagnosticSet
-            ? "take_incoming_diagnostic"
-            : qaComprehensiveSet
-              ? "take_comprehensive"
-              : "completed",
+        nextAction: qaNextAction,
         inProgressAttemptId: inProgressAttempt?.id ?? null,
         comprehensiveAvailable: Boolean(qaComprehensiveSet),
         incomingDiagnosticAvailable: Boolean(qaDiagnosticSet),
@@ -232,6 +239,10 @@ export async function examRoutes(app: FastifyInstance) {
         usingSetYearLevel: activeSet?.yearLevel ?? examYearLevel,
         usingSetName: activeSet?.name ?? null,
         qaExamOptions,
+        examTimeLimitMinutes,
+        diagnosticTimeLimitMinutes: qaDiagnosticSet?.timeLimitMinutes ?? null,
+        comprehensiveTimeLimitMinutes: qaComprehensiveSet?.timeLimitMinutes ?? null,
+        retakeTimeLimitMinutes: qaRetakeSet?.timeLimitMinutes ?? null,
       };
     }
 
@@ -277,6 +288,13 @@ export async function examRoutes(app: FastifyInstance) {
       Boolean(incomingDiagnosticSet) &&
       submittedIncomingDiagnosticAttempts.length === 0;
 
+    const examTimeLimitMinutes = nextActionSetTimeLimit(nextAction, {
+      incomingDiagnostic: incomingDiagnosticSet,
+      comprehensive: comprehensiveSet,
+      retake: retakeSet,
+      inProgress: inProgressAttempt,
+    });
+
     return {
       yearLevel: student.yearLevel,
       programCourse: student.programCourse,
@@ -289,6 +307,10 @@ export async function examRoutes(app: FastifyInstance) {
       retakesUsed: retakeAttempts.length,
       retakesRemaining: Math.max(0, MAX_RETAKES - retakeAttempts.length),
       qaMode: false,
+      examTimeLimitMinutes,
+      diagnosticTimeLimitMinutes: incomingDiagnosticSet?.timeLimitMinutes ?? null,
+      comprehensiveTimeLimitMinutes: comprehensiveSet?.timeLimitMinutes ?? null,
+      retakeTimeLimitMinutes: retakeSet?.timeLimitMinutes ?? null,
     };
   });
 
@@ -311,7 +333,10 @@ export async function examRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "asc" },
     });
 
-    const inProgress = attempts.find((a) => !a.submittedAt);
+    const inProgress = await prisma.examAttempt.findFirst({
+      where: { studentId: user.id, submittedAt: null },
+      include: { questionSet: { select: { timeLimitMinutes: true } } },
+    });
 
     if (inProgress) {
       const questions = await loadAttemptQuestions(inProgress.questionIds);
@@ -329,12 +354,13 @@ export async function examRoutes(app: FastifyInstance) {
         (id) => !savedAnswers.find((answer) => answer.questionId === id)?.selectedOption
       );
 
-      return {
+      return buildExamStartResponse({
         attempt: inProgress,
         questions,
         savedAnswers,
         resumeIndex: resumeIndex === -1 ? questionIds.length - 1 : resumeIndex,
-      };
+        timeLimitMinutes: inProgress.questionSet.timeLimitMinutes,
+      });
     }
 
     if (student.qaUnlimited) {
@@ -375,12 +401,15 @@ export async function examRoutes(app: FastifyInstance) {
           },
         });
 
-        return reply.code(201).send({
-          attempt,
-          questions: selected.map(stripCorrectAnswer),
-          savedAnswers: [],
-          resumeIndex: 0,
-        });
+        return reply.code(201).send(
+          buildExamStartResponse({
+            attempt,
+            questions: selected.map(stripCorrectAnswer),
+            savedAnswers: [],
+            resumeIndex: 0,
+            timeLimitMinutes: diagnosticSet.timeLimitMinutes,
+          })
+        );
       }
 
       const questionSet = await prisma.questionSet.findFirst({
@@ -418,12 +447,15 @@ export async function examRoutes(app: FastifyInstance) {
         },
       });
 
-      return reply.code(201).send({
-        attempt,
-        questions: selected.map(stripCorrectAnswer),
-        savedAnswers: [],
-        resumeIndex: 0,
-      });
+      return reply.code(201).send(
+        buildExamStartResponse({
+          attempt,
+          questions: selected.map(stripCorrectAnswer),
+          savedAnswers: [],
+          resumeIndex: 0,
+          timeLimitMinutes: questionSet.timeLimitMinutes,
+        })
+      );
     }
 
     const body = startExamSchema.parse(request.body ?? {});
@@ -492,12 +524,15 @@ export async function examRoutes(app: FastifyInstance) {
         },
       });
 
-      return reply.code(201).send({
-        attempt,
-        questions: selected.map(stripCorrectAnswer),
-        savedAnswers: [],
-        resumeIndex: 0,
-      });
+      return reply.code(201).send(
+        buildExamStartResponse({
+          attempt,
+          questions: selected.map(stripCorrectAnswer),
+          savedAnswers: [],
+          resumeIndex: 0,
+          timeLimitMinutes: questionSet.timeLimitMinutes,
+        })
+      );
     }
 
     const firstComprehensiveCount = await prisma.examAttempt.count({
@@ -562,12 +597,15 @@ export async function examRoutes(app: FastifyInstance) {
       },
     });
 
-    return reply.code(201).send({
-      attempt,
-      questions: selected.map(stripCorrectAnswer),
-      savedAnswers: [],
-      resumeIndex: 0,
-    });
+    return reply.code(201).send(
+      buildExamStartResponse({
+        attempt,
+        questions: selected.map(stripCorrectAnswer),
+        savedAnswers: [],
+        resumeIndex: 0,
+        timeLimitMinutes: questionSet.timeLimitMinutes,
+      })
+    );
   });
 
   app.patch("/:attemptId/answers/:questionId", async (request, reply) => {
@@ -816,6 +854,57 @@ export async function examRoutes(app: FastifyInstance) {
 
     return { approval };
   });
+}
+
+function nextActionSetTimeLimit(
+  nextAction: string,
+  sets: {
+    incomingDiagnostic: { timeLimitMinutes: number } | null;
+    comprehensive: { timeLimitMinutes: number } | null;
+    retake: { timeLimitMinutes: number } | null;
+    inProgress: { questionSet: { timeLimitMinutes: number } } | null | undefined;
+  }
+) {
+  if (nextAction === "resume_exam" && sets.inProgress) {
+    return sets.inProgress.questionSet.timeLimitMinutes;
+  }
+  if (nextAction === "take_incoming_diagnostic" && sets.incomingDiagnostic) {
+    return sets.incomingDiagnostic.timeLimitMinutes;
+  }
+  if (nextAction === "take_retake" && sets.retake) {
+    return sets.retake.timeLimitMinutes;
+  }
+  if (sets.comprehensive) {
+    return sets.comprehensive.timeLimitMinutes;
+  }
+  return 60;
+}
+
+function buildExamStartResponse({
+  attempt,
+  questions,
+  savedAnswers,
+  resumeIndex,
+  timeLimitMinutes,
+}: {
+  attempt: { id: string; startedAt: Date };
+  questions: ReturnType<typeof stripCorrectAnswer>[];
+  savedAnswers: Array<{
+    questionId: string;
+    selectedOption: string | null;
+    timeSpentSeconds: number | null;
+    answerChangeCount: number;
+  }>;
+  resumeIndex: number;
+  timeLimitMinutes: number;
+}) {
+  return {
+    attempt,
+    questions,
+    savedAnswers,
+    resumeIndex,
+    timeLimitMinutes,
+  };
 }
 
 function stripCorrectAnswer(question: {

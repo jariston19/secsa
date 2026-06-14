@@ -1,6 +1,13 @@
 export const MIN_YEAR_LEVEL = 1;
 export const MAX_YEAR_LEVEL = 4;
-export const EXAM_SECONDS_PER_QUESTION = 60;
+
+export function formatExamTimeLimit(totalMinutes: number) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0 && minutes > 0) return `${hours} hr ${minutes} min`;
+  if (hours > 0) return `${hours} hr`;
+  return `${minutes} min`;
+}
 
 export function sanitizeYearInput(value: string): string {
   return value.replace(/\D/g, "");

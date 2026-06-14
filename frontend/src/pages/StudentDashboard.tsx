@@ -4,7 +4,7 @@ import ExamSession from "../components/ExamSession";
 import QuestionImage from "../components/QuestionImage";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, EXAM_SECONDS_PER_QUESTION, formatExamType } from "../lib/constants";
+import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, formatExamTimeLimit, formatExamType } from "../lib/constants";
 
 interface QaExamOption {
   yearLevel: number;
@@ -21,6 +21,10 @@ interface ExamStatus {
   retakeAvailable: boolean;
   retakesRemaining: number | null;
   examYearLevel?: number;
+  examTimeLimitMinutes?: number | null;
+  diagnosticTimeLimitMinutes?: number | null;
+  comprehensiveTimeLimitMinutes?: number | null;
+  retakeTimeLimitMinutes?: number | null;
   qaMode?: boolean;
   usingSetYearLevel?: number | null;
   usingSetName?: string | null;
@@ -58,6 +62,7 @@ interface ExamStartResponse {
   questions: ExamQuestion[];
   savedAnswers: SavedAnswer[];
   resumeIndex: number;
+  timeLimitMinutes: number;
 }
 
 export default function StudentDashboard() {
@@ -83,6 +88,7 @@ export default function StudentDashboard() {
   const [startError, setStartError] = useState("");
   const [submittingExam, setSubmittingExam] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
+  const [examTimeLimitMinutes, setExamTimeLimitMinutes] = useState<number | null>(null);
   const [pendingExamKind, setPendingExamKind] = useState<
     "comprehensive" | "incoming_diagnostic" | "retake"
   >("comprehensive");
@@ -124,7 +130,18 @@ export default function StudentDashboard() {
   const currentQuestion = questions[currentIndex];
   const allAnswered = questions.length > 0 && questions.every((q) => answers[q.id]);
   const examTimeLimitSeconds =
-    questions.length > 0 ? questions.length * EXAM_SECONDS_PER_QUESTION : null;
+    examTimeLimitMinutes != null ? examTimeLimitMinutes * 60 : null;
+
+  function instructionsTimeLimitMinutes() {
+    if (!status) return 60;
+    if (pendingExamKind === "incoming_diagnostic") {
+      return status.diagnosticTimeLimitMinutes ?? status.examTimeLimitMinutes ?? 60;
+    }
+    if (pendingExamKind === "retake") {
+      return status.retakeTimeLimitMinutes ?? status.examTimeLimitMinutes ?? 60;
+    }
+    return status.comprehensiveTimeLimitMinutes ?? status.examTimeLimitMinutes ?? 60;
+  }
 
   const flushCurrentQuestionTime = useCallback(() => {
     const question = questions[currentIndex];
@@ -157,9 +174,10 @@ export default function StudentDashboard() {
 
     focusWarningCountRef.current = 0;
     submittingExamRef.current = false;
-    const durationMs = data.questions.length * EXAM_SECONDS_PER_QUESTION * 1000;
+    const durationMs = data.timeLimitMinutes * 60 * 1000;
     const startedMs = new Date(data.attempt.startedAt).getTime();
     examDeadlineMsRef.current = startedMs + durationMs;
+    setExamTimeLimitMinutes(data.timeLimitMinutes);
     setSecondsRemaining(Math.max(0, Math.ceil((examDeadlineMsRef.current - Date.now()) / 1000)));
     setAttemptId(data.attempt.id);
     setQuestions(data.questions);
@@ -321,6 +339,7 @@ export default function StudentDashboard() {
         answerTimesRef.current = {};
         examDeadlineMsRef.current = null;
         setSecondsRemaining(null);
+        setExamTimeLimitMinutes(null);
         await loadStatus(qaExamYear);
       } catch (err) {
         submittingExamRef.current = false;
@@ -412,8 +431,11 @@ export default function StudentDashboard() {
               </label>
             )}
             <p className="muted">
-              One question at a time. You have {EXAM_SECONDS_PER_QUESTION} seconds per question; the
-              exam auto-submits when time runs out.
+              One question at a time.
+              {status.examTimeLimitMinutes != null
+                ? ` Time limit: ${formatExamTimeLimit(status.examTimeLimitMinutes)}.`
+                : ""}{" "}
+              The exam auto-submits when time runs out.
             </p>
             <ul className="stats">
               <li>Comprehensive available: {status.comprehensiveAvailable ? "Yes" : "No"}</li>
@@ -595,8 +617,8 @@ export default function StudentDashboard() {
             </span>
             <span className="muted">
               {Object.keys(answers).length}/{questions.length} answered
-              {examTimeLimitSeconds != null
-                ? ` · ${Math.round(examTimeLimitSeconds / 60)} min total`
+              {examTimeLimitMinutes != null
+                ? ` · ${formatExamTimeLimit(examTimeLimitMinutes)} limit`
                 : ""}
             </span>
           </div>
@@ -665,6 +687,7 @@ export default function StudentDashboard() {
       {showInstructions && (
         <ExamInstructionsModal
           examType={examType}
+          timeLimitMinutes={instructionsTimeLimitMinutes()}
           onConfirm={beginExam}
           onCancel={() => setShowInstructions(false)}
           loading={startingExam}

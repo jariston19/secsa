@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import { formatExamTimeLimit } from "../lib/constants";
 
 interface Props {
   examType: "comprehensive" | "incoming_diagnostic" | "retake";
+  timeLimitMinutes: number;
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
@@ -11,6 +13,7 @@ interface Props {
 
 export default function ExamInstructionsModal({
   examType,
+  timeLimitMinutes,
   onConfirm,
   onCancel,
   loading = false,
@@ -46,8 +49,8 @@ export default function ExamInstructionsModal({
             </li>
             <li>Questions are presented in a <strong>random order</strong> unique to you.</li>
             <li>
-              You have <strong>1 minute per question</strong>. Total time = number of questions × 1
-              minute. The exam <strong>auto-submits</strong> when time runs out.
+              You have <strong>{formatExamTimeLimit(timeLimitMinutes)}</strong> to complete this
+              exam. It <strong>auto-submits</strong> when time runs out.
             </li>
             <li>
               Answer <strong>all questions</strong> before submitting early. Unanswered items count

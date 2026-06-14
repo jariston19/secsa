@@ -26,6 +26,7 @@ const createSetSchema = z.object({
   type: z.nativeEnum(QuestionSetType),
   totalItems: z.number().int().min(1),
   passThreshold: z.number().min(0).max(100).optional(),
+  timeLimitMinutes: z.number().int().min(1).max(480),
   configs: z.array(configSchema).min(1),
 });
 
@@ -33,6 +34,7 @@ const updateSetSchema = z.object({
   name: z.string().min(1),
   totalItems: z.number().int().min(1),
   passThreshold: z.number().min(0).max(100).optional(),
+  timeLimitMinutes: z.number().int().min(1).max(480),
   configs: z.array(configSchema).min(1),
 });
 
@@ -167,6 +169,7 @@ export async function questionSetRoutes(app: FastifyInstance) {
         type: body.type,
         totalItems: body.totalItems,
         passThreshold: body.passThreshold ?? 75,
+        timeLimitMinutes: body.timeLimitMinutes,
         createdById: user.id,
         configs: {
           create: body.configs.map((c) => ({
@@ -227,6 +230,7 @@ export async function questionSetRoutes(app: FastifyInstance) {
           name: body.name,
           totalItems: body.totalItems,
           passThreshold: body.passThreshold ?? existing.passThreshold,
+          timeLimitMinutes: body.timeLimitMinutes,
           configs: {
             create: body.configs.map((c) => ({
               subjectId: c.subjectId,

@@ -5216,6 +5216,26 @@ td:has(.action-buttons) {
   grid-row: 2;
 }
 
+.build-set-meta-time {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.build-set-time-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 6rem) minmax(0, 6rem);
+  gap: 0.65rem;
+}
+
+.build-set-time-inputs label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  color: var(--ios-label-secondary);
+}
+
 .build-set-details-bar {
   display: flex;
   flex-wrap: wrap;

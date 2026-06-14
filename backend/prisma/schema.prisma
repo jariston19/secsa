@@ -154,6 +154,7 @@ model QuestionSet {
   status        QuestionSetStatus @default(DRAFT)
   totalItems    Int
   passThreshold Float             @default(75)
+  timeLimitMinutes Int            @default(60)
   createdById   String
   deployedAt    DateTime?
   createdAt     DateTime          @default(now())
