@@ -4,7 +4,7 @@ import { Role } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
-import { programCourseSchema } from "../lib/programCourse.js";
+import { programCourseSlugSchema, assertActiveProgramSlug } from "../lib/programCourse.js";
 import { yearLevelSchema } from "../lib/yearLevel.js";
 
 const createUserSchema = z.object({
@@ -14,7 +14,7 @@ const createUserSchema = z.object({
   lastName: z.string().min(1),
   role: z.nativeEnum(Role),
   yearLevel: yearLevelSchema.optional(),
-  programCourse: programCourseSchema.optional(),
+  programCourse: programCourseSlugSchema.optional(),
   qaUnlimited: z.boolean().optional(),
 });
 
@@ -25,7 +25,7 @@ const updateUserSchema = z.object({
   lastName: z.string().min(1).optional(),
   role: z.nativeEnum(Role).optional(),
   yearLevel: yearLevelSchema.optional().nullable(),
-  programCourse: programCourseSchema.optional().nullable(),
+  programCourse: programCourseSlugSchema.optional().nullable(),
   isActive: z.boolean().optional(),
   qaUnlimited: z.boolean().optional(),
 });
@@ -90,6 +90,10 @@ export async function userRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "Students require a program course." });
     }
 
+    if (nextRole === Role.STUDENT && nextProgramCourse) {
+      await assertActiveProgramSlug(nextProgramCourse);
+    }
+
     if (body.isActive === false && id === user.id) {
       return reply.code(400).send({ error: "You cannot deactivate your own account." });
     }
@@ -130,6 +134,10 @@ export async function userRoutes(app: FastifyInstance) {
 
     if (body.role === Role.STUDENT && !body.programCourse) {
       return reply.code(400).send({ error: "Students require a program course." });
+    }
+
+    if (body.role === Role.STUDENT && body.programCourse) {
+      await assertActiveProgramSlug(body.programCourse);
     }
 
     const passwordHash = await bcrypt.hash(body.password, 10);

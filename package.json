@@ -7,7 +7,10 @@
     "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
     "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
     "db:migrate": "npm run db:migrate --workspace=backend",
-    "db:seed": "npm run db:seed --workspace=backend"
+    "db:seed": "npm run db:seed --workspace=backend",
+    "db:seed-analytics": "npm run db:seed-analytics --workspace=backend",
+    "db:seed-demo": "npm run db:seed-demo --workspace=backend",
+    "db:reset-content": "npm run db:reset-content --workspace=backend"
   },
   "workspaces": [
     "backend",

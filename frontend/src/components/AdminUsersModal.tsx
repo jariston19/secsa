@@ -11,10 +11,9 @@ import { compareByName, formatFullName } from "../lib/names";
 import { DEFAULT_PROGRAM_COURSE } from "../lib/programCourse";
 import { toastDeleted, toastUpdated } from "../lib/toastMessages";
 
-type RoleTab = "all" | "students" | "teachers" | "admins";
+type RoleTab = "students" | "teachers" | "admins";
 
 const ROLE_SEGMENTS = [
-  { id: "all", label: "All" },
   { id: "students", label: "Students" },
   { id: "teachers", label: "Teachers" },
   { id: "admins", label: "Admin" },
@@ -27,30 +26,30 @@ const STUDENT_YEAR_SEGMENTS = [
   { id: "4", label: "Fourth Year" },
 ] as const;
 
-const ROLE_ORDER: Record<UserRow["role"], number> = {
-  STUDENT: 0,
-  TEACHER: 1,
-  SUPERADMIN: 2,
-};
-
 interface Props {
   token: string | null;
-  onClose: () => void;
+  onClose?: () => void;
   onUpdated: (message: string, isError?: boolean) => void;
+  inline?: boolean;
 }
 
-export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
+export default function AdminUsersModal({
+  token,
+  onClose,
+  onUpdated,
+  inline = false,
+}: Props) {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [roleTab, setRoleTab] = useState<RoleTab>("all");
+  const [roleTab, setRoleTab] = useState<RoleTab>("students");
   const [studentYearTab, setStudentYearTab] = useState("1");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<UserEditDraft | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
 
   async function loadUsers() {
     setLoading(true);
@@ -81,22 +80,12 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
     () => users.filter((u) => u.role === "SUPERADMIN").sort(compareByName),
     [users]
   );
-  const allUsers = useMemo(
-    () =>
-      [...users].sort((a, b) => {
-        const roleDiff = ROLE_ORDER[a.role] - ROLE_ORDER[b.role];
-        return roleDiff !== 0 ? roleDiff : compareByName(a, b);
-      }),
-    [users]
-  );
-
   const visibleUsers = useMemo(() => {
-    if (roleTab === "all") return allUsers;
     if (roleTab === "teachers") return teachers;
     if (roleTab === "admins") return admins;
     const year = Number(studentYearTab);
     return students.filter((user) => user.yearLevel === year);
-  }, [roleTab, studentYearTab, allUsers, teachers, admins, students]);
+  }, [roleTab, studentYearTab, teachers, admins, students]);
 
   const usersResetKey = `${roleTab}-${studentYearTab}-${visibleUsers.length}`;
   const {
@@ -110,7 +99,6 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
   } = usePagination(visibleUsers, { resetKey: usersResetKey });
 
   const tableGroup = useMemo(() => {
-    if (roleTab === "all") return "all" as const;
     if (roleTab === "students") return "student" as const;
     if (roleTab === "teachers") return "teacher" as const;
     return "admin" as const;
@@ -132,8 +120,7 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
   function handleRoleTabChange(next: string) {
     const tab = next as RoleTab;
     setRoleTab(tab);
-    if (tab === "all") cancelEditIfHidden(allUsers);
-    else if (tab === "teachers") cancelEditIfHidden(teachers);
+    if (tab === "teachers") cancelEditIfHidden(teachers);
     else if (tab === "admins") cancelEditIfHidden(admins);
     else {
       const year = Number(studentYearTab);
@@ -269,42 +256,47 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
           ? "No admin accounts."
           : "No accounts found.";
 
-  return portal(
-    <div className={overlayClass} onClick={requestClose}>
-      <div className={panelClass("admin-users-modal")} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2>Users</h2>
-            <p className="muted">
-              Browse by role and year. Leave password blank when editing to keep the current
-              password.
-            </p>
-          </div>
-          <button type="button" className="btn secondary" onClick={requestClose}>
-            Close
-          </button>
+  const panel = (
+    <>
+      <div className={inline ? "saved-panel-header" : "modal-header"}>
+        <div>
+          <h2>Manage Users</h2>
+          <p className="muted section-desc">
+            Browse by role and year. Leave password blank when editing to keep the current
+            password.
+          </p>
         </div>
-
-        <div className="admin-users-modal-nav">
-          <SegmentedControl segments={[...ROLE_SEGMENTS]} value={roleTab} onChange={handleRoleTabChange} />
-          {roleTab === "students" && (
-            <div className="admin-users-modal-subnav">
-              <SegmentedControl
-                segments={[...STUDENT_YEAR_SEGMENTS]}
-                value={studentYearTab}
-                onChange={handleStudentYearChange}
-              />
-            </div>
+        <div className="saved-panel-header-end">
+          <span className="muted saved-panel-count">{loading ? "Loading..." : countLabel}</span>
+          {!inline && (
+            <button type="button" className="btn secondary" onClick={requestClose}>
+              Close
+            </button>
           )}
-          <span className="muted admin-users-modal-count">{countLabel}</span>
         </div>
+      </div>
 
-        <div className="admin-users-modal-body">
-          {loading ? (
-            <p className="muted">Loading users...</p>
-          ) : (
-            <>
+      <div className="admin-users-modal-nav">
+        <SegmentedControl segments={[...ROLE_SEGMENTS]} value={roleTab} onChange={handleRoleTabChange} />
+        {roleTab === "students" && (
+          <div className="admin-users-modal-subnav">
+            <SegmentedControl
+              segments={[...STUDENT_YEAR_SEGMENTS]}
+              value={studentYearTab}
+              onChange={handleStudentYearChange}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="admin-users-modal-body">
+        {loading ? (
+          <p className="muted">Loading users...</p>
+        ) : (
+          <>
+            <div className="admin-users-toolbar">
               <ModalPagination
+                variant="inline"
                 page={page}
                 totalPages={totalPages}
                 pageStart={pageStart}
@@ -312,27 +304,39 @@ export default function AdminUsersModal({ token, onClose, onUpdated }: Props) {
                 totalItems={totalItems}
                 onPageChange={setPage}
               />
-              <AdminUserGroupTable
-                users={paginatedUsers}
-                group={tableGroup}
-                hideYearColumn={roleTab === "students"}
-                emptyMessage={emptyMessage}
-                editingId={editingId}
-                editDraft={editDraft}
-                savingId={savingId}
-                deletingId={deletingId}
-                togglingId={togglingId}
-                currentUserId={currentUser?.id ?? null}
-                onStartEdit={startEdit}
-                onCancelEdit={cancelEdit}
-                onSaveEdit={saveEdit}
-                onDelete={deleteUser}
-                onToggleActive={toggleActive}
-                setEditDraft={setEditDraft}
-              />
-            </>
-          )}
-        </div>
+            </div>
+            <AdminUserGroupTable
+              users={paginatedUsers}
+              group={tableGroup}
+              hideYearColumn={roleTab === "students"}
+              emptyMessage={emptyMessage}
+              editingId={editingId}
+              editDraft={editDraft}
+              savingId={savingId}
+              deletingId={deletingId}
+              togglingId={togglingId}
+              currentUserId={currentUser?.id ?? null}
+              onStartEdit={startEdit}
+              onCancelEdit={cancelEdit}
+              onSaveEdit={saveEdit}
+              onDelete={deleteUser}
+              onToggleActive={toggleActive}
+              setEditDraft={setEditDraft}
+            />
+          </>
+        )}
+      </div>
+    </>
+  );
+
+  if (inline) {
+    return <section className="card saved-panel admin-users-modal">{panel}</section>;
+  }
+
+  return portal(
+    <div className={overlayClass} onClick={requestClose}>
+      <div className={panelClass("admin-users-modal")} onClick={(e) => e.stopPropagation()}>
+        {panel}
       </div>
     </div>
   );

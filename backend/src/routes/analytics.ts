@@ -1,14 +1,19 @@
 import type { FastifyInstance } from "fastify";
 import { AttemptType, Role } from "@prisma/client";
+import { parseProgramCourseQuery } from "../lib/programCourse.js";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import {
   nonQaAnswerWhere,
-  nonQaExamAttemptWhere,
   nonQaStudentWhere,
   nonQaSubmittedExamWhere,
 } from "../lib/studentFilters.js";
-import { buildAnalyticsReports, buildStudentAnalyticsReport } from "../services/analyticsReports.js";
+import {
+  buildIndividualStudentAnalytics,
+  searchStudentsForAnalytics,
+} from "../services/individualStudentAnalytics.js";
+import { buildAnalyticsReports } from "../services/analyticsReports.js";
+import { buildOverviewDashboard } from "../services/overviewDashboard.js";
 export async function analyticsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate);
 
@@ -22,33 +27,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
 
     const yearLevel = parseYearLevelQuery((request.query as { yearLevel?: string }).yearLevel);
-    const attemptFilter = nonQaExamAttemptWhere(yearLevel);
-
-    const [students, submittedAttempts, firstTakers, retakers, passed, failed] =
-      await Promise.all([
-        prisma.user.count({ where: nonQaStudentWhere(yearLevel) }),
-        prisma.examAttempt.count({ where: { ...attemptFilter, submittedAt: { not: null } } }),
-        prisma.examAttempt.count({ where: { ...attemptFilter, attemptType: AttemptType.FIRST, submittedAt: { not: null } } }),
-        prisma.examAttempt.count({ where: { ...attemptFilter, attemptType: AttemptType.RETAKE, submittedAt: { not: null } } }),
-        prisma.examAttempt.count({ where: { ...attemptFilter, passed: true } }),
-        prisma.examAttempt.count({ where: { ...attemptFilter, passed: false } }),
-      ]);
-
-    const avgScore = await prisma.examAttempt.aggregate({
-      where: { ...attemptFilter, submittedAt: { not: null } },
-      _avg: { percentage: true },
-    });
-
-    return {
-      students,
-      examsTaken: submittedAttempts,
-      firstTakers,
-      retakers,
-      passed,
-      failed,
-      passRate: submittedAttempts > 0 ? (passed / submittedAttempts) * 100 : 0,
-      averageScore: avgScore._avg.percentage ?? 0,
-    };
+    return buildOverviewDashboard(yearLevel);
   });
 
   app.get("/questions", async (request) => {
@@ -308,8 +287,40 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const user = getUser(request);
     requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
 
-    const { yearLevel: yearLevelRaw } = request.query as { yearLevel?: string };
-    return buildAnalyticsReports(parseYearLevelQuery(yearLevelRaw));
+    const { yearLevel: yearLevelRaw, programCourse: programCourseRaw } = request.query as {
+      yearLevel?: string;
+      programCourse?: string;
+    };
+    return buildAnalyticsReports({
+      yearLevel: parseYearLevelQuery(yearLevelRaw),
+      programCourse: await parseProgramCourseQuery(programCourseRaw),
+    });
+  });
+
+  app.get("/students/search", async (request) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
+
+    const { q = "", yearLevel: yearLevelRaw, programCourse: programCourseRaw } = request.query as {
+      q?: string;
+      yearLevel?: string;
+      programCourse?: string;
+    };
+    const students = await searchStudentsForAnalytics(q, {
+      yearLevel: parseYearLevelQuery(yearLevelRaw),
+      programCourse: await parseProgramCourseQuery(programCourseRaw),
+    });
+    return { students };
+  });
+
+  app.get("/students/:studentId", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
+
+    const { studentId } = request.params as { studentId: string };
+    const report = await buildIndividualStudentAnalytics(studentId);
+    if (!report) return reply.code(404).send({ error: "Student not found." });
+    return report;
   });
 
   app.get("/reports/student/:studentId", async (request, reply) => {
@@ -317,7 +328,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
 
     const { studentId } = request.params as { studentId: string };
-    const report = await buildStudentAnalyticsReport(studentId);
+    const report = await buildIndividualStudentAnalytics(studentId);
     if (!report) return reply.code(404).send({ error: "Student not found." });
     return report;
   });

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import { uploadDir } from "../lib/paths.js";
-import { programCourseSchema } from "../lib/programCourse.js";
+import { programCourseSlugSchema, assertActiveProgramSlugs } from "../lib/programCourse.js";
 import {
   programCoursesSchema,
   subjectProgramCoursesInclude,
@@ -47,7 +47,7 @@ export async function subjectRoutes(app: FastifyInstance) {
         ...(programCourseRaw
           ? {
               programCourses: {
-                some: { programCourse: programCourseSchema.parse(programCourseRaw) },
+                some: { programCourse: programCourseSlugSchema.parse(programCourseRaw) },
               },
             }
           : {}),
@@ -68,6 +68,7 @@ export async function subjectRoutes(app: FastifyInstance) {
     requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
 
     const body = subjectSchema.parse(request.body);
+    await assertActiveProgramSlugs(body.programCourses);
     const existing = await prisma.subject.findUnique({
       where: {
         courseCode_yearLevel: {
@@ -135,6 +136,7 @@ export async function subjectRoutes(app: FastifyInstance) {
 
     const { id } = request.params as { id: string };
     const body = subjectSchema.parse(request.body);
+    await assertActiveProgramSlugs(body.programCourses);
 
     const existing = await prisma.subject.findUnique({ where: { id } });
     if (!existing) return reply.code(404).send({ error: "Subject not found." });

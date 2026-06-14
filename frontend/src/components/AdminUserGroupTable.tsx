@@ -2,10 +2,10 @@ import { Fragment } from "react";
 import { parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import {
   DEFAULT_PROGRAM_COURSE,
-  PROGRAM_COURSES,
   abbreviateProgramCourse,
   formatProgramCourse,
 } from "../lib/programCourse";
+import { useProgramCourseOptions } from "../lib/programs";
 
 export interface UserRow {
   id: string;
@@ -31,7 +31,7 @@ export interface UserEditDraft {
   password: string;
 }
 
-type UserGroup = "all" | "student" | "teacher" | "admin";
+type UserGroup = "student" | "teacher" | "admin";
 
 interface Props {
   users: UserRow[];
@@ -74,6 +74,8 @@ function UserEditFields({
   showCourseFields: boolean;
   showQaFields: boolean;
 }) {
+  const programCourseOptions = useProgramCourseOptions();
+
   return (
     <div className="admin-user-edit-fields">
       {showRole && (
@@ -138,7 +140,7 @@ function UserEditFields({
                 )
               }
             >
-              {PROGRAM_COURSES.map((course) => (
+              {programCourseOptions.map((course) => (
                 <option key={course.id} value={course.id}>
                   {course.label}
                 </option>
@@ -200,10 +202,11 @@ export default function AdminUserGroupTable({
   onToggleActive,
   setEditDraft,
 }: Props) {
-  const showYearColumn = (group === "all" || group === "student") && !hideYearColumn;
-  const showCourseColumn = group === "all" || group === "student";
-  const showQaColumn = group === "all" || group === "student";
-  const showRoleColumn = group === "all";
+  const programCourseOptions = useProgramCourseOptions();
+  const showYearColumn = group === "student" && !hideYearColumn;
+  const showCourseColumn = group === "student";
+  const showQaColumn = group === "student";
+  const showRoleColumn = false;
   const showActiveColumn = group !== "admin";
   const colSpan =
     3 +
@@ -354,7 +357,7 @@ export default function AdminUserGroupTable({
                             )
                           }
                         >
-                          {PROGRAM_COURSES.map((course) => (
+                          {programCourseOptions.map((course) => (
                             <option key={course.id} value={course.id}>
                               {course.abbr}
                             </option>

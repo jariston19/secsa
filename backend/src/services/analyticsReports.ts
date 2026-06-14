@@ -2,6 +2,7 @@ import { Role } from "@prisma/client";
 import { formatFullName } from "../lib/names.js";
 import { nonQaStudentWhere, nonQaSubmittedExamWhere } from "../lib/studentFilters.js";
 import { prisma } from "../lib/prisma.js";
+import { countStudentsInScoreBuckets } from "../lib/scoreBuckets.js";
 
 const PASS_THRESHOLD = 75;
 const STRONG_THRESHOLD = 80;
@@ -12,6 +13,114 @@ const TOO_HARD_THRESHOLD = 20;
 const MIN_AREA_ATTEMPTS = 3;
 
 type YearFilter = number | undefined;
+
+export interface AnalyticsReportFilters {
+  yearLevel?: YearFilter;
+  programCourse?: string;
+}
+
+export interface CohortSummary {
+  programCourse: string;
+  yearLevel: number;
+  studentsAssessed: number;
+  examsTaken: number;
+  passRate: number;
+  averageScore: number;
+  readinessLevel: string;
+}
+
+function cohortKey(programCourse: string, yearLevel: number) {
+  return `${programCourse}::${yearLevel}`;
+}
+
+async function buildCohortSummaries(yearLevel?: YearFilter): Promise<CohortSummary[]> {
+  const attempts = await prisma.examAttempt.findMany({
+    where: {
+      submittedAt: { not: null },
+      student: {
+        role: Role.STUDENT,
+        qaUnlimited: false,
+        programCourse: { not: null },
+        yearLevel: { not: null },
+        ...(Number.isFinite(yearLevel) ? { yearLevel } : {}),
+      },
+    },
+    include: {
+      student: { select: { id: true, programCourse: true, yearLevel: true } },
+    },
+    orderBy: [{ studentId: "asc" }, { submittedAt: "desc" }],
+  });
+
+  const latestAttemptByStudent = new Map<string, (typeof attempts)[number]>();
+  for (const attempt of attempts) {
+    if (!latestAttemptByStudent.has(attempt.studentId)) {
+      latestAttemptByStudent.set(attempt.studentId, attempt);
+    }
+  }
+
+  const cohorts = new Map<
+    string,
+    {
+      programCourse: string;
+      yearLevel: number;
+      latestScores: number[];
+      examsTaken: number;
+      passedAttempts: number;
+    }
+  >();
+
+  for (const attempt of attempts) {
+    const programCourse = attempt.student.programCourse;
+    const studentYear = attempt.student.yearLevel;
+    if (!programCourse || !studentYear) continue;
+
+    const key = cohortKey(programCourse, studentYear);
+    if (!cohorts.has(key)) {
+      cohorts.set(key, {
+        programCourse,
+        yearLevel: studentYear,
+        latestScores: [],
+        examsTaken: 0,
+        passedAttempts: 0,
+      });
+    }
+
+    const row = cohorts.get(key)!;
+    row.examsTaken += 1;
+    if (attempt.passed) row.passedAttempts += 1;
+  }
+
+  for (const attempt of latestAttemptByStudent.values()) {
+    const programCourse = attempt.student.programCourse;
+    const studentYear = attempt.student.yearLevel;
+    if (!programCourse || !studentYear || attempt.percentage == null) continue;
+
+    const row = cohorts.get(cohortKey(programCourse, studentYear));
+    if (row) row.latestScores.push(attempt.percentage);
+  }
+
+  return [...cohorts.values()]
+    .map((row) => {
+      const averageScore =
+        row.latestScores.length > 0
+          ? row.latestScores.reduce((sum, value) => sum + value, 0) / row.latestScores.length
+          : 0;
+
+      return {
+        programCourse: row.programCourse,
+        yearLevel: row.yearLevel,
+        studentsAssessed: row.latestScores.length,
+        examsTaken: row.examsTaken,
+        passRate: row.examsTaken > 0 ? (row.passedAttempts / row.examsTaken) * 100 : 0,
+        averageScore,
+        readinessLevel: readinessLevel(averageScore),
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.programCourse.localeCompare(b.programCourse) || a.yearLevel - b.yearLevel
+    );
+}
 
 function median(values: number[]) {
   if (values.length === 0) return 0;
@@ -36,13 +145,15 @@ function pct(correct: number, total: number) {
   return total > 0 ? (correct / total) * 100 : 0;
 }
 
-export async function buildAnalyticsReports(yearLevel?: YearFilter) {
-  const studentFilter = nonQaStudentWhere(yearLevel);
+export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}) {
+  const { yearLevel, programCourse } = filters;
+  const studentFilter = nonQaStudentWhere(yearLevel, programCourse);
 
-  const [answers, attempts, questions, students] = await Promise.all([
+  const [answers, attempts, questions, students, startedAttempts, cohortSummaries] =
+    await Promise.all([
     prisma.examAnswer.findMany({
       where: {
-        examAttempt: nonQaSubmittedExamWhere(yearLevel),
+        examAttempt: nonQaSubmittedExamWhere(yearLevel, programCourse),
       },
       include: {
         question: {
@@ -62,7 +173,7 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
       },
     }),
     prisma.examAttempt.findMany({
-      where: nonQaSubmittedExamWhere(yearLevel),
+      where: nonQaSubmittedExamWhere(yearLevel, programCourse),
       include: {
         student: { select: { id: true, firstName: true, lastName: true, yearLevel: true } },
         questionSet: { select: { passThreshold: true } },
@@ -80,6 +191,12 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
       where: studentFilter,
       select: { id: true, firstName: true, lastName: true, yearLevel: true },
     }),
+    prisma.examAttempt.count({
+      where: {
+        student: studentFilter,
+      },
+    }),
+    programCourse ? Promise.resolve([]) : buildCohortSummaries(yearLevel),
   ]);
 
   const attemptPercentages = attempts
@@ -96,6 +213,13 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
       ? attempts.reduce((sum, attempt) => sum + attempt.questionSet.passThreshold, 0) /
         attempts.length
       : PASS_THRESHOLD;
+
+  const passRate =
+    attempts.length > 0
+      ? (attempts.filter((attempt) => attempt.passed).length / attempts.length) * 100
+      : 0;
+  const completionRate =
+    startedAttempts > 0 ? (attempts.length / startedAttempts) * 100 : 0;
 
   const subjectStats = new Map<
     string,
@@ -118,6 +242,17 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
     ["MEDIUM", { total: 0, correct: 0 }],
     ["HARD", { total: 0, correct: 0 }],
   ]);
+  const topicDifficultyStats = new Map<
+    string,
+    {
+      topicId: string;
+      topic: string;
+      subject: string;
+      difficulty: string;
+      total: number;
+      correct: number;
+    }
+  >();
   const questionStats = new Map<
     string,
     {
@@ -130,7 +265,6 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
       total: number;
       correct: number;
       incorrect: number;
-      skipped: number;
       optionCounts: Record<string, number>;
       timeTotal: number;
       timeCount: number;
@@ -144,6 +278,8 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
   const studentTopicStats = new Map<string, Map<string, { total: number; correct: number }>>();
 
   for (const answer of answers) {
+    if (!answer.selectedOption) continue;
+
     const subjectId = answer.question.subject.id;
     const subjectLabel = `${answer.question.subject.courseCode} ${answer.question.subject.courseTitle}`;
     const topicId = answer.question.topic?.id ?? `${subjectId}-general`;
@@ -180,6 +316,21 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
     diffRow.total += 1;
     if (answer.isCorrect) diffRow.correct += 1;
 
+    const topicDifficultyKey = `${topicId}-${difficulty}`;
+    if (!topicDifficultyStats.has(topicDifficultyKey)) {
+      topicDifficultyStats.set(topicDifficultyKey, {
+        topicId,
+        topic: topicLabel,
+        subject: subjectLabel,
+        difficulty,
+        total: 0,
+        correct: 0,
+      });
+    }
+    const topicDifficultyRow = topicDifficultyStats.get(topicDifficultyKey)!;
+    topicDifficultyRow.total += 1;
+    if (answer.isCorrect) topicDifficultyRow.correct += 1;
+
     const studentId = answer.examAttempt.studentId;
     if (!studentSubjectStats.has(studentId)) studentSubjectStats.set(studentId, new Map());
     if (!studentSubjectStats.get(studentId)!.has(subjectId)) {
@@ -209,7 +360,6 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
         total: 0,
         correct: 0,
         incorrect: 0,
-        skipped: 0,
         optionCounts: { A: 0, B: 0, C: 0, D: 0 },
         timeTotal: 0,
         timeCount: 0,
@@ -221,22 +371,17 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
     }
     const questionRow = questionStats.get(questionId)!;
     questionRow.total += 1;
+    questionRow.optionCounts[answer.selectedOption] += 1;
+    if (answer.isCorrect) questionRow.correct += 1;
+    else questionRow.incorrect += 1;
 
-    if (!answer.selectedOption) {
-      questionRow.skipped += 1;
+    const attemptPct = answer.examAttempt.percentage ?? 0;
+    if (attemptPct >= scoreMedian) {
+      questionRow.highTotal += 1;
+      if (answer.isCorrect) questionRow.highCorrect += 1;
     } else {
-      questionRow.optionCounts[answer.selectedOption] += 1;
-      if (answer.isCorrect) questionRow.correct += 1;
-      else questionRow.incorrect += 1;
-
-      const attemptPct = answer.examAttempt.percentage ?? 0;
-      if (attemptPct >= scoreMedian) {
-        questionRow.highTotal += 1;
-        if (answer.isCorrect) questionRow.highCorrect += 1;
-      } else {
-        questionRow.lowTotal += 1;
-        if (answer.isCorrect) questionRow.lowCorrect += 1;
-      }
+      questionRow.lowTotal += 1;
+      if (answer.isCorrect) questionRow.lowCorrect += 1;
     }
 
     if (answer.timeSpentSeconds != null) {
@@ -244,6 +389,44 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
       questionRow.timeCount += 1;
     }
   }
+
+  const topicDifficultyMatrix = [...topicDifficultyStats.values()]
+    .map((row) => ({
+      topicId: row.topicId,
+      topic: row.topic,
+      subject: row.subject,
+      difficulty: row.difficulty,
+      score: pct(row.correct, row.total),
+      total: row.total,
+      correct: row.correct,
+      tone: scoreTone(pct(row.correct, row.total)),
+    }))
+    .sort((a, b) => a.topic.localeCompare(b.topic));
+
+  const atRiskByTopicMap = new Map<
+    string,
+    { topicId: string; topic: string; subject: string; count: number }
+  >();
+  for (const [, topicMap] of studentTopicStats) {
+    for (const [topicId, row] of topicMap) {
+      if (row.total < MIN_AREA_ATTEMPTS || pct(row.correct, row.total) >= AT_RISK_THRESHOLD) {
+        continue;
+      }
+
+      const topicMeta = topicStats.get(topicId);
+      if (!atRiskByTopicMap.has(topicId)) {
+        atRiskByTopicMap.set(topicId, {
+          topicId,
+          topic: topicMeta?.topic ?? "General",
+          subject: topicMeta?.subject ?? "Subject",
+          count: 0,
+        });
+      }
+      atRiskByTopicMap.get(topicId)!.count += 1;
+    }
+  }
+
+  const atRiskByTopic = [...atRiskByTopicMap.values()].sort((a, b) => b.count - a.count);
 
   const bySubject = [...subjectStats.values()]
     .map((row) => ({
@@ -369,20 +552,9 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
     }
   }
 
-  const readinessBuckets = [
-    { label: "90–100%", min: 90, max: 100 },
-    { label: "80–89%", min: 80, max: 89.99 },
-    { label: "70–79%", min: 70, max: 79.99 },
-    { label: "60–69%", min: 60, max: 69.99 },
-    { label: "Below 60%", min: 0, max: 59.99 },
-  ].map((bucket) => {
-    const count = [...latestAttemptByStudent.values()].filter((attempt) => {
-      const score = attempt.percentage ?? 0;
-      return score >= bucket.min && score <= bucket.max;
-    }).length;
-
-    return { ...bucket, students: count };
-  });
+  const readinessBuckets = countStudentsInScoreBuckets(
+    [...latestAttemptByStudent.values()].map((attempt) => attempt.percentage ?? 0)
+  );
 
   const atRiskStudents = students
     .map((student) => {
@@ -496,6 +668,7 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
         text: row.text,
         subject: row.subject,
         topic: row.topic,
+        difficulty: row.difficulty,
         correctRate: pct(row.correct, row.total),
         avgTimeSeconds: row.timeCount > 0 ? Math.round(row.timeTotal / row.timeCount) : null,
         discriminationIndex,
@@ -504,6 +677,67 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
     })
     .sort((a, b) => (a.discriminationIndex ?? 0) - (b.discriminationIndex ?? 0));
 
+  const timeCorrectnessSamples = answers
+    .filter((answer) => answer.selectedOption && answer.timeSpentSeconds != null)
+    .map((answer) => ({
+      timeSeconds: answer.timeSpentSeconds!,
+      correct: Boolean(answer.isCorrect),
+      difficulty: answer.question.difficulty,
+    }))
+    .slice(0, 400);
+
+  const topicCoverageMap = new Map<
+    string,
+    { topicId: string; topic: string; subject: string; easy: number; medium: number; hard: number }
+  >();
+  for (const question of questions) {
+    const subjectLabel = `${question.subject.courseCode} ${question.subject.courseTitle}`;
+    const topicId = question.topic?.id ?? `${question.subject.id}-general`;
+    const topicLabel = question.topic?.name ?? "General";
+    if (!topicCoverageMap.has(topicId)) {
+      topicCoverageMap.set(topicId, {
+        topicId,
+        topic: topicLabel,
+        subject: subjectLabel,
+        easy: 0,
+        medium: 0,
+        hard: 0,
+      });
+    }
+    const row = topicCoverageMap.get(topicId)!;
+    if (question.difficulty === "EASY") row.easy += 1;
+    else if (question.difficulty === "MEDIUM") row.medium += 1;
+    else row.hard += 1;
+  }
+
+  const topicCoverageMatrix = [...topicCoverageMap.values()].sort((a, b) =>
+    a.topic.localeCompare(b.topic)
+  );
+
+  const questionTimeBars = [...questionStats.values()]
+    .filter((row) => row.timeCount > 0)
+    .map((row) => ({
+      questionId: row.questionId,
+      label: truncateQuestionLabel(row.text),
+      avgTimeSeconds: Math.round(row.timeTotal / row.timeCount),
+    }))
+    .sort((a, b) => b.avgTimeSeconds - a.avgTimeSeconds)
+    .slice(0, 12);
+
+  const passFail = {
+    passed: attempts.filter((attempt) => attempt.passed).length,
+    failed: attempts.filter((attempt) => attempt.passed === false).length,
+  };
+
+  const scorePercentiles =
+    attemptPercentages.length > 0
+      ? {
+          min: Math.min(...attemptPercentages),
+          max: Math.max(...attemptPercentages),
+          avg: overallScore,
+        }
+      : { min: 0, max: 0, avg: 0 };
+
   return {
     readiness: {
       overallScore,
@@ -511,10 +745,14 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
       readinessLevel: readinessLevel(overallScore, avgThreshold),
       studentsAssessed: latestAttemptByStudent.size,
       examsTaken: attempts.length,
+      passRate,
+      completionRate,
     },
     bySubject,
     byTopic,
     byDifficulty,
+    topicDifficultyMatrix,
+    atRiskByTopic,
     knowledgeGaps: {
       strongAreas,
       weakAreas,
@@ -533,7 +771,17 @@ export async function buildAnalyticsReports(yearLevel?: YearFilter) {
     questionInventory,
     usageFrequency: usageFrequency.slice(0, 20),
     questionReliability,
+    timeCorrectnessSamples,
+    topicCoverageMatrix,
+    questionTimeBars,
+    passFail,
+    scorePercentiles,
+    cohortSummaries,
   };
+}
+
+function truncateQuestionLabel(text: string) {
+  return text.length > 48 ? `${text.slice(0, 48)}…` : text;
 }
 
 export async function buildStudentAnalyticsReport(studentId: string) {
@@ -546,7 +794,7 @@ export async function buildStudentAnalyticsReport(studentId: string) {
     return null;
   }
 
-  const fullReport = await buildAnalyticsReports(student.yearLevel ?? undefined);
+  const fullReport = await buildAnalyticsReports({ yearLevel: student.yearLevel ?? undefined });
 
   const attempts = await prisma.examAttempt.findMany({
     where: { studentId, submittedAt: { not: null } },

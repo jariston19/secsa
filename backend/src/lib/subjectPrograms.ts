@@ -1,14 +1,11 @@
-import { ProgramCourse } from "@prisma/client";
 import { z } from "zod";
-import { programCourseSchema } from "./programCourse.js";
+import { programCoursesSchema } from "./programCourse.js";
 
-export const programCoursesSchema = z
-  .array(programCourseSchema)
-  .min(1, "Select at least one program course.");
+export { programCoursesSchema };
 
 export function subjectIncludesProgram(
-  programCourses: Array<{ programCourse: ProgramCourse }>,
-  programCourse: ProgramCourse
+  programCourses: Array<{ programCourse: string }>,
+  programCourse: string
 ) {
   return programCourses.some((link) => link.programCourse === programCourse);
 }

@@ -4,12 +4,12 @@ import { api } from "../lib/api";
 import { curriculumYearForStudentYear, parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import { toastCreated, toastUpdated } from "../lib/toastMessages";
 import {
-  PROGRAM_COURSES,
   abbreviateProgramCourse,
   formatProgramCourse,
   subjectHasProgram,
   type ProgramCourseId,
 } from "../lib/programCourse";
+import { useProgramCourseOptions } from "../lib/programs";
 
 interface Subject {
   id: string;
@@ -112,6 +112,7 @@ export default function BuildQuestionSetModal({
   onClose,
   onCreated,
 }: Props) {
+  const programCourseOptions = useProgramCourseOptions();
   const isEditing = Boolean(setId);
   const [name, setName] = useState("");
   const [yearLevel, setYearLevel] = useState("2");
@@ -459,7 +460,7 @@ export default function BuildQuestionSetModal({
                 disabled={isEditing}
                 required
               >
-                {PROGRAM_COURSES.map((course) => (
+                {programCourseOptions.map((course) => (
                   <option key={course.id} value={course.id}>
                     {course.label}
                   </option>

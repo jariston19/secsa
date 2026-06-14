@@ -1,6 +1,7 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
-import { PROGRAM_COURSES, subjectHasProgram, type ProgramCourseId } from "../lib/programCourse";
+import { subjectHasProgram, type ProgramCourseId } from "../lib/programCourse";
+import { useProgramCourseOptions } from "../lib/programs";
 import { subjectLabel, toastBatchCreated, toastCreated, truncateLabel } from "../lib/toastMessages";
 
 export interface QuestionDraft {
@@ -69,6 +70,7 @@ function isComplete(q: QuestionDraft) {
 }
 
 export default function QuestionEncoder({ subjects, topics, programCourse, token, onSaved }: Props) {
+  const programCourseOptions = useProgramCourseOptions();
   const [yearLevel, setYearLevel] = useState("1");
   const [subjectId, setSubjectId] = useState("");
   const [topicId, setTopicId] = useState("");
@@ -215,7 +217,7 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
         <h2>Encode Questions</h2>
         <p className="muted section-desc">
           Pick a curriculum year level for{" "}
-          {PROGRAM_COURSES.find((c) => c.id === programCourse)?.label ?? "this program"}, then
+          {programCourseOptions.find((c) => c.id === programCourse)?.label ?? "this program"}, then
           choose the subject and optional topic for all questions below.
         </p>
         <div className="encoder-meta">

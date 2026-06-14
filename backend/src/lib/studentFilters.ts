@@ -1,28 +1,29 @@
 import { Role } from "@prisma/client";
 
-export function nonQaStudentWhere(yearLevel?: number) {
+export function nonQaStudentWhere(yearLevel?: number, programCourse?: string) {
   return {
     role: Role.STUDENT,
     qaUnlimited: false,
     ...(Number.isFinite(yearLevel) ? { yearLevel } : {}),
+    ...(programCourse ? { programCourse } : {}),
   };
 }
 
-export function nonQaExamAttemptWhere(yearLevel?: number) {
+export function nonQaExamAttemptWhere(yearLevel?: number, programCourse?: string) {
   return {
-    student: nonQaStudentWhere(yearLevel),
+    student: nonQaStudentWhere(yearLevel, programCourse),
   };
 }
 
-export function nonQaSubmittedExamWhere(yearLevel?: number) {
+export function nonQaSubmittedExamWhere(yearLevel?: number, programCourse?: string) {
   return {
     submittedAt: { not: null as Date | null },
-    ...nonQaExamAttemptWhere(yearLevel),
+    ...nonQaExamAttemptWhere(yearLevel, programCourse),
   };
 }
 
-export function nonQaAnswerWhere(yearLevel?: number) {
+export function nonQaAnswerWhere(yearLevel?: number, programCourse?: string) {
   return {
-    examAttempt: nonQaSubmittedExamWhere(yearLevel),
+    examAttempt: nonQaSubmittedExamWhere(yearLevel, programCourse),
   };
 }

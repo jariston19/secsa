@@ -13,6 +13,7 @@ import { questionRoutes } from "./routes/questions.js";
 import { questionSetRoutes } from "./routes/questionSets.js";
 import { examRoutes } from "./routes/exams.js";
 import { analyticsRoutes } from "./routes/analytics.js";
+import { programRoutes } from "./routes/programs.js";
 
 const app = Fastify({ logger: true });
 
@@ -52,6 +53,7 @@ await app.register(questionRoutes, { prefix: "/api/questions" });
 await app.register(questionSetRoutes, { prefix: "/api/question-sets" });
 await app.register(examRoutes, { prefix: "/api/exams" });
 await app.register(analyticsRoutes, { prefix: "/api/analytics" });
+await app.register(programRoutes, { prefix: "/api/programs" });
 
 const port = Number(process.env.PORT || 3001);
 await app.listen({ port, host: "0.0.0.0" });

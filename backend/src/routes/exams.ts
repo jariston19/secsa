@@ -2,7 +2,6 @@ import type { FastifyInstance } from "fastify";
 import {
   ApprovalStatus,
   AttemptType,
-  ProgramCourse,
   QuestionSetStatus,
   QuestionSetType,
   Role,
@@ -21,6 +20,11 @@ const submitSchema = z.object({
       timeSpentSeconds: z.number().int().min(0).optional(),
     })
   ),
+});
+
+const saveAnswerSchema = z.object({
+  selectedOption: z.enum(["A", "B", "C", "D"]),
+  timeSpentSeconds: z.number().int().min(1),
 });
 
 const startExamSchema = z.object({
@@ -42,7 +46,7 @@ async function getStudentProfile(userId: string) {
   return student;
 }
 
-async function getQaExamOptions(programCourse: ProgramCourse) {
+async function getQaExamOptions(programCourse: string) {
   const deployedSets = await prisma.questionSet.findMany({
     where: {
       type: QuestionSetType.DIAGNOSTIC,
@@ -235,7 +239,26 @@ export async function examRoutes(app: FastifyInstance) {
 
     if (inProgress) {
       const questions = await loadAttemptQuestions(inProgress.questionIds);
-      return { attempt: inProgress, questions };
+      const savedAnswers = await prisma.examAnswer.findMany({
+        where: { examAttemptId: inProgress.id },
+        select: {
+          questionId: true,
+          selectedOption: true,
+          timeSpentSeconds: true,
+          answerChangeCount: true,
+        },
+      });
+      const questionIds = JSON.parse(inProgress.questionIds) as string[];
+      const resumeIndex = questionIds.findIndex(
+        (id) => !savedAnswers.find((answer) => answer.questionId === id)?.selectedOption
+      );
+
+      return {
+        attempt: inProgress,
+        questions,
+        savedAnswers,
+        resumeIndex: resumeIndex === -1 ? questionIds.length - 1 : resumeIndex,
+      };
     }
 
     if (student.qaUnlimited) {
@@ -280,6 +303,8 @@ export async function examRoutes(app: FastifyInstance) {
       return reply.code(201).send({
         attempt,
         questions: selected.map(stripCorrectAnswer),
+        savedAnswers: [],
+        resumeIndex: 0,
       });
     }
 
@@ -342,7 +367,65 @@ export async function examRoutes(app: FastifyInstance) {
     return reply.code(201).send({
       attempt,
       questions: selected.map(stripCorrectAnswer),
+      savedAnswers: [],
+      resumeIndex: 0,
     });
+  });
+
+  app.patch("/:attemptId/answers/:questionId", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.STUDENT]);
+
+    const { attemptId, questionId } = request.params as {
+      attemptId: string;
+      questionId: string;
+    };
+    const body = saveAnswerSchema.parse(request.body);
+
+    const attempt = await prisma.examAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        answers: {
+          where: { questionId },
+          include: { question: true },
+        },
+      },
+    });
+
+    if (!attempt || attempt.studentId !== user.id) {
+      return reply.code(404).send({ error: "Attempt not found." });
+    }
+
+    if (attempt.submittedAt) {
+      return reply.code(400).send({ error: "Attempt already submitted." });
+    }
+
+    const existing = attempt.answers[0];
+    if (!existing) {
+      return reply.code(404).send({ error: "Question not part of this attempt." });
+    }
+
+    const answerChangeCount =
+      existing.selectedOption && existing.selectedOption !== body.selectedOption
+        ? existing.answerChangeCount + 1
+        : existing.answerChangeCount;
+
+    const updated = await prisma.examAnswer.update({
+      where: { id: existing.id },
+      data: {
+        selectedOption: body.selectedOption,
+        timeSpentSeconds: body.timeSpentSeconds,
+        answerChangeCount,
+      },
+      select: {
+        questionId: true,
+        selectedOption: true,
+        timeSpentSeconds: true,
+        answerChangeCount: true,
+      },
+    });
+
+    return { answer: updated };
   });
 
   app.post("/:attemptId/submit", async (request, reply) => {
@@ -439,6 +522,35 @@ export async function examRoutes(app: FastifyInstance) {
     });
 
     return { approvals };
+  });
+
+  app.post("/retakes/approve-batch", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const { ids } = request.body as { ids?: string[] };
+    if (!ids?.length) {
+      return reply.code(400).send({ error: "No approval IDs provided." });
+    }
+
+    const pending = await prisma.retakeApproval.findMany({
+      where: { id: { in: ids }, status: ApprovalStatus.PENDING },
+      select: { id: true },
+    });
+
+    if (pending.length === 0) {
+      return reply.code(400).send({ error: "No pending approvals found for the given IDs." });
+    }
+
+    await prisma.retakeApproval.updateMany({
+      where: { id: { in: pending.map((row) => row.id) } },
+      data: {
+        status: ApprovalStatus.APPROVED,
+        approvedById: user.id,
+      },
+    });
+
+    return { approved: pending.length };
   });
 
   app.post("/retakes/:id/approve", async (request) => {

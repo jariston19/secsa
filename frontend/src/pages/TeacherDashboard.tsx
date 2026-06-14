@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ArchivedQuestionSetsModal from "../components/ArchivedQuestionSetsModal";
 import BuildQuestionSetModal from "../components/BuildQuestionSetModal";
 import QuestionEncoder from "../components/QuestionEncoder";
@@ -7,9 +7,10 @@ import RetakeApprovalsModal from "../components/RetakeApprovalsModal";
 import SavedQuestionsModal from "../components/SavedQuestionsModal";
 import SavedSubjectsModal from "../components/SavedSubjectsModal";
 import SavedTopicsModal from "../components/SavedTopicsModal";
-import SegmentedControl from "../components/SegmentedControl";
+import TabPanel from "../components/TabPanel";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useSidebar } from "../lib/sidebar";
 import { useToast } from "../lib/toast";
 import { formatExamType, parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import {
@@ -25,7 +26,6 @@ import {
 } from "../lib/toastMessages";
 import {
   DEFAULT_PROGRAM_COURSE,
-  PROGRAM_COURSES,
   formatProgramCourse,
   formatProgramCoursesList,
   subjectHasProgram,
@@ -33,8 +33,16 @@ import {
   type ProgramCourseId,
   type ProgramCourseFilter,
 } from "../lib/programCourse";
+import { useProgramCourseOptions, usePrograms } from "../lib/programs";
 
-type Tab = "setup" | "encode" | "sets";
+type Tab =
+  | "setup"
+  | "encode"
+  | "sets"
+  | "saved-subjects"
+  | "saved-topics"
+  | "saved-questions"
+  | "retake-approvals";
 
 type SetStatusFilter = "ALL" | "DRAFT" | "DEPLOYED";
 
@@ -80,16 +88,13 @@ interface QuestionSet {
 
 export default function TeacherDashboard() {
   const { token } = useAuth();
+  const { setPageNav, setPageNavValue, patchPageNav } = useSidebar();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("setup");
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [sets, setSets] = useState<QuestionSet[]>([]);
   const [previewSetId, setPreviewSetId] = useState<string | null>(null);
-  const [showSavedSubjects, setShowSavedSubjects] = useState(false);
-  const [showSavedTopics, setShowSavedTopics] = useState(false);
-  const [showSavedQuestions, setShowSavedQuestions] = useState(false);
-  const [showRetakeApprovals, setShowRetakeApprovals] = useState(false);
   const [pendingRetakes, setPendingRetakes] = useState(0);
   const [showBuildSet, setShowBuildSet] = useState(false);
   const [showArchivedSets, setShowArchivedSets] = useState(false);
@@ -97,9 +102,55 @@ export default function TeacherDashboard() {
   const [loading, setLoading] = useState(true);
   const refreshGeneration = useRef(0);
 
-  const [activeProgramCourse, setActiveProgramCourse] =
-    useState<ProgramCourseId>(DEFAULT_PROGRAM_COURSE);
+  const { programs, defaultSlug, refresh: refreshPrograms } = usePrograms();
+  const programCourseOptions = useProgramCourseOptions();
+
+  const [activeProgramId, setActiveProgramId] = useState("");
   const [setsProgramFilter, setSetsProgramFilter] = useState<ProgramCourseFilter>("ALL");
+  const activeProgramCourse = useMemo(() => {
+    const program = programs.find((item) => item.id === activeProgramId);
+    return program?.slug ?? defaultSlug;
+  }, [programs, activeProgramId, defaultSlug]);
+
+  useEffect(() => {
+    void refreshPrograms();
+  }, [refreshPrograms]);
+
+  useEffect(() => {
+    if (programCourseOptions.length === 0) {
+      setActiveProgramId("");
+      return;
+    }
+    setActiveProgramId((current) => {
+      if (current && programCourseOptions.some((course) => course.programId === current)) {
+        return current;
+      }
+      const preferred = programCourseOptions.find((course) => course.id === defaultSlug);
+      return preferred?.programId ?? programCourseOptions[0]?.programId ?? "";
+    });
+  }, [programCourseOptions, defaultSlug]);
+
+  useEffect(() => {
+    if (setsProgramFilter === "ALL") return;
+    if (!programCourseOptions.some((course) => course.id === setsProgramFilter)) {
+      setSetsProgramFilter("ALL");
+    }
+  }, [programCourseOptions, setsProgramFilter]);
+
+  useEffect(() => {
+    if (programCourseOptions.length === 0) return;
+    const validSlugs = new Set(programCourseOptions.map((course) => course.id));
+    setSubjectForm((form) => {
+      const nextCourses = form.programCourses.filter((slug) => validSlugs.has(slug));
+      if (nextCourses.length === form.programCourses.length) return form;
+      return {
+        ...form,
+        programCourses:
+          nextCourses.length > 0 ? nextCourses : ([defaultSlug] as ProgramCourseId[]),
+      };
+    });
+  }, [programCourseOptions, defaultSlug]);
+
   const [setsStatusFilter, setSetsStatusFilter] = useState<SetStatusFilter>("ALL");
 
   const [subjectForm, setSubjectForm] = useState({
@@ -149,6 +200,64 @@ export default function TeacherDashboard() {
 
     refresh().catch(() => {});
   }, [token]);
+
+  const handlePageNavChange = useCallback((id: string) => {
+    setActiveTab(id as Tab);
+  }, []);
+
+  const savedMenu = useMemo(
+    () => ({
+      id: "saved",
+      label: "Saved",
+      items: [
+        {
+          id: "saved-subjects",
+          label: "Subjects",
+          badge: subjects.length,
+        },
+        {
+          id: "saved-topics",
+          label: "Topics",
+          badge: topics.length,
+        },
+        {
+          id: "saved-questions",
+          label: "Questions",
+        },
+      ],
+    }),
+    [subjects.length, topics.length]
+  );
+
+  const retakeAction = useMemo(
+    () => ({
+      id: "retake-approvals",
+      label: `Retake Approvals${pendingRetakes > 0 ? ` (${pendingRetakes})` : ""}`,
+      onClick: () => setActiveTab("retake-approvals"),
+      alert: pendingRetakes > 0,
+    }),
+    [pendingRetakes]
+  );
+
+  useEffect(() => {
+    setPageNav({
+      segments: TAB_SEGMENTS,
+      value: activeTab,
+      onChange: handlePageNavChange,
+      menus: [savedMenu],
+      actions: [retakeAction],
+    });
+
+    return () => setPageNav(null);
+  }, [handlePageNavChange, setPageNav]);
+
+  useEffect(() => {
+    patchPageNav({ menus: [savedMenu], actions: [retakeAction] });
+  }, [savedMenu, retakeAction, patchPageNav]);
+
+  useEffect(() => {
+    setPageNavValue(activeTab);
+  }, [activeTab, setPageNavValue]);
 
   async function createSubject(e: FormEvent) {
     e.preventDefault();
@@ -387,47 +496,16 @@ export default function TeacherDashboard() {
     ? (topicDrafts[topicSubjectId] ?? [{ key: `${topicSubjectId}-0`, name: "" }])
     : [];
 
+  async function handleSavedUpdated(msg: string, isError?: boolean) {
+    if (isError) toast.error(msg);
+    else toast.success(msg);
+    if (!isError) await refresh();
+  }
+
   return (
     <div className="teacher-dashboard">
-      <nav className="tabs">
-        <SegmentedControl
-          segments={TAB_SEGMENTS}
-          value={activeTab}
-          onChange={(id) => setActiveTab(id as Tab)}
-        />
-        <div className="tabs-nav-actions">
-          <button
-            type="button"
-            className="tab tab-nav-action"
-            onClick={() => setShowSavedSubjects(true)}
-          >
-            Saved Subjects ({subjects.length})
-          </button>
-          <button
-            type="button"
-            className="tab tab-nav-action"
-            onClick={() => setShowSavedTopics(true)}
-          >
-            Saved Topics ({topics.length})
-          </button>
-          <button
-            type="button"
-            className="tab tab-nav-action"
-            onClick={() => setShowSavedQuestions(true)}
-          >
-            Saved Questions
-          </button>
-          <button
-            type="button"
-            className={`tab tab-nav-action${pendingRetakes > 0 ? " tab-nav-action-alert" : ""}`}
-            onClick={() => setShowRetakeApprovals(true)}
-          >
-            Retake Approvals{pendingRetakes > 0 ? ` (${pendingRetakes})` : ""}
-          </button>
-        </div>
-      </nav>
-
       <div className="tab-panel">
+      <TabPanel activeTab={activeTab}>
       {loading && subjects.length === 0 && (
         <p className="muted teacher-loading">Loading teacher data...</p>
       )}
@@ -463,7 +541,7 @@ export default function TeacherDashboard() {
               <fieldset className="program-course-checkboxes">
                 <legend>Program courses</legend>
                 <div className="program-course-checkbox-grid">
-                  {PROGRAM_COURSES.map((course) => {
+                  {programCourseOptions.map((course) => {
                     const checked = subjectForm.programCourses.includes(course.id);
                     return (
                       <label key={course.id} className="checkbox-label">
@@ -529,11 +607,11 @@ export default function TeacherDashboard() {
               <label>
                 Program filter
                 <select
-                  value={activeProgramCourse}
-                  onChange={(e) => setActiveProgramCourse(e.target.value as ProgramCourseId)}
+                  value={activeProgramId}
+                  onChange={(e) => setActiveProgramId(e.target.value)}
                 >
-                  {PROGRAM_COURSES.map((course) => (
-                    <option key={course.id} value={course.id}>
+                  {programCourseOptions.map((course) => (
+                    <option key={course.programId} value={course.programId}>
                       {course.label}
                     </option>
                   ))}
@@ -653,7 +731,7 @@ export default function TeacherDashboard() {
                     }
                   >
                     <option value="ALL">All</option>
-                    {PROGRAM_COURSES.map((course) => (
+                    {programCourseOptions.map((course) => (
                       <option key={course.id} value={course.id}>
                         {course.label}
                       </option>
@@ -792,6 +870,40 @@ export default function TeacherDashboard() {
           </div>
         </section>
       )}
+
+      {activeTab === "saved-subjects" && (
+        <SavedSubjectsModal
+          inline
+          subjects={subjects}
+          token={token}
+          onUpdated={handleSavedUpdated}
+        />
+      )}
+
+      {activeTab === "saved-topics" && (
+        <SavedTopicsModal
+          inline
+          topics={topics}
+          subjects={subjects}
+          token={token}
+          onUpdated={handleSavedUpdated}
+        />
+      )}
+
+      {activeTab === "saved-questions" && (
+        <SavedQuestionsModal
+          inline
+          subjects={subjects}
+          topics={topics}
+          token={token}
+          onUpdated={handleSavedUpdated}
+        />
+      )}
+
+      {activeTab === "retake-approvals" && (
+        <RetakeApprovalsModal inline token={token} onUpdated={handleSavedUpdated} />
+      )}
+      </TabPanel>
       </div>
 
       {showBuildSet && (
@@ -808,59 +920,6 @@ export default function TeacherDashboard() {
           onCreated={async (msg) => {
             toast.success(msg);
             await refresh();
-          }}
-        />
-      )}
-
-      {showSavedTopics && (
-        <SavedTopicsModal
-          topics={topics}
-          subjects={subjects}
-          token={token}
-          onClose={() => setShowSavedTopics(false)}
-          onUpdated={async (msg, isError) => {
-            if (isError) toast.error(msg);
-            else toast.success(msg);
-            if (!isError) await refresh();
-          }}
-        />
-      )}
-
-      {showSavedSubjects && (
-        <SavedSubjectsModal
-          subjects={subjects}
-          token={token}
-          onClose={() => setShowSavedSubjects(false)}
-          onUpdated={async (msg, isError) => {
-            if (isError) toast.error(msg);
-            else toast.success(msg);
-            if (!isError) await refresh();
-          }}
-        />
-      )}
-
-      {showSavedQuestions && (
-        <SavedQuestionsModal
-          subjects={subjects}
-          topics={topics}
-          token={token}
-          onClose={() => setShowSavedQuestions(false)}
-          onUpdated={async (msg, isError) => {
-            if (isError) toast.error(msg);
-            else toast.success(msg);
-            if (!isError) await refresh();
-          }}
-        />
-      )}
-
-      {showRetakeApprovals && (
-        <RetakeApprovalsModal
-          token={token}
-          onClose={() => setShowRetakeApprovals(false)}
-          onUpdated={async (msg, isError) => {
-            if (isError) toast.error(msg);
-            else toast.success(msg);
-            if (!isError) await refresh();
           }}
         />
       )}

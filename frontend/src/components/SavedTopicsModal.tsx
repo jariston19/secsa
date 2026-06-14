@@ -6,11 +6,11 @@ import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import { toastDeleted, toastUpdated } from "../lib/toastMessages";
 import {
-  PROGRAM_COURSES,
   subjectHasProgram,
   type ProgramCourseFilter,
   type ProgramCourseId,
 } from "../lib/programCourse";
+import { useProgramCourseOptions } from "../lib/programs";
 
 interface Subject {
   id: string;
@@ -32,8 +32,9 @@ interface Props {
   topics: Topic[];
   subjects: Subject[];
   token: string | null;
-  onClose: () => void;
+  onClose?: () => void;
   onUpdated: (message: string, isError?: boolean) => void;
+  inline?: boolean;
 }
 
 type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
@@ -44,7 +45,9 @@ export default function SavedTopicsModal({
   token,
   onClose,
   onUpdated,
+  inline = false,
 }: Props) {
+  const programCourseOptions = useProgramCourseOptions();
   const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
@@ -52,7 +55,7 @@ export default function SavedTopicsModal({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
 
   const sortedSubjects = useMemo(
     () => [...subjects].sort((a, b) => a.courseCode.localeCompare(b.courseCode)),
@@ -186,186 +189,200 @@ export default function SavedTopicsModal({
     }
   }
 
+  const panel = (
+    <>
+      <div className={inline ? "saved-panel-header" : "modal-header"}>
+        <div>
+          <h2>Saved Topics</h2>
+          <p className="muted section-desc">
+            Filter by program course and year level, then select a subject to view and manage its
+            topics.
+          </p>
+        </div>
+        <div className="saved-panel-header-end">
+          <span className="muted saved-panel-count">
+            {topics.length} topic{topics.length === 1 ? "" : "s"} across{" "}
+            {subjects.length} subject{subjects.length === 1 ? "" : "s"}
+          </span>
+          {!inline && (
+            <button type="button" className="btn secondary" onClick={requestClose}>
+              Close
+            </button>
+          )}
+        </div>
+      </div>
+
+      {subjects.length === 0 ? (
+        <p className="muted">No subjects yet. Add a subject from the Setup tab first.</p>
+      ) : (
+        <div className="saved-topics-filters">
+          <label className="saved-topics-filter">
+            Program course
+            <select
+              value={programFilter}
+              onChange={(e) => handleProgramFilterChange(e.target.value as ProgramCourseFilter)}
+            >
+              <option value="ALL">All</option>
+              {programCourseOptions.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="saved-topics-filter">
+            Year level
+            <select
+              value={yearFilter}
+              onChange={(e) => handleYearFilterChange(e.target.value as YearLevelFilter)}
+            >
+              <option value="ALL">All</option>
+              {Array.from(
+                { length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 },
+                (_, i) => MIN_YEAR_LEVEL + i
+              ).map((level) => (
+                <option key={level} value={String(level)}>
+                  {level}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="saved-topics-filter">
+            Subject
+            <select
+              value={selectedSubjectId}
+              onChange={(e) => handleSubjectChange(e.target.value)}
+              disabled={courseSubjects.length === 0}
+            >
+              {courseSubjects.length === 0 ? (
+                <option value="">No subjects for these filters</option>
+              ) : (
+                courseSubjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.courseCode} — {s.courseTitle}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {subjects.length > 0 && selectedSubject && (
+        <>
+          <div className="saved-topics-subject-heading">
+            <strong>
+              {selectedSubject.courseCode} — {selectedSubject.courseTitle}
+            </strong>
+            {filteredTopics.length > 0 && (
+              <ModalPagination
+                variant="inline"
+                page={page}
+                totalPages={totalPages}
+                pageStart={pageStart}
+                pageEnd={pageEnd}
+                totalItems={totalItems}
+                onPageChange={setPage}
+              />
+            )}
+          </div>
+
+          {filteredTopics.length === 0 ? (
+            <p className="muted">No topics for this subject yet. Add one from the Setup tab.</p>
+          ) : (
+            <div className="modal-table-wrap">
+              <table>
+              <thead>
+                <tr>
+                  <th className="saved-topics-name-col">Topic name</th>
+                  <th>Year</th>
+                  <th>Questions</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedTopics.map((t) => {
+                  const isEditing = editingId === t.id;
+
+                  return (
+                    <tr key={t.id}>
+                      <td className="saved-topics-name-col" title={isEditing ? undefined : t.name}>
+                        {isEditing ? (
+                          <input
+                            className="table-input"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                          />
+                        ) : (
+                          t.name
+                        )}
+                      </td>
+                      <td>{selectedSubject.yearLevel}</td>
+                      <td>{t._count?.questions ?? 0}</td>
+                      <td>
+                        <div className="action-buttons">
+                          {isEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-sm"
+                                disabled={savingId === t.id || !editName.trim()}
+                                onClick={() => saveEdit(t.id)}
+                              >
+                                {savingId === t.id ? "Saving..." : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn secondary btn-sm"
+                                onClick={cancelEdit}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="btn secondary btn-sm"
+                                onClick={() => startEdit(t)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn danger btn-sm"
+                                disabled={deletingId === t.id}
+                                onClick={() =>
+                                  deleteTopic(t.id, t.name, t._count?.questions ?? 0)
+                                }
+                              >
+                                {deletingId === t.id ? "Deleting..." : "Delete"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  if (inline) {
+    return <section className="card saved-panel saved-topics-modal">{panel}</section>;
+  }
+
   return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div className={panelClass("saved-topics-modal")} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2>Saved Topics</h2>
-            <p className="muted">
-              {topics.length} topic{topics.length === 1 ? "" : "s"} across{" "}
-              {subjects.length} subject{subjects.length === 1 ? "" : "s"}
-            </p>
-          </div>
-          <button type="button" className="btn secondary" onClick={requestClose}>
-            Close
-          </button>
-        </div>
-
-        <p className="muted section-desc">
-          Filter by program course and year level, then select a subject to view and manage its
-          topics.
-        </p>
-
-        {subjects.length === 0 ? (
-          <p className="muted">No subjects yet. Add a subject from the Setup tab first.</p>
-        ) : (
-          <div className="saved-topics-filters">
-            <label className="saved-topics-filter">
-              Program course
-              <select
-                value={programFilter}
-                onChange={(e) => handleProgramFilterChange(e.target.value as ProgramCourseFilter)}
-              >
-                <option value="ALL">All</option>
-                {PROGRAM_COURSES.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="saved-topics-filter">
-              Year level
-              <select
-                value={yearFilter}
-                onChange={(e) => handleYearFilterChange(e.target.value as YearLevelFilter)}
-              >
-                <option value="ALL">All</option>
-                {Array.from(
-                  { length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 },
-                  (_, i) => MIN_YEAR_LEVEL + i
-                ).map((level) => (
-                  <option key={level} value={String(level)}>
-                    {level}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="saved-topics-filter">
-              Subject
-              <select
-                value={selectedSubjectId}
-                onChange={(e) => handleSubjectChange(e.target.value)}
-                disabled={courseSubjects.length === 0}
-              >
-                {courseSubjects.length === 0 ? (
-                  <option value="">No subjects for these filters</option>
-                ) : (
-                  courseSubjects.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.courseCode} — {s.courseTitle}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-          </div>
-        )}
-
-        {subjects.length > 0 && selectedSubject && (
-          <>
-            <div className="saved-topics-subject-heading">
-              <strong>
-                {selectedSubject.courseCode} — {selectedSubject.courseTitle}
-              </strong>
-              {filteredTopics.length > 0 && (
-                <ModalPagination
-                  variant="inline"
-                  page={page}
-                  totalPages={totalPages}
-                  pageStart={pageStart}
-                  pageEnd={pageEnd}
-                  totalItems={totalItems}
-                  onPageChange={setPage}
-                />
-              )}
-            </div>
-
-            {filteredTopics.length === 0 ? (
-              <p className="muted">No topics for this subject yet. Add one from the Setup tab.</p>
-            ) : (
-              <div className="modal-table-wrap">
-                <table>
-                <thead>
-                  <tr>
-                    <th className="saved-topics-name-col">Topic name</th>
-                    <th>Year</th>
-                    <th>Questions</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedTopics.map((t) => {
-                    const isEditing = editingId === t.id;
-
-                    return (
-                      <tr key={t.id}>
-                        <td className="saved-topics-name-col" title={isEditing ? undefined : t.name}>
-                          {isEditing ? (
-                            <input
-                              className="table-input"
-                              value={editName}
-                              onChange={(e) => setEditName(e.target.value)}
-                            />
-                          ) : (
-                            t.name
-                          )}
-                        </td>
-                        <td>{selectedSubject.yearLevel}</td>
-                        <td>{t._count?.questions ?? 0}</td>
-                        <td>
-                          <div className="action-buttons">
-                            {isEditing ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="btn btn-sm"
-                                  disabled={savingId === t.id || !editName.trim()}
-                                  onClick={() => saveEdit(t.id)}
-                                >
-                                  {savingId === t.id ? "Saving..." : "Save"}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn secondary btn-sm"
-                                  onClick={cancelEdit}
-                                >
-                                  Cancel
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  className="btn secondary btn-sm"
-                                  onClick={() => startEdit(t)}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn danger btn-sm"
-                                  disabled={deletingId === t.id}
-                                  onClick={() =>
-                                    deleteTopic(t.id, t.name, t._count?.questions ?? 0)
-                                  }
-                                >
-                                  {deletingId === t.id ? "Deleting..." : "Delete"}
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
-            )}
-          </>
-        )}
+        {panel}
       </div>
     </div>
-  );}
+  );
+}

@@ -1,9 +1,36 @@
-import { useEffect, useState } from "react";
-import ScoreBar from "./ScoreBar";
+import { useEffect, useMemo, useRef, useState } from "react";
+import AnalyticsPrintArea, { AnalyticsPrintAction } from "./AnalyticsPrintArea";
+import ModalPagination from "./ModalPagination";
 import SegmentedControl from "./SegmentedControl";
+import ChartCard from "./charts/ChartCard";
+import {
+  ChartIconBars,
+  ChartIconDonut,
+  ChartIconHeatmap,
+  ChartIconRadar,
+  ChartIconScatter,
+  CoverageHeatmap,
+  DifficultyAlignmentChart,
+  DiscriminationScatter,
+  DonutChart,
+  DistractorBarChart,
+  GroupedDifficultyBars,
+  HorizontalBarChart,
+  PercentileBand,
+  PerformanceHeatmap,
+  TimeCorrectnessScatter,
+  TimePerQuestionBars,
+  TopicFlagGrid,
+  RadarChart,
+  VerticalHistogram,
+} from "./charts/AnalyticsCharts";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import { formatFullName } from "../lib/names";
+import { DIFFICULTY_LABELS } from "../lib/analyticsChartUtils";
+import { usePagination } from "../hooks/usePagination";
+
+const TOPIC_CHART_PAGE_SIZE = 5;
 
 const YEAR_SEGMENTS = [
   { id: "all", label: "All years" },
@@ -13,6 +40,16 @@ const YEAR_SEGMENTS = [
   }),
 ];
 
+const DIFFICULTY_ORDER = ["EASY", "MEDIUM", "HARD"] as const;
+
+export type AnalyticsLens = "group" | "student" | "question";
+
+const LENS_PRINT_TITLES: Record<AnalyticsLens, string> = {
+  group: "Analytics — Group",
+  student: "Analytics — Student",
+  question: "Analytics — Question",
+};
+
 interface ReportsData {
   readiness: {
     overallScore: number;
@@ -20,22 +57,15 @@ interface ReportsData {
     readinessLevel: string;
     studentsAssessed: number;
     examsTaken: number;
+    passRate: number;
+    completionRate: number;
   };
-  bySubject: Array<{
-    subjectId: string;
-    subject: string;
-    score: number;
-    tone: "strong" | "moderate" | "weak";
-    total: number;
-    correct: number;
-  }>;
   byTopic: Array<{
     topicId: string;
     topic: string;
     subject: string;
     score: number;
     tone: "strong" | "moderate" | "weak";
-    avgTimeSeconds: number | null;
     total: number;
     correct: number;
   }>;
@@ -46,27 +76,25 @@ interface ReportsData {
     total: number;
     correct: number;
   }>;
+  topicDifficultyMatrix: Array<{
+    topicId: string;
+    topic: string;
+    subject: string;
+    difficulty: string;
+    score: number;
+    total: number;
+    correct: number;
+    tone: "strong" | "moderate" | "weak";
+  }>;
+  atRiskByTopic: Array<{
+    topicId: string;
+    topic: string;
+    subject: string;
+    count: number;
+  }>;
   knowledgeGaps: {
     strongAreas: Array<{ label: string; score: number; type: string }>;
     weakAreas: Array<{ label: string; score: number; type: string }>;
-  };
-  timeAnalytics: {
-    byTopic: Array<{ topic: string; subject: string; avgTimeSeconds: number }>;
-    fastestQuestions: Array<{
-      questionId: string;
-      text: string;
-      subject: string;
-      topic: string | null;
-      avgTimeSeconds: number;
-    }>;
-    slowestQuestions: Array<{
-      questionId: string;
-      text: string;
-      subject: string;
-      topic: string | null;
-      avgTimeSeconds: number;
-    }>;
-    hasTimedData: boolean;
   };
   questionAnalysis: Array<{
     questionId: string;
@@ -97,493 +125,596 @@ interface ReportsData {
     overallScore: number | null;
     reasons: string[];
   }>;
-  batchComparison: Array<{ yearLevel: number; average: number; students: number }>;
-  questionInventory: Array<{ subject: string; easy: number; medium: number; hard: number }>;
-  usageFrequency: Array<{
-    questionId: string;
-    text: string;
-    subject: string;
-    topic: string | null;
-    timesUsed: number;
-  }>;
   questionReliability: Array<{
     questionId: string;
     text: string;
     subject: string;
     topic: string | null;
+    difficulty: string;
     correctRate: number;
     avgTimeSeconds: number | null;
     discriminationIndex: number | null;
     attempts: number;
   }>;
+  timeCorrectnessSamples: Array<{
+    timeSeconds: number;
+    correct: boolean;
+    difficulty: string;
+  }>;
+  topicCoverageMatrix: Array<{
+    topicId: string;
+    topic: string;
+    subject: string;
+    easy: number;
+    medium: number;
+    hard: number;
+  }>;
+  questionTimeBars: Array<{
+    questionId: string;
+    label: string;
+    avgTimeSeconds: number;
+  }>;
+  passFail: { passed: number; failed: number };
+  scorePercentiles: { min: number; max: number; avg: number };
+  cohortSummaries: Array<{
+    programCourse: string;
+    yearLevel: number;
+    studentsAssessed: number;
+    examsTaken: number;
+    passRate: number;
+    averageScore: number;
+    readinessLevel: string;
+  }>;
 }
 
 interface Props {
   token: string | null;
-}
-
-function readinessClass(level: string) {
-  if (level === "Ready") return "readiness-ready";
-  if (level === "Needs Improvement") return "readiness-needs-improvement";
-  return "readiness-at-risk";
+  lens: AnalyticsLens;
+  onOpenQuestionPerformance?: () => void;
 }
 
 function truncate(text: string, max = 72) {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-function formatDifficulty(difficulty: string) {
-  if (difficulty === "HARD") return "Difficult";
-  if (difficulty === "MEDIUM") return "Medium";
-  return "Easy";
+function buildTopicDifficultyRows(matrix: ReportsData["topicDifficultyMatrix"]) {
+  return Object.values(
+    matrix.reduce<
+      Record<
+        string,
+        {
+          topicId: string;
+          topic: string;
+          subject: string;
+          cells: Partial<
+            Record<(typeof DIFFICULTY_ORDER)[number], { score: number; tone: string; total: number }>
+          >;
+        }
+      >
+    >((groups, row) => {
+      const group = groups[row.topicId] ?? {
+        topicId: row.topicId,
+        topic: row.topic,
+        subject: row.subject,
+        cells: {},
+      };
+      group.cells[row.difficulty as (typeof DIFFICULTY_ORDER)[number]] = {
+        score: row.score,
+        tone: row.tone,
+        total: row.total,
+      };
+      groups[row.topicId] = group;
+      return groups;
+    }, {})
+  );
 }
 
-export default function AnalyticsReports({ token }: Props) {
+export default function AnalyticsReports({ token, lens, onOpenQuestionPerformance }: Props) {
   const [yearFilter, setYearFilter] = useState("all");
   const [reports, setReports] = useState<ReportsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
-    setLoading(true);
     setError("");
+    if (hasLoadedRef.current) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     const query = yearFilter === "all" ? "" : `?yearLevel=${yearFilter}`;
     api<ReportsData>(`/analytics/reports${query}`, {}, token)
-      .then(setReports)
+      .then((data) => {
+        setReports(data);
+        hasLoadedRef.current = true;
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load reports"))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
   }, [token, yearFilter]);
 
-  if (loading) return <p className="muted">Loading analytics reports...</p>;
-  if (error) return <p className="error">{error}</p>;
-  if (!reports) return null;
+  const lensIntro =
+    lens === "group"
+      ? "Charts teachers and admins see about the whole batch."
+      : lens === "student"
+        ? "Charts each student sees about themselves. Cohort-level view below — open Submissions for individual detail."
+        : "Item analysis for question writers and teachers.";
 
-  const maxDistribution = Math.max(...reports.readinessDistribution.map((b) => b.students), 1);
-  const topicsBySubject = reports.byTopic.reduce<Record<string, typeof reports.byTopic>>(
-    (groups, row) => {
-      const list = groups[row.subject] ?? [];
-      list.push(row);
-      groups[row.subject] = list;
-      return groups;
-    },
-    {}
-  );
+  const printAreaId = `analytics-print-${lens}`;
+  const printTitle = LENS_PRINT_TITLES[lens];
+  const printSubtitle = yearFilter === "all" ? "All years" : `Year ${yearFilter}`;
 
   return (
-    <div className="analytics-reports">
-      <div className="analytics-reports-filter">
-        <SegmentedControl segments={YEAR_SEGMENTS} value={yearFilter} onChange={setYearFilter} />
-      </div>
-
-      <section className="card analytics-report-section">
-        <h2>Overall Readiness Score</h2>
-        <div className="readiness-hero">
-          <div className="readiness-hero-score">{reports.readiness.overallScore.toFixed(1)}%</div>
-          <dl className="readiness-hero-meta">
-            <div>
-              <dt>Passing threshold</dt>
-              <dd>{reports.readiness.passingThreshold.toFixed(0)}%</dd>
-            </div>
-            <div>
-              <dt>Readiness level</dt>
-              <dd className={readinessClass(reports.readiness.readinessLevel)}>
-                {reports.readiness.readinessLevel}
-              </dd>
-            </div>
-            <div>
-              <dt>Students assessed</dt>
-              <dd>{reports.readiness.studentsAssessed}</dd>
-            </div>
-            <div>
-              <dt>Exams taken</dt>
-              <dd>{reports.readiness.examsTaken}</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-
-      <section className="card analytics-report-section">
-        <h2>Performance by Subject</h2>
-        <div className="score-bars">
-          {reports.bySubject.length === 0 ? (
-            <p className="muted">No subject data yet.</p>
-          ) : (
-            reports.bySubject.map((row) => (
-              <ScoreBar key={row.subjectId} label={row.subject} value={row.score} tone={row.tone} />
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="card analytics-report-section">
-        <h2>Performance by Topic</h2>
-        {Object.keys(topicsBySubject).length === 0 ? (
-          <p className="muted">No topic data yet.</p>
-        ) : (
-          Object.entries(topicsBySubject).map(([subject, topics]) => (
-            <div key={subject} className="analytics-topic-group">
-              <h3>{subject}</h3>
-              <div className="score-bars">
-                {topics.map((row) => (
-                  <ScoreBar
-                    key={row.topicId}
-                    label={row.topic}
-                    value={row.score}
-                    tone={row.tone}
-                  />
-                ))}
-              </div>
-            </div>
-          ))
-        )}
-      </section>
-
-      <section className="card analytics-report-section">
-        <h2>Performance by Difficulty</h2>
-        <div className="score-bars">
-          {reports.byDifficulty.map((row) => (
-            <ScoreBar
-              key={row.difficulty}
-              label={formatDifficulty(row.difficulty)}
-              value={row.score}
-              tone={row.tone}
+    <AnalyticsPrintArea
+      id={printAreaId}
+      title={printTitle}
+      subtitle={printSubtitle}
+    >
+      <div className="analytics-reports">
+        <div className="analytics-reports-filter analytics-no-print">
+          <div className="analytics-reports-filter-primary">
+            <SegmentedControl
+              segments={YEAR_SEGMENTS}
+              value={yearFilter}
+              onChange={setYearFilter}
+              scrollable
             />
-          ))}
-        </div>
-      </section>
-
-      <section className="card analytics-report-section">
-        <h2>Knowledge Gap Analysis</h2>
-        <div className="knowledge-gap-grid">
-          <div>
-            <h3>Strong areas</h3>
-            {reports.knowledgeGaps.strongAreas.length === 0 ? (
-              <p className="muted">No strong areas identified yet.</p>
-            ) : (
-              <ul className="knowledge-gap-list">
-                {reports.knowledgeGaps.strongAreas.map((area) => (
-                  <li key={area.label}>
-                    <span>{area.label}</span>
-                    <span className="success">{area.score.toFixed(0)}%</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <AnalyticsPrintAction
+              areaId={printAreaId}
+              title={printTitle}
+              disabled={loading && !reports}
+            />
           </div>
-          <div>
-            <h3>Weak areas</h3>
-            {reports.knowledgeGaps.weakAreas.length === 0 ? (
-              <p className="muted">No weak areas flagged yet.</p>
-            ) : (
-              <ul className="knowledge-gap-list">
-                {reports.knowledgeGaps.weakAreas.map((area) => (
-                  <li key={area.label}>
-                    <span>{area.label}</span>
-                    <span className="error">{area.score.toFixed(0)}%</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+        {lens === "question" && onOpenQuestionPerformance ? (
+          <div className="analytics-question-performance-launch">
+            <div className="analytics-question-performance-copy">
+              <span className="analytics-question-performance-title">Question Performance</span>
+              <span className="muted">
+                Review correct rates by subject, topic, and difficulty — lowest first.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={onOpenQuestionPerformance}
+            >
+              View Performance
+            </button>
           </div>
+        ) : null}
         </div>
-      </section>
 
-      <section className="card analytics-report-section">
-        <h2>Time Analytics</h2>
-        {!reports.timeAnalytics.hasTimedData ? (
-          <p className="muted">
-            Per-question timing will appear after students complete exams with the updated exam
-            flow.
-          </p>
-        ) : (
-          <>
-            <h3>Average time by topic</h3>
-            <div className="table-responsive">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Topic</th>
-                    <th>Subject</th>
-                    <th>Avg time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reports.timeAnalytics.byTopic.map((row) => (
-                    <tr key={`${row.subject}-${row.topic}`}>
-                      <td>{row.topic}</td>
-                      <td>{row.subject}</td>
-                      <td>{row.avgTimeSeconds}s</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="analytics-two-col">
-              <div>
-                <h3>Fastest questions</h3>
-                <ul className="analytics-mini-list">
-                  {reports.timeAnalytics.fastestQuestions.map((row) => (
-                    <li key={row.questionId}>
-                      <span>{truncate(row.text)}</span>
-                      <span>{row.avgTimeSeconds}s</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3>Slowest questions</h3>
-                <ul className="analytics-mini-list">
-                  {reports.timeAnalytics.slowestQuestions.map((row) => (
-                    <li key={row.questionId}>
-                      <span>{truncate(row.text)}</span>
-                      <span>{row.avgTimeSeconds}s</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </>
-        )}
-      </section>
+      <p className="muted analytics-lens-intro">{lensIntro}</p>
 
-      <section className="card analytics-report-section">
-        <h2>Subject Performance Heatmap</h2>
-        <div className="heatmap-grid">
-          {reports.bySubject.map((row) => (
-            <div key={row.subjectId} className={`heatmap-cell heatmap-${row.tone}`}>
-              <span className="heatmap-label">{row.subject}</span>
-              <span className="heatmap-value">{row.score.toFixed(0)}%</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      {error && !reports ? <p className="error">{error}</p> : null}
+      {loading && !reports ? <p className="muted">Loading analytics reports...</p> : null}
 
-      <section className="card analytics-report-section">
-        <h2>Topic Mastery Heatmap</h2>
-        <div className="heatmap-grid heatmap-grid-compact">
-          {reports.byTopic.map((row) => (
-            <div key={row.topicId} className={`heatmap-cell heatmap-${row.tone}`}>
-              <span className="heatmap-label">{row.topic}</span>
-              <span className="heatmap-subtext">{row.subject}</span>
-              <span className="heatmap-value">{row.score.toFixed(0)}%</span>
-            </div>
-          ))}
-        </div>
-      </section>
+      {reports ? (
+        <AnalyticsReportBody
+          reports={reports}
+          lens={lens}
+          refreshing={refreshing}
+          error={error}
+        />
+      ) : null}
+      </div>
+    </AnalyticsPrintArea>
+  );
+}
 
-      <section className="card analytics-report-section">
-        <h2>Question Analysis</h2>
-        <div className="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Question</th>
-                <th>Subject</th>
-                <th>Correct %</th>
-                <th>Flag</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.questionAnalysis.slice(0, 20).map((row) => (
-                <tr key={row.questionId}>
-                  <td className="analytics-question-cell">{truncate(row.text)}</td>
-                  <td>{row.subject}</td>
-                  <td>{row.correctRate.toFixed(1)}%</td>
-                  <td>
-                    {row.flag === "too_easy" && <span className="muted">Too easy</span>}
-                    {row.flag === "too_hard" && <span className="error">Too hard</span>}
-                    {!row.flag && "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+export function AnalyticsReportBody({
+  reports,
+  lens,
+  refreshing,
+  error,
+}: {
+  reports: ReportsData;
+  lens: AnalyticsLens;
+  refreshing: boolean;
+  error: string;
+}) {
+  const maxAtRisk = Math.max(...reports.atRiskByTopic.map((row) => row.count), 1);
+  const difficultyColumnLabels = DIFFICULTY_ORDER.map((d) => DIFFICULTY_LABELS[d]);
 
-      <section className="card analytics-report-section">
-        <h2>Distractor Analysis</h2>
-        {reports.distractorAnalysis.length === 0 ? (
-          <p className="muted">No strong misconception patterns detected yet.</p>
-        ) : (
-          <div className="distractor-list">
-            {reports.distractorAnalysis.map((row) => (
-              <article key={row.questionId} className="distractor-card">
-                <p className="distractor-question">{truncate(row.text, 120)}</p>
-                <p className="muted distractor-meta">
-                  {row.subject} · correct: {row.correctOption} · {row.correctRate.toFixed(0)}%
-                  correct
-                </p>
-                <div className="distractor-options">
-                  {row.options.map((option) => (
-                    <span
-                      key={option.option}
-                      className={
-                        option.isCorrect
-                          ? "distractor-option correct"
-                          : option.option === row.topWrongOption
-                            ? "distractor-option misconception"
-                            : "distractor-option"
-                      }
-                    >
-                      {option.option}: {option.rate.toFixed(0)}%
-                    </span>
-                  ))}
+  const topicBars = reports.byTopic.map((row) => ({
+    label: `${row.topic} (${row.subject})`,
+    value: row.score,
+    tone: row.tone,
+  }));
+
+  const atRiskBars = reports.atRiskByTopic.map((row) => ({
+    label: `${row.topic} (${row.subject})`,
+    value: row.count,
+    color: "#ef4444",
+  }));
+
+  const topicFlagItems = [
+    ...reports.knowledgeGaps.weakAreas.map((area) => ({
+      label: area.label,
+      score: area.score,
+      tone: "weak" as const,
+    })),
+    ...reports.knowledgeGaps.strongAreas.map((area) => ({
+      label: area.label,
+      score: area.score,
+      tone: "strong" as const,
+    })),
+  ];
+
+  const radarTopics = reports.byTopic.slice(0, 8).map((row) => row.topic);
+  const classRadarScores = reports.byTopic.slice(0, 8).map((row) => row.score);
+
+  const alignmentItems = reports.questionAnalysis.slice(0, 8).map((row) => ({
+    label: truncate(row.text, 36),
+    difficulty: row.difficulty,
+    correctRate: row.correctRate,
+  }));
+
+  const discriminationPoints = reports.questionReliability
+    .filter((row) => row.discriminationIndex != null)
+    .slice(0, 40)
+    .map((row) => ({
+      id: row.questionId,
+      label: truncate(row.text, 40),
+      correctRate: row.correctRate,
+      discriminationIndex: row.discriminationIndex!,
+    }));
+
+  const topicDifficultyRows = buildTopicDifficultyRows(reports.topicDifficultyMatrix);
+
+  const topicHeatmapRows = useMemo(
+    () =>
+      topicDifficultyRows.map((row) => ({
+        id: row.topicId,
+        label: row.topic,
+        sublabel: row.subject,
+        cells: DIFFICULTY_ORDER.map((difficulty) => {
+          const cell = row.cells[difficulty];
+          return cell
+            ? {
+                score: cell.score,
+                tone: cell.tone as "strong" | "moderate" | "weak",
+                total: cell.total,
+              }
+            : null;
+        }),
+      })),
+    [topicDifficultyRows]
+  );
+
+  const topicBarPagination = usePagination(topicBars, {
+    pageSize: TOPIC_CHART_PAGE_SIZE,
+    resetKey: topicBars.map((bar) => bar.label).join("|"),
+  });
+
+  const topicHeatmapPagination = usePagination(topicHeatmapRows, {
+    pageSize: TOPIC_CHART_PAGE_SIZE,
+    resetKey: topicHeatmapRows.map((row) => row.id).join("|"),
+  });
+
+  return (
+    <div className={`analytics-reports-body${refreshing ? " is-refreshing" : ""}`}>
+      {error ? <p className="error">{error}</p> : null}
+
+      {lens === "group" && (
+        <div className="analytics-chart-grid">
+          <ChartCard
+            title="Score distribution"
+            description="Groups students into 10-point score ranges. Shows if class performance is clustered or split."
+            icon={<ChartIconBars direction="vertical" />}
+          >
+            <VerticalHistogram
+              buckets={reports.readinessDistribution.map((bucket) => ({
+                label: bucket.label,
+                value: bucket.students,
+              }))}
+            />
+          </ChartCard>
+
+          <ChartCard
+            title="Average score per topic"
+            description="Topics on the Y-axis, average % correct on the X-axis. Ranks best vs worst retention."
+            icon={<ChartIconBars direction="horizontal" />}
+          >
+            {topicBars.length === 0 ? (
+              <p className="muted">No topic data yet.</p>
+            ) : (
+              <>
+                <div className="analytics-chart-screen-only">
+                  <HorizontalBarChart bars={topicBarPagination.paginatedItems} />
+                  {topicBarPagination.totalPages > 1 ? (
+                    <div className="chart-card-pagination analytics-no-print">
+                      <ModalPagination
+                        variant="inline"
+                        page={topicBarPagination.page}
+                        totalPages={topicBarPagination.totalPages}
+                        pageStart={topicBarPagination.pageStart}
+                        pageEnd={topicBarPagination.pageEnd}
+                        totalItems={topicBarPagination.totalItems}
+                        onPageChange={topicBarPagination.setPage}
+                      />
+                    </div>
+                  ) : null}
                 </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+                <div className="analytics-print-only">
+                  <HorizontalBarChart bars={topicBars} />
+                </div>
+              </>
+            )}
+          </ChartCard>
 
-      <section className="card analytics-report-section">
-        <h2>Readiness Distribution</h2>
-        <div className="histogram">
-          {reports.readinessDistribution.map((bucket) => (
-            <div key={bucket.label} className="histogram-row">
-              <span className="histogram-label">{bucket.label}</span>
-              <div className="histogram-bar">
-                <span
-                  className="histogram-bar-fill"
-                  style={{ width: `${(bucket.students / maxDistribution) * 100}%` }}
-                />
-              </div>
-              <span className="histogram-count">{bucket.students}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+          <ChartCard
+            title="Performance by difficulty"
+            description="Easy, medium, and hard bars. Color shows how retention drops as difficulty rises."
+            icon={<ChartIconBars direction="vertical" />}
+          >
+            <GroupedDifficultyBars items={reports.byDifficulty} />
+          </ChartCard>
 
-      <section className="card analytics-report-section">
-        <h2>At-Risk Students</h2>
-        {reports.atRiskStudents.length === 0 ? (
-          <p className="muted">No at-risk students flagged.</p>
-        ) : (
-          <div className="table-responsive">
-            <table>
-              <thead>
-                <tr>
-                  <th>Student</th>
-                  <th>Year</th>
-                  <th>Score</th>
-                  <th>Reasons</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reports.atRiskStudents.map((student) => (
-                  <tr key={student.studentId}>
-                    <td>{formatFullName(student.firstName, student.lastName)}</td>
-                    <td>{student.yearLevel ?? "—"}</td>
-                    <td>
-                      {student.overallScore != null ? `${student.overallScore.toFixed(1)}%` : "—"}
-                    </td>
-                    <td>{student.reasons.join(" · ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+          <ChartCard
+            title="Topic × difficulty heatmap"
+            description="Each cell is % correct on a red-to-green scale. The richest single batch view."
+            icon={<ChartIconHeatmap />}
+          >
+            {topicHeatmapRows.length === 0 ? (
+              <p className="muted">No topic and difficulty data yet.</p>
+            ) : (
+              <>
+                <div className="analytics-chart-screen-only">
+                  <PerformanceHeatmap
+                    columnLabels={difficultyColumnLabels}
+                    rows={topicHeatmapPagination.paginatedItems}
+                  />
+                  {topicHeatmapPagination.totalPages > 1 ? (
+                    <div className="chart-card-pagination analytics-no-print">
+                      <ModalPagination
+                        variant="inline"
+                        page={topicHeatmapPagination.page}
+                        totalPages={topicHeatmapPagination.totalPages}
+                        pageStart={topicHeatmapPagination.pageStart}
+                        pageEnd={topicHeatmapPagination.pageEnd}
+                        totalItems={topicHeatmapPagination.totalItems}
+                        onPageChange={topicHeatmapPagination.setPage}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+                <div className="analytics-print-only">
+                  <PerformanceHeatmap
+                    columnLabels={difficultyColumnLabels}
+                    rows={topicHeatmapRows}
+                  />
+                </div>
+              </>
+            )}
+          </ChartCard>
 
-      <section className="card analytics-report-section">
-        <h2>Comparison by Batch</h2>
-        {reports.batchComparison.length === 0 ? (
-          <p className="muted">No batch comparison data yet.</p>
-        ) : (
-          <div className="score-bars">
-            {reports.batchComparison.map((row) => (
-              <ScoreBar
-                key={row.yearLevel}
-                label={`Year ${row.yearLevel} (${row.students} students)`}
-                value={row.average}
-                tone={row.average >= 75 ? "strong" : row.average >= 50 ? "moderate" : "weak"}
+          <ChartCard
+            title="Pass rate"
+            description="Pass vs fail split with a headline % for quick reporting."
+            icon={<ChartIconDonut />}
+          >
+            <DonutChart
+              value={reports.readiness.passRate}
+              label="passed"
+              passed={reports.passFail.passed}
+              failed={reports.passFail.failed}
+            />
+          </ChartCard>
+
+          <ChartCard
+            title="At-risk count per topic"
+            description="Students below threshold per topic. Red bars sorted by urgency."
+            icon={<ChartIconBars direction="horizontal" />}
+          >
+            {atRiskBars.length === 0 ? (
+              <p className="muted">No at-risk topic clusters yet.</p>
+            ) : (
+              <HorizontalBarChart
+                bars={atRiskBars}
+                max={maxAtRisk}
+                suffix={atRiskBars[0]?.value === 1 ? " student" : " students"}
+                valueDecimals={0}
               />
-            ))}
+            )}
+          </ChartCard>
+        </div>
+      )}
+
+      {lens === "student" && (
+        <>
+          <div className="analytics-chart-grid">
+            <ChartCard
+              title="Score per topic"
+              description="Radar chart: each axis is a topic. Overlay student shape against class average."
+              icon={<ChartIconRadar />}
+            >
+              {radarTopics.length < 3 ? (
+                <p className="muted">Need at least 3 topics for a radar chart.</p>
+              ) : (
+                <RadarChart
+                  topics={radarTopics}
+                  classScores={classRadarScores}
+                  studentScores={classRadarScores}
+                />
+              )}
+            </ChartCard>
+
+            <ChartCard
+              title="Score per difficulty"
+              description="Three bars for easy, medium, and hard. Shows where retention drops."
+              icon={<ChartIconBars direction="vertical" />}
+            >
+              <GroupedDifficultyBars items={reports.byDifficulty} />
+            </ChartCard>
+
+            <ChartCard
+              title="Time vs. correctness"
+              description="X = time spent, Y = correct/wrong, bubble size = difficulty. Spots guessing vs confusion."
+              icon={<ChartIconScatter />}
+            >
+              <TimeCorrectnessScatter points={reports.timeCorrectnessSamples} />
+            </ChartCard>
+
+            <ChartCard
+              title="Rank within batch"
+              description="Percentile band showing score relative to class min, average, and max."
+              icon={<ChartIconBars direction="horizontal" />}
+            >
+              <PercentileBand
+                studentScore={reports.readiness.overallScore}
+                min={reports.scorePercentiles.min}
+                avg={reports.scorePercentiles.avg}
+                max={reports.scorePercentiles.max}
+              />
+            </ChartCard>
+
+            <ChartCard
+              title="Weak topics flagged"
+              description="Traffic-light topic tiles for instant scan of what needs review."
+              icon={<ChartIconHeatmap />}
+            >
+              {topicFlagItems.length === 0 ? (
+                <p className="muted">No topic flags yet.</p>
+              ) : (
+                <TopicFlagGrid topics={topicFlagItems} />
+              )}
+            </ChartCard>
+
+            <ChartCard
+              title="Retake improvement"
+              description="Attempt trend by topic. Rising lines show successful remediation."
+              icon={<ChartIconBars direction="horizontal" />}
+            >
+              <p className="muted">
+                Retake trend lines appear once students complete multiple attempts on the same topics.
+              </p>
+            </ChartCard>
           </div>
-        )}
-      </section>
 
-      <section className="card analytics-report-section">
-        <h2>Question Inventory</h2>
-        <div className="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Subject</th>
-                <th>Easy</th>
-                <th>Medium</th>
-                <th>Hard</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.questionInventory.map((row) => (
-                <tr key={row.subject}>
-                  <td>{row.subject}</td>
-                  <td>{row.easy}</td>
-                  <td>{row.medium}</td>
-                  <td>{row.hard}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+          {reports.atRiskStudents.length > 0 && (
+            <section className="card analytics-report-section">
+              <h2>At-Risk Students</h2>
+              <div className="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th>Year</th>
+                      <th>Score</th>
+                      <th>Reasons</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reports.atRiskStudents.map((student) => (
+                      <tr key={student.studentId}>
+                        <td>{formatFullName(student.firstName, student.lastName)}</td>
+                        <td>{student.yearLevel ?? "—"}</td>
+                        <td>
+                          {student.overallScore != null ? `${student.overallScore.toFixed(1)}%` : "—"}
+                        </td>
+                        <td>{student.reasons.join(" · ")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </>
+      )}
 
-      <section className="card analytics-report-section">
-        <h2>Question Usage Frequency</h2>
-        <div className="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Question</th>
-                <th>Subject</th>
-                <th>Times used</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.usageFrequency.map((row) => (
-                <tr key={row.questionId}>
-                  <td className="analytics-question-cell">{truncate(row.text)}</td>
-                  <td>{row.subject}</td>
-                  <td>{row.timesUsed}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {lens === "question" && (
+        <div className="analytics-chart-grid">
+          <ChartCard
+            title="Distractor analysis"
+            description="Four bars per question (A–D). Tall wrong bars signal common misconceptions."
+            icon={<ChartIconBars direction="vertical" />}
+            className="analytics-chart-card-wide"
+          >
+            {reports.distractorAnalysis.length === 0 ? (
+              <p className="muted">No strong misconception patterns detected yet.</p>
+            ) : (
+              <div className="chart-distractor-grid">
+                {reports.distractorAnalysis.slice(0, 4).map((row) => (
+                  <div key={row.questionId} className="chart-distractor-item">
+                    <p className="chart-distractor-question">{truncate(row.text, 80)}</p>
+                    <p className="muted chart-distractor-meta">
+                      {row.subject} · {row.correctRate.toFixed(0)}% correct
+                    </p>
+                    <DistractorBarChart options={row.options} correctOption={row.correctOption} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </ChartCard>
 
-      <section className="card analytics-report-section">
-        <h2>Question Reliability Score</h2>
-        <p className="muted section-desc">
-          Combines correct rate, average response time, and discrimination index.
-        </p>
-        <div className="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Question</th>
-                <th>Correct %</th>
-                <th>Avg time</th>
-                <th>Discrimination</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.questionReliability.slice(0, 20).map((row) => (
-                <tr key={row.questionId}>
-                  <td className="analytics-question-cell">{truncate(row.text)}</td>
-                  <td>{row.correctRate.toFixed(1)}%</td>
-                  <td>{row.avgTimeSeconds != null ? `${row.avgTimeSeconds}s` : "—"}</td>
-                  <td>
-                    {row.discriminationIndex != null ? row.discriminationIndex.toFixed(2) : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ChartCard
+            title="Correct rate vs. expected difficulty"
+            description="Bar shows actual correct rate; dashed band is the expected range for that difficulty."
+            icon={<ChartIconBars direction="horizontal" />}
+          >
+            {alignmentItems.length === 0 ? (
+              <p className="muted">No question analysis data yet.</p>
+            ) : (
+              <DifficultyAlignmentChart items={alignmentItems} />
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Discrimination index"
+            description="Scatter plot: correct rate vs discrimination. Low discrimination flags items for review."
+            icon={<ChartIconScatter />}
+          >
+            <DiscriminationScatter points={discriminationPoints} />
+          </ChartCard>
+
+          <ChartCard
+            title="Average time per question"
+            description="Horizontal bars sorted by time. Long outliers may indicate confusing wording."
+            icon={<ChartIconBars direction="horizontal" />}
+          >
+            {reports.questionTimeBars.length === 0 ? (
+              <p className="muted">
+                Per-question timing appears after students complete exams using the one-question flow.
+              </p>
+            ) : (
+              <TimePerQuestionBars
+                items={reports.questionTimeBars.map((row) => ({
+                  id: row.questionId,
+                  label: row.label,
+                  avgTimeSeconds: row.avgTimeSeconds,
+                }))}
+              />
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Topic coverage check"
+            description="Question count per topic × difficulty. Empty cells reveal gaps in the bank."
+            icon={<ChartIconHeatmap />}
+          >
+            {reports.topicCoverageMatrix.length === 0 ? (
+              <p className="muted">No question inventory yet.</p>
+            ) : (
+              <CoverageHeatmap
+                columnLabels={difficultyColumnLabels}
+                rows={reports.topicCoverageMatrix.map((row) => ({
+                  id: row.topicId,
+                  label: row.topic,
+                  sublabel: row.subject,
+                  counts: [row.easy, row.medium, row.hard],
+                }))}
+              />
+            )}
+          </ChartCard>
         </div>
-      </section>
+      )}
     </div>
   );
 }

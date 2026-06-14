@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import { yearLevelSchema, curriculumYearForStudentYear } from "../lib/yearLevel.js";
-import { programCourseSchema } from "../lib/programCourse.js";
+import { programCourseSlugSchema, assertActiveProgramSlug } from "../lib/programCourse.js";
 import { subjectIncludesProgram } from "../lib/subjectPrograms.js";
 import {
   getConfigPoolQuestions,
@@ -22,7 +22,7 @@ const configSchema = z.object({
 const createSetSchema = z.object({
   name: z.string().min(1),
   yearLevel: yearLevelSchema,
-  programCourse: programCourseSchema,
+  programCourse: programCourseSlugSchema,
   type: z.nativeEnum(QuestionSetType),
   totalItems: z.number().int().min(1),
   passThreshold: z.number().min(0).max(100).optional(),
@@ -38,7 +38,7 @@ const updateSetSchema = z.object({
 
 async function validateSetConfigsForYear(
   yearLevel: number,
-  programCourse: z.infer<typeof programCourseSchema>,
+  programCourse: string,
   configs: z.infer<typeof configSchema>[]
 ) {
   const configTotal = configs.reduce(
@@ -109,7 +109,7 @@ export async function questionSetRoutes(app: FastifyInstance) {
       includeArchived?: string;
     };
     const programCourse = query.programCourse
-      ? programCourseSchema.parse(query.programCourse)
+      ? programCourseSlugSchema.parse(query.programCourse)
       : undefined;
     const status =
       query.status ??
@@ -135,6 +135,7 @@ export async function questionSetRoutes(app: FastifyInstance) {
     requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
 
     const body = createSetSchema.parse(request.body);
+    await assertActiveProgramSlug(body.programCourse);
     const validation = await validateSetConfigsForYear(
       body.yearLevel,
       body.programCourse,

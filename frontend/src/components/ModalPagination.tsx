@@ -6,6 +6,7 @@ interface Props {
   totalItems: number;
   onPageChange: (page: number) => void;
   variant?: "default" | "inline";
+  itemNoun?: string;
 }
 
 export default function ModalPagination({
@@ -16,33 +17,43 @@ export default function ModalPagination({
   totalItems,
   onPageChange,
   variant = "default",
+  itemNoun,
 }: Props) {
   if (totalItems === 0) return null;
+
+  const showNavigation = totalPages > 1;
+  const singlePageSummary = itemNoun
+    ? `${totalItems} ${itemNoun}${totalItems === 1 ? "" : "s"}`
+    : `Showing ${pageStart}–${pageEnd} of ${totalItems}`;
 
   return (
     <div className={`modal-pagination${variant === "inline" ? " modal-pagination-inline" : ""}`}>
       <span className="muted">
-        Showing {pageStart}–{pageEnd} of {totalItems}
+        {showNavigation ? `Showing ${pageStart}–${pageEnd} of ${totalItems}` : singlePageSummary}
       </span>
-      <button
-        type="button"
-        className="btn secondary btn-sm"
-        disabled={page <= 1}
-        onClick={() => onPageChange(Math.max(1, page - 1))}
-      >
-        Previous
-      </button>
-      <span className="modal-pagination-label">
-        Page {page} of {totalPages}
-      </span>
-      <button
-        type="button"
-        className="btn secondary btn-sm"
-        disabled={page >= totalPages}
-        onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-      >
-        Next
-      </button>
+      {showNavigation && (
+        <>
+          <button
+            type="button"
+            className="btn secondary btn-sm"
+            disabled={page <= 1}
+            onClick={() => onPageChange(Math.max(1, page - 1))}
+          >
+            Previous
+          </button>
+          <span className="modal-pagination-label">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            type="button"
+            className="btn secondary btn-sm"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          >
+            Next
+          </button>
+        </>
+      )}
     </div>
   );
 }

@@ -1,11 +1,26 @@
 import bcrypt from "bcryptjs";
-import { Difficulty, PrismaClient, Role } from "@prisma/client";
-import { seedTrigonometryDemo } from "./seed-trigonometry-demo.js";
+import { PrismaClient, Role } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
 async function main() {
   const passwordHash = await bcrypt.hash("password123", 10);
+
+  const defaultPrograms = [
+    { id: "prog_ce", slug: "CIVIL_ENGINEERING", label: "Civil Engineering", abbr: "CE" },
+    { id: "prog_me", slug: "MECHANICAL_ENGINEERING", label: "Mechanical Engineering", abbr: "ME" },
+    { id: "prog_ee", slug: "ELECTRICAL_ENGINEERING", label: "Electrical Engineering", abbr: "EE" },
+    { id: "prog_it", slug: "INFORMATION_TECHNOLOGY", label: "Information Technology", abbr: "IT" },
+    { id: "prog_arch", slug: "ARCHITECTURE", label: "Architecture", abbr: "ARCH" },
+  ];
+
+  for (const program of defaultPrograms) {
+    await prisma.program.upsert({
+      where: { slug: program.slug },
+      update: { label: program.label, abbr: program.abbr, isActive: true },
+      create: program,
+    });
+  }
 
   const superadmin = await prisma.user.upsert({
     where: { email: "admin@secsa.local" },
@@ -65,107 +80,15 @@ async function main() {
     },
   });
 
-  const subject = await prisma.subject.upsert({
-    where: {
-      courseCode_yearLevel: {
-        courseCode: "ACEE 106",
-        yearLevel: 1,
-      },
-    },
-    update: {},
-    create: {
-      courseCode: "ACEE 106",
-      courseTitle: "Electromagnetics",
-      yearLevel: 1,
-      createdById: teacher.id,
-    },
-  });
-
-  await prisma.subjectProgramCourse.upsert({
-    where: {
-      subjectId_programCourse: {
-        subjectId: subject.id,
-        programCourse: "INFORMATION_TECHNOLOGY",
-      },
-    },
-    update: {},
-    create: {
-      subjectId: subject.id,
-      programCourse: "INFORMATION_TECHNOLOGY",
-    },
-  });
-
-  const topic = await prisma.topic.upsert({
-    where: { subjectId_name: { subjectId: subject.id, name: "Magnetic Fields" } },
-    update: {},
-    create: {
-      name: "Magnetic Fields",
-      subjectId: subject.id,
-    },
-  });
-
-  const questions = [
-    {
-      text: "What is the SI unit of magnetic flux?",
-      optionA: "Tesla",
-      optionB: "Weber",
-      optionC: "Henry",
-      optionD: "Gauss",
-      correctOption: "B",
-      difficulty: Difficulty.EASY,
-    },
-    {
-      text: "Which law relates induced EMF to changing magnetic flux?",
-      optionA: "Ampere's Law",
-      optionB: "Faraday's Law",
-      optionC: "Gauss's Law",
-      optionD: "Coulomb's Law",
-      correctOption: "B",
-      difficulty: Difficulty.MEDIUM,
-    },
-    {
-      text: "What is the curl of B in free space with current density J?",
-      optionA: "μ0 J",
-      optionB: "ε0 E",
-      optionC: "μ0 ε0 ∂E/∂t",
-      optionD: "0",
-      correctOption: "A",
-      difficulty: Difficulty.HARD,
-    },
-  ];
-
-  for (const q of questions) {
-    const existing = await prisma.question.findFirst({
-      where: { subjectId: subject.id, text: q.text },
-    });
-    if (!existing) {
-      await prisma.question.create({
-        data: {
-          ...q,
-          subjectId: subject.id,
-          topicId: topic.id,
-          createdById: teacher.id,
-        },
-      });
-    }
-  }
-
-  const trigDemo = await seedTrigonometryDemo({
-    teacher,
-    student,
-    resetStudentAttempts: false,
-  });
-
   console.log("Seed complete.");
   console.log({
     superadmin: superadmin.email,
     teacher: teacher.email,
     student: student.email,
     qaStudent: qaStudent.email,
-    trigonometryDemo: trigDemo,
   });
   console.log("Default password: password123");
-  console.log("QA student (unlimited exam takes): qa@secsa.local / password123 (year level 2)");
+  console.log("No subjects, topics, questions, or exam data — start fresh from Saved.");
 }
 
 main()

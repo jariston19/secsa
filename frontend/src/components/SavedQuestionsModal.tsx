@@ -6,11 +6,11 @@ import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import { toastDeleted, toastUpdated, truncateLabel } from "../lib/toastMessages";
 import {
-  PROGRAM_COURSES,
   subjectHasProgram,
   type ProgramCourseFilter,
   type ProgramCourseId,
 } from "../lib/programCourse";
+import { useProgramCourseOptions } from "../lib/programs";
 
 interface Subject {
   id: string;
@@ -59,8 +59,9 @@ interface Props {
   subjects: Subject[];
   topics: Topic[];
   token: string | null;
-  onClose: () => void;
+  onClose?: () => void;
   onUpdated: (message: string, isError?: boolean) => void;
+  inline?: boolean;
 }
 
 function truncate(text: string, max = 96) {
@@ -80,7 +81,9 @@ export default function SavedQuestionsModal({
   token,
   onClose,
   onUpdated,
+  inline = false,
 }: Props) {
+  const programCourseOptions = useProgramCourseOptions();
   const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
@@ -91,7 +94,7 @@ export default function SavedQuestionsModal({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<QuestionEditDraft | null>(null);
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
 
   const totalQuestions = useMemo(
     () => subjects.reduce((sum, subject) => sum + (subject._count?.questions ?? 0), 0),
@@ -319,26 +322,28 @@ export default function SavedQuestionsModal({
 
   const selectedSubject = courseSubjects.find((s) => s.id === selectedSubjectId);
 
-  return portal(
-    <div className={overlayClass} onClick={requestClose}>
-      <div className={panelClass("saved-questions-modal")} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2>Saved Questions</h2>
-            <p className="muted">
-              {totalQuestions} question{totalQuestions === 1 ? "" : "s"} across{" "}
-              {subjects.length} subject{subjects.length === 1 ? "" : "s"}
-            </p>
-          </div>
-          <button type="button" className="btn secondary" onClick={requestClose}>
-            Close
-          </button>
+  const panel = (
+    <>
+      <div className={inline ? "saved-panel-header" : "modal-header"}>
+        <div>
+          <h2>Saved Questions</h2>
+          <p className="muted section-desc">
+            Filter by program course and year level, then select a subject and optional topic to
+            browse, edit, or delete encoded questions.
+          </p>
         </div>
-
-        <p className="muted section-desc">
-          Filter by program course and year level, then select a subject and optional topic to
-          browse, edit, or delete encoded questions.
-        </p>
+        <div className="saved-panel-header-end">
+          <span className="muted saved-panel-count">
+            {totalQuestions} question{totalQuestions === 1 ? "" : "s"} across{" "}
+            {subjects.length} subject{subjects.length === 1 ? "" : "s"}
+          </span>
+          {!inline && (
+            <button type="button" className="btn secondary" onClick={requestClose}>
+              Close
+            </button>
+          )}
+        </div>
+      </div>
 
         {sortedSubjects.length === 0 ? (
           <p className="muted">No subjects yet. Add a subject from the Setup tab first.</p>
@@ -351,7 +356,7 @@ export default function SavedQuestionsModal({
                 onChange={(e) => handleProgramFilterChange(e.target.value as ProgramCourseFilter)}
               >
                 <option value="ALL">All</option>
-                {PROGRAM_COURSES.map((course) => (
+                {programCourseOptions.map((course) => (
                   <option key={course.id} value={course.id}>
                     {course.label}
                   </option>
@@ -639,6 +644,18 @@ export default function SavedQuestionsModal({
             )}
           </>
         )}
+    </>
+  );
+
+  if (inline) {
+    return <section className="card saved-panel saved-questions-modal">{panel}</section>;
+  }
+
+  return portal(
+    <div className={overlayClass} onClick={requestClose}>
+      <div className={panelClass("saved-questions-modal")} onClick={(e) => e.stopPropagation()}>
+        {panel}
       </div>
     </div>
-  );}
+  );
+}

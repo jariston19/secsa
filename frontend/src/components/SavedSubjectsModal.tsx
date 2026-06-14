@@ -10,13 +10,13 @@ import {
   toastUpdated,
 } from "../lib/toastMessages";
 import {
-  PROGRAM_COURSES,
   formatProgramCoursesList,
   subjectHasProgram,
   subjectProgramCourseIds,
   type ProgramCourseFilter,
   type ProgramCourseId,
 } from "../lib/programCourse";
+import { useProgramCourseOptions } from "../lib/programs";
 
 interface Subject {
   id: string;
@@ -38,17 +38,25 @@ interface SubjectEditDraft {
 interface Props {
   subjects: Subject[];
   token: string | null;
-  onClose: () => void;
+  onClose?: () => void;
   onUpdated: (message: string, isError?: boolean) => void;
+  inline?: boolean;
 }
 
-export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated }: Props) {
+export default function SavedSubjectsModal({
+  subjects,
+  token,
+  onClose,
+  onUpdated,
+  inline = false,
+}: Props) {
+  const programCourseOptions = useProgramCourseOptions();
   const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>("ALL");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<SubjectEditDraft | null>(null);
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
 
   const filteredSubjects = useMemo(
     () =>
@@ -172,30 +180,33 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
     }
   }
 
-  return portal(
-    <div className={overlayClass} onClick={requestClose}>
-      <div className={panelClass("saved-subjects-modal")} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h2>Saved Subjects</h2>
-            <p className="muted">
-              {subjects.length} subject{subjects.length === 1 ? "" : "s"} in the system
-            </p>
-          </div>
-          <button type="button" className="btn secondary" onClick={requestClose}>
-            Close
-          </button>
+  const panel = (
+    <>
+      <div className={inline ? "saved-panel-header" : "modal-header"}>
+        <div>
+          <h2>Saved Subjects</h2>
+          <p className="muted section-desc">
+            Filter by program course, then edit or delete subjects. Subjects already used in
+            student exams cannot be deleted.
+          </p>
         </div>
+        <div className="saved-panel-header-end">
+          <span className="muted saved-panel-count">
+            {subjects.length} subject{subjects.length === 1 ? "" : "s"} in the system
+          </span>
+          {!inline && (
+            <button type="button" className="btn secondary" onClick={requestClose}>
+              Close
+            </button>
+          )}
+        </div>
+      </div>
 
-        <p className="muted section-desc">
-          Filter by program course, then edit or delete subjects. Subjects already used in
-          student exams cannot be deleted.
-        </p>
-
-        {subjects.length === 0 ? (
-          <p className="muted">No subjects yet. Add one from the Setup tab.</p>
-        ) : (
-          <>
+      {subjects.length === 0 ? (
+        <p className="muted">No subjects yet. Add one from the Setup tab.</p>
+      ) : (
+        <>
+          <div className="saved-subjects-toolbar">
             <label className="saved-subjects-filter">
               Program course
               <select
@@ -203,28 +214,32 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
                 onChange={(e) => handleProgramFilterChange(e.target.value as ProgramCourseFilter)}
               >
                 <option value="ALL">All</option>
-                {PROGRAM_COURSES.map((course) => (
+                {programCourseOptions.map((course) => (
                   <option key={course.id} value={course.id}>
                     {course.label}
                   </option>
                 ))}
               </select>
             </label>
+            {filteredSubjects.length > 0 && (
+              <ModalPagination
+                variant="inline"
+                page={page}
+                totalPages={totalPages}
+                pageStart={pageStart}
+                pageEnd={pageEnd}
+                totalItems={totalItems}
+                onPageChange={setPage}
+              />
+            )}
+          </div>
 
-            {filteredSubjects.length === 0 ? (
-              <p className="muted">No subjects linked to this program course.</p>
-            ) : (
-              <>
-                <ModalPagination
-                  page={page}
-                  totalPages={totalPages}
-                  pageStart={pageStart}
-                  pageEnd={pageEnd}
-                  totalItems={totalItems}
-                  onPageChange={setPage}
-                />
-                <div className="modal-table-wrap">
-                  <table>
+          {filteredSubjects.length === 0 ? (
+            <p className="muted">No subjects linked to this program course.</p>
+          ) : (
+            <>
+              <div className="modal-table-wrap">
+                <table>
             <thead>
               <tr>
                 <th>Course code</th>
@@ -271,7 +286,7 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
                     <td>
                       {isEditing ? (
                         <div className="saved-subjects-program-edit">
-                          {PROGRAM_COURSES.map((course) => (
+                          {programCourseOptions.map((course) => (
                             <label key={course.id} className="checkbox-label">
                               <input
                                 type="checkbox"
@@ -371,11 +386,23 @@ export default function SavedSubjectsModal({ subjects, token, onClose, onUpdated
               })}
             </tbody>
           </table>
-                </div>
-              </>
-            )}
-          </>
-        )}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  if (inline) {
+    return <section className="card saved-panel saved-subjects-modal">{panel}</section>;
+  }
+
+  return portal(
+    <div className={overlayClass} onClick={requestClose}>
+      <div className={panelClass("saved-subjects-modal")} onClick={(e) => e.stopPropagation()}>
+        {panel}
       </div>
     </div>
-  );}
+  );
+}

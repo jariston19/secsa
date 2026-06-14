@@ -3,6 +3,7 @@ import ModalPagination from "./ModalPagination";
 import SegmentedControl from "./SegmentedControl";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, formatExamType } from "../lib/constants";
+import { formatFullName } from "../lib/names";
 
 interface SubmissionRow {
   id: string;
@@ -160,8 +161,7 @@ export default function StudentSubmissionsSection({ token, onViewSubmission }: P
           <table className="student-submissions-table">
             <thead>
               <tr>
-                <th>First name</th>
-                <th>Last name</th>
+                <th>Student</th>
                 <th>Year</th>
                 <th>Exam set</th>
                 <th>Attempt</th>
@@ -175,10 +175,11 @@ export default function StudentSubmissionsSection({ token, onViewSubmission }: P
               {paginatedSubmissions.map((submission) => (
                 <tr key={submission.id}>
                   <td>
-                    <strong>{submission.student.firstName}</strong>
+                    <strong>
+                      {formatFullName(submission.student.firstName, submission.student.lastName)}
+                    </strong>
                     <div className="muted table-subtext">{submission.student.email}</div>
                   </td>
-                  <td>{submission.student.lastName}</td>
                   <td>{submission.student.yearLevel ?? "—"}</td>
                   <td>
                     {submission.questionSetName}

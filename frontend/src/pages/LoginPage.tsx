@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import LoginBackground from "../components/LoginBackground";
 import ThemeToggle from "../components/ThemeToggle";
 import { useAuth } from "../lib/auth";
 
@@ -24,13 +25,18 @@ export default function LoginPage() {
 
   return (
     <div className="login-page">
+      <LoginBackground />
       <div className="login-page-toolbar">
         <ThemeToggle />
       </div>
       <form className="card login-card form-grid" onSubmit={handleSubmit}>
         <img className="login-logo" src="/secsa.png" alt="SECSA" />
         <h1>Ready for the Challenge?</h1>
-        <p className="muted login-subtext">Sign in to access the SECSA Comprehensive Examination Platform.</p>
+        <p className="muted login-subtext">
+          Sign in to access the
+          <br />
+          SECSA Comprehensive Examination.
+        </p>
         <label>
           Email
           <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required />

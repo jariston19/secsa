@@ -10,6 +10,9 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-trig": "tsx prisma/seed-trigonometry-demo.ts",
+    "db:seed-analytics": "tsx prisma/seed-analytics-demo.ts",
+    "db:seed-demo": "tsx prisma/seed.ts && tsx prisma/seed-analytics-demo.ts",
+    "db:reset-content": "tsx prisma/reset-content.ts",
     "db:generate": "prisma generate"
   },
   "dependencies": {
