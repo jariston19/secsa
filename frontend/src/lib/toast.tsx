@@ -81,10 +81,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           {toasts.map((toast) => (
             <div
               key={toast.id}
-              className={`toast toast-${toast.type}${toast.closing ? " is-closing" : ""}`}
+              className={`toast card toast-${toast.type}${toast.closing ? " is-closing" : ""}`}
               role="status"
             >
-              {toast.message}
+              <div className={`toast-icon toast-icon-${toast.type}`} aria-hidden="true">
+                {toast.type === "success" ? "✓" : "!"}
+              </div>
+              <div className="toast-body">
+                <p className="toast-title">{toast.type === "success" ? "Success" : "Error"}</p>
+                <p className="toast-message">{toast.message}</p>
+              </div>
             </div>
           ))}
         </div>,

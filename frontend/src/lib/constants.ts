@@ -1,5 +1,6 @@
 export const MIN_YEAR_LEVEL = 1;
 export const MAX_YEAR_LEVEL = 4;
+export const MAX_EXAM_FOCUS_VIOLATIONS = 3;
 
 export function formatExamTimeLimit(totalMinutes: number) {
   const hours = Math.floor(totalMinutes / 60);

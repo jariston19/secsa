@@ -33,14 +33,15 @@ function cohortKey(programCourse: string, yearLevel: number) {
   return `${programCourse}::${yearLevel}`;
 }
 
-async function buildCohortSummaries(yearLevel?: YearFilter): Promise<CohortSummary[]> {
+async function buildCohortSummaries(filters: AnalyticsReportFilters = {}): Promise<CohortSummary[]> {
+  const { yearLevel, programCourse } = filters;
   const attempts = await prisma.examAttempt.findMany({
     where: {
       submittedAt: { not: null },
       student: {
         role: Role.STUDENT,
         qaUnlimited: false,
-        programCourse: { not: null },
+        programCourse: programCourse ?? { not: null },
         yearLevel: { not: null },
         ...(Number.isFinite(yearLevel) ? { yearLevel } : {}),
       },
@@ -153,7 +154,10 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     await Promise.all([
     prisma.examAnswer.findMany({
       where: {
-        examAttempt: nonQaSubmittedExamWhere(yearLevel, programCourse),
+        examAttempt: {
+          ...nonQaSubmittedExamWhere(yearLevel, programCourse),
+          ...(Number.isFinite(yearLevel) ? { questionSet: { yearLevel } } : {}),
+        },
       },
       include: {
         question: {
@@ -167,16 +171,19 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
             id: true,
             studentId: true,
             percentage: true,
-            questionSet: { select: { passThreshold: true } },
+            questionSet: { select: { passThreshold: true, yearLevel: true } },
           },
         },
       },
     }),
     prisma.examAttempt.findMany({
-      where: nonQaSubmittedExamWhere(yearLevel, programCourse),
+      where: {
+        ...nonQaSubmittedExamWhere(yearLevel, programCourse),
+        ...(Number.isFinite(yearLevel) ? { questionSet: { yearLevel } } : {}),
+      },
       include: {
         student: { select: { id: true, firstName: true, lastName: true, yearLevel: true } },
-        questionSet: { select: { passThreshold: true } },
+        questionSet: { select: { passThreshold: true, yearLevel: true } },
       },
       orderBy: [{ studentId: "asc" }, { submittedAt: "desc" }],
     }),
@@ -196,7 +203,7 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
         student: studentFilter,
       },
     }),
-    programCourse ? Promise.resolve([]) : buildCohortSummaries(yearLevel),
+    buildCohortSummaries({ yearLevel, programCourse }),
   ]);
 
   const attemptPercentages = attempts
@@ -543,7 +550,7 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     })
     .filter((row) => row.topWrongRate >= 30)
     .sort((a, b) => b.topWrongRate - a.topWrongRate)
-    .slice(0, 10);
+    .slice(0, Number.isFinite(yearLevel) ? 10 : 40);
 
   const latestAttemptByStudent = new Map<string, (typeof attempts)[number]>();
   for (const attempt of attempts) {

@@ -10,6 +10,11 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import { calculateResult, generateExamQuestions } from "../services/examGenerator.js";
+import {
+  createExamAttemptIfNoneInProgress,
+  findInProgressAttempt,
+  type InProgressExamAttempt,
+} from "../services/inProgressExam.js";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, yearLevelSchema } from "../lib/yearLevel.js";
 
 const submitSchema = z.object({
@@ -135,7 +140,7 @@ export async function examRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "asc" },
     });
 
-    const inProgressAttempt = attempts.find((a) => !a.submittedAt);
+    const inProgressAttempt = await findInProgressAttempt(user.id);
 
     const comprehensiveSet = await prisma.questionSet.findFirst({
       where: {
@@ -261,6 +266,12 @@ export async function examRoutes(app: FastifyInstance) {
       where: { studentId: user.id, status: ApprovalStatus.APPROVED },
     });
 
+    const incomingDiagnosticAvailable =
+      !inProgressAttempt &&
+      student.yearLevel === MIN_YEAR_LEVEL &&
+      Boolean(incomingDiagnosticSet) &&
+      submittedIncomingDiagnosticAttempts.length === 0;
+
     let nextAction:
       | "take_comprehensive"
       | "take_incoming_diagnostic"
@@ -271,6 +282,10 @@ export async function examRoutes(app: FastifyInstance) {
 
     if (inProgressAttempt) {
       nextAction = "resume_exam";
+    } else if (incomingDiagnosticAvailable) {
+      nextAction = "take_incoming_diagnostic";
+    } else if (student.yearLevel === MIN_YEAR_LEVEL) {
+      nextAction = "completed";
     } else if (firstComprehensiveAttempts.length === 0) {
       nextAction = "take_comprehensive";
     } else if (latest?.passed) {
@@ -282,11 +297,6 @@ export async function examRoutes(app: FastifyInstance) {
     } else {
       nextAction = "wait_approval";
     }
-
-    const incomingDiagnosticAvailable =
-      student.yearLevel === MIN_YEAR_LEVEL &&
-      Boolean(incomingDiagnosticSet) &&
-      submittedIncomingDiagnosticAttempts.length === 0;
 
     const examTimeLimitMinutes = nextActionSetTimeLimit(nextAction, {
       incomingDiagnostic: incomingDiagnosticSet,
@@ -301,9 +311,11 @@ export async function examRoutes(app: FastifyInstance) {
       attempts,
       nextAction,
       inProgressAttemptId: inProgressAttempt?.id ?? null,
-      comprehensiveAvailable: Boolean(comprehensiveSet),
+      comprehensiveAvailable:
+        student.yearLevel !== MIN_YEAR_LEVEL && Boolean(comprehensiveSet),
       incomingDiagnosticAvailable,
-      retakeAvailable: Boolean(retakeSet),
+      retakeAvailable:
+        student.yearLevel !== MIN_YEAR_LEVEL && Boolean(retakeSet),
       retakesUsed: retakeAttempts.length,
       retakesRemaining: Math.max(0, MAX_RETAKES - retakeAttempts.length),
       qaMode: false,
@@ -333,34 +345,10 @@ export async function examRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "asc" },
     });
 
-    const inProgress = await prisma.examAttempt.findFirst({
-      where: { studentId: user.id, submittedAt: null },
-      include: { questionSet: { select: { timeLimitMinutes: true } } },
-    });
+    const inProgress = await findInProgressAttempt(user.id);
 
     if (inProgress) {
-      const questions = await loadAttemptQuestions(inProgress.questionIds);
-      const savedAnswers = await prisma.examAnswer.findMany({
-        where: { examAttemptId: inProgress.id },
-        select: {
-          questionId: true,
-          selectedOption: true,
-          timeSpentSeconds: true,
-          answerChangeCount: true,
-        },
-      });
-      const questionIds = JSON.parse(inProgress.questionIds) as string[];
-      const resumeIndex = questionIds.findIndex(
-        (id) => !savedAnswers.find((answer) => answer.questionId === id)?.selectedOption
-      );
-
-      return buildExamStartResponse({
-        attempt: inProgress,
-        questions,
-        savedAnswers,
-        resumeIndex: resumeIndex === -1 ? questionIds.length - 1 : resumeIndex,
-        timeLimitMinutes: inProgress.questionSet.timeLimitMinutes,
-      });
+      return reply.send(await buildResumeExamStartResponse(inProgress));
     }
 
     if (student.qaUnlimited) {
@@ -387,19 +375,27 @@ export async function examRoutes(app: FastifyInstance) {
         const submittedDiagnosticAttempts = attempts.filter((a) => a.submittedAt);
         const attemptNumber = submittedDiagnosticAttempts.length + 1;
         const selected = await generateExamQuestions(diagnosticSet.configs);
-        const attempt = await prisma.examAttempt.create({
-          data: {
-            studentId: user.id,
-            questionSetId: diagnosticSet.id,
-            attemptType: AttemptType.FIRST,
-            attemptNumber,
-            questionIds: JSON.stringify(selected.map((q) => q.id)),
-            totalItems: selected.length,
-            answers: {
-              create: selected.map((q) => ({ questionId: q.id })),
+        const outcome = await createExamAttemptIfNoneInProgress(user.id, async (tx) =>
+          tx.examAttempt.create({
+            data: {
+              studentId: user.id,
+              questionSetId: diagnosticSet.id,
+              attemptType: AttemptType.FIRST,
+              attemptNumber,
+              questionIds: JSON.stringify(selected.map((q) => q.id)),
+              totalItems: selected.length,
+              answers: {
+                create: selected.map((q) => ({ questionId: q.id })),
+              },
             },
-          },
-        });
+          })
+        );
+
+        if (outcome.type === "resume") {
+          return reply.send(await buildResumeExamStartResponse(outcome.attempt));
+        }
+
+        const attempt = outcome.result;
 
         return reply.code(201).send(
           buildExamStartResponse({
@@ -433,19 +429,27 @@ export async function examRoutes(app: FastifyInstance) {
       const attemptType = submittedAttempts.length === 0 ? AttemptType.FIRST : AttemptType.RETAKE;
 
       const selected = await generateExamQuestions(questionSet.configs);
-      const attempt = await prisma.examAttempt.create({
-        data: {
-          studentId: user.id,
-          questionSetId: questionSet.id,
-          attemptType,
-          attemptNumber,
-          questionIds: JSON.stringify(selected.map((q) => q.id)),
-          totalItems: selected.length,
-          answers: {
-            create: selected.map((q) => ({ questionId: q.id })),
+      const outcome = await createExamAttemptIfNoneInProgress(user.id, async (tx) =>
+        tx.examAttempt.create({
+          data: {
+            studentId: user.id,
+            questionSetId: questionSet.id,
+            attemptType,
+            attemptNumber,
+            questionIds: JSON.stringify(selected.map((q) => q.id)),
+            totalItems: selected.length,
+            answers: {
+              create: selected.map((q) => ({ questionId: q.id })),
+            },
           },
-        },
-      });
+        })
+      );
+
+      if (outcome.type === "resume") {
+        return reply.send(await buildResumeExamStartResponse(outcome.attempt));
+      }
+
+      const attempt = outcome.result;
 
       return reply.code(201).send(
         buildExamStartResponse({
@@ -510,19 +514,27 @@ export async function examRoutes(app: FastifyInstance) {
       });
 
       const selected = await generateExamQuestions(questionSet.configs);
-      const attempt = await prisma.examAttempt.create({
-        data: {
-          studentId: user.id,
-          questionSetId: questionSet.id,
-          attemptType: AttemptType.FIRST,
-          attemptNumber: priorIncomingAttempts + 1,
-          questionIds: JSON.stringify(selected.map((q) => q.id)),
-          totalItems: selected.length,
-          answers: {
-            create: selected.map((q) => ({ questionId: q.id })),
+      const outcome = await createExamAttemptIfNoneInProgress(user.id, async (tx) =>
+        tx.examAttempt.create({
+          data: {
+            studentId: user.id,
+            questionSetId: questionSet.id,
+            attemptType: AttemptType.FIRST,
+            attemptNumber: priorIncomingAttempts + 1,
+            questionIds: JSON.stringify(selected.map((q) => q.id)),
+            totalItems: selected.length,
+            answers: {
+              create: selected.map((q) => ({ questionId: q.id })),
+            },
           },
-        },
-      });
+        })
+      );
+
+      if (outcome.type === "resume") {
+        return reply.send(await buildResumeExamStartResponse(outcome.attempt));
+      }
+
+      const attempt = outcome.result;
 
       return reply.code(201).send(
         buildExamStartResponse({
@@ -533,6 +545,12 @@ export async function examRoutes(app: FastifyInstance) {
           timeLimitMinutes: questionSet.timeLimitMinutes,
         })
       );
+    }
+
+    if (student.yearLevel === MIN_YEAR_LEVEL) {
+      return reply.code(403).send({
+        error: "Incoming 1st-year students take the diagnostic exam only.",
+      });
     }
 
     const firstComprehensiveCount = await prisma.examAttempt.count({
@@ -583,19 +601,27 @@ export async function examRoutes(app: FastifyInstance) {
     }
 
     const selected = await generateExamQuestions(questionSet.configs);
-    const attempt = await prisma.examAttempt.create({
-      data: {
-        studentId: user.id,
-        questionSetId: questionSet.id,
-        attemptType,
-        attemptNumber,
-        questionIds: JSON.stringify(selected.map((q) => q.id)),
-        totalItems: selected.length,
-        answers: {
-          create: selected.map((q) => ({ questionId: q.id })),
+    const outcome = await createExamAttemptIfNoneInProgress(user.id, async (tx) =>
+      tx.examAttempt.create({
+        data: {
+          studentId: user.id,
+          questionSetId: questionSet.id,
+          attemptType,
+          attemptNumber,
+          questionIds: JSON.stringify(selected.map((q) => q.id)),
+          totalItems: selected.length,
+          answers: {
+            create: selected.map((q) => ({ questionId: q.id })),
+          },
         },
-      },
-    });
+      })
+    );
+
+    if (outcome.type === "resume") {
+      return reply.send(await buildResumeExamStartResponse(outcome.attempt));
+    }
+
+    const attempt = outcome.result;
 
     return reply.code(201).send(
       buildExamStartResponse({
@@ -886,6 +912,7 @@ function buildExamStartResponse({
   savedAnswers,
   resumeIndex,
   timeLimitMinutes,
+  resumed = false,
 }: {
   attempt: { id: string; startedAt: Date };
   questions: ReturnType<typeof stripCorrectAnswer>[];
@@ -897,6 +924,7 @@ function buildExamStartResponse({
   }>;
   resumeIndex: number;
   timeLimitMinutes: number;
+  resumed?: boolean;
 }) {
   return {
     attempt,
@@ -904,7 +932,34 @@ function buildExamStartResponse({
     savedAnswers,
     resumeIndex,
     timeLimitMinutes,
+    resumed,
   };
+}
+
+async function buildResumeExamStartResponse(attempt: InProgressExamAttempt) {
+  const questions = await loadAttemptQuestions(attempt.questionIds);
+  const savedAnswers = await prisma.examAnswer.findMany({
+    where: { examAttemptId: attempt.id },
+    select: {
+      questionId: true,
+      selectedOption: true,
+      timeSpentSeconds: true,
+      answerChangeCount: true,
+    },
+  });
+  const questionIds = JSON.parse(attempt.questionIds) as string[];
+  const resumeIndex = questionIds.findIndex(
+    (id) => !savedAnswers.find((answer) => answer.questionId === id)?.selectedOption
+  );
+
+  return buildExamStartResponse({
+    attempt,
+    questions,
+    savedAnswers,
+    resumeIndex: resumeIndex === -1 ? questionIds.length - 1 : resumeIndex,
+    timeLimitMinutes: attempt.questionSet.timeLimitMinutes,
+    resumed: true,
+  });
 }
 
 function stripCorrectAnswer(question: {

@@ -15,6 +15,7 @@ import {
   ANALYTICS_DEMO_PROGRAMS,
   buildComprehensiveExamQuestions,
   comprehensiveSetName,
+  diagnosticSetName,
   ensureAnalyticsSubjects,
 } from "./seed-analytics-subjects.js";
 import { seedTrigonometryDemo } from "./seed-trigonometry-demo.js";
@@ -282,6 +283,8 @@ const COHORT_FILLER: StudentPlan[] = [
   { firstName: "Eli", lastName: "Park", yearLevel: 1, programCourse: "ELECTRICAL_ENGINEERING", scenario: "passed", firstScore: 84, daysAgoFirst: 6 },
   { firstName: "Nina", lastName: "Lopez", yearLevel: 3, programCourse: "ARCHITECTURE", scenario: "passed", firstScore: 71, daysAgoFirst: 8 },
   { firstName: "Owen", lastName: "Santos", yearLevel: 2, programCourse: "INFORMATION_TECHNOLOGY", scenario: "passed", firstScore: 76, daysAgoFirst: 5 },
+  { firstName: "Iris", lastName: "Wong", yearLevel: 3, programCourse: "INFORMATION_TECHNOLOGY", scenario: "passed", firstScore: 69, daysAgoFirst: 9 },
+  { firstName: "Jude", lastName: "Miles", yearLevel: 4, programCourse: "INFORMATION_TECHNOLOGY", scenario: "passed", firstScore: 82, daysAgoFirst: 7 },
 ];
 
 const MISCONCEPTION_TARGETS = new Map<string, string>([
@@ -436,10 +439,14 @@ async function createAttempt({
 }
 
 type ProgramExamSets = {
-  diagnosticId: string;
+  firstExamId: string;
   retakeId: string;
   totalItems: number;
 };
+
+function examSetKey(programCourse: string, yearLevel: number) {
+  return `${programCourse}:${yearLevel}`;
+}
 
 async function loadProgramExamSets() {
   const sets = new Map<string, ProgramExamSets>();
@@ -447,34 +454,57 @@ async function loadProgramExamSets() {
   for (const programCourse of ANALYTICS_DEMO_PROGRAMS) {
     const diagnostic = await prisma.questionSet.findFirst({
       where: {
-        name: comprehensiveSetName(programCourse, QuestionSetType.COMPREHENSIVE),
-        yearLevel: 2,
+        name: diagnosticSetName(programCourse),
+        yearLevel: 1,
         programCourse,
-        type: QuestionSetType.COMPREHENSIVE,
-        status: "DEPLOYED",
-      },
-      orderBy: { deployedAt: "desc" },
-    });
-    const retake = await prisma.questionSet.findFirst({
-      where: {
-        name: comprehensiveSetName(programCourse, QuestionSetType.RETAKE),
-        yearLevel: 2,
-        programCourse,
-        type: QuestionSetType.RETAKE,
+        type: QuestionSetType.DIAGNOSTIC,
         status: "DEPLOYED",
       },
       orderBy: { deployedAt: "desc" },
     });
 
-    if (!diagnostic || !retake) {
-      throw new Error(`Missing deployed exam sets for ${programCourse}.`);
+    if (!diagnostic) {
+      throw new Error(`Missing Y1 diagnostic for ${programCourse}.`);
     }
 
-    sets.set(programCourse, {
-      diagnosticId: diagnostic.id,
-      retakeId: retake.id,
+    sets.set(examSetKey(programCourse, 1), {
+      firstExamId: diagnostic.id,
+      retakeId: diagnostic.id,
       totalItems: diagnostic.totalItems,
     });
+
+    for (const yearLevel of [2, 3, 4] as const) {
+      const comprehensive = await prisma.questionSet.findFirst({
+        where: {
+          name: comprehensiveSetName(programCourse, QuestionSetType.COMPREHENSIVE, yearLevel),
+          yearLevel,
+          programCourse,
+          type: QuestionSetType.COMPREHENSIVE,
+          status: "DEPLOYED",
+        },
+        orderBy: { deployedAt: "desc" },
+      });
+      const retake = await prisma.questionSet.findFirst({
+        where: {
+          name: comprehensiveSetName(programCourse, QuestionSetType.RETAKE, yearLevel),
+          yearLevel,
+          programCourse,
+          type: QuestionSetType.RETAKE,
+          status: "DEPLOYED",
+        },
+        orderBy: { deployedAt: "desc" },
+      });
+
+      if (!comprehensive || !retake) {
+        throw new Error(`Missing Y${yearLevel} exam sets for ${programCourse}.`);
+      }
+
+      sets.set(examSetKey(programCourse, yearLevel), {
+        firstExamId: comprehensive.id,
+        retakeId: retake.id,
+        totalItems: comprehensive.totalItems,
+      });
+    }
   }
 
   return sets;
@@ -496,17 +526,28 @@ export async function seedAnalyticsDemo(teacher: Pick<User, "id">) {
   await ensureAnalyticsSubjects(teacher);
 
   const programExamSets = await loadProgramExamSets();
-  const referenceSet = programExamSets.get("INFORMATION_TECHNOLOGY");
+  const referenceSet = programExamSets.get(examSetKey("INFORMATION_TECHNOLOGY", 2));
   if (!referenceSet) {
-    throw new Error("IT exam sets missing after bootstrap.");
+    throw new Error("IT Y2 exam sets missing after bootstrap.");
   }
 
-  const finalQuestions = await buildComprehensiveExamQuestions(referenceSet.totalItems);
-  if (finalQuestions.length < 24) {
-    throw new Error(`Need at least 24 questions across demo subjects; got ${finalQuestions.length}.`);
+  const questionPoolCache = new Map<number, Question[]>();
+
+  async function getExamQuestions(totalItems: number) {
+    const cached = questionPoolCache.get(totalItems);
+    if (cached) return cached;
+
+    const questions = await buildComprehensiveExamQuestions(totalItems);
+    if (questions.length < 24) {
+      throw new Error(`Need at least 24 questions across demo subjects; got ${questions.length}.`);
+    }
+
+    questionPoolCache.set(totalItems, questions);
+    return questions;
   }
 
-  const subjectCount = new Set(finalQuestions.map((question) => question.subjectId)).size;
+  const referenceQuestions = await getExamQuestions(referenceSet.totalItems);
+  const subjectCount = new Set(referenceQuestions.map((question) => question.subjectId)).size;
 
   const passwordHash = await bcrypt.hash("password123", 10);
   let attemptCount = 0;
@@ -518,10 +559,12 @@ export async function seedAnalyticsDemo(teacher: Pick<User, "id">) {
     const plan = allPlans[index];
     const email = `analytics.demo.${plan.firstName.toLowerCase()}${DEMO_EMAIL_DOMAIN}`;
     const programCourse = plan.programCourse ?? "INFORMATION_TECHNOLOGY";
-    const examSets = programExamSets.get(programCourse);
+    const examSets = programExamSets.get(examSetKey(programCourse, plan.yearLevel));
     if (!examSets) {
-      throw new Error(`No exam sets configured for ${programCourse}.`);
+      throw new Error(`No exam sets configured for ${programCourse} year ${plan.yearLevel}.`);
     }
+
+    const examQuestions = await getExamQuestions(examSets.totalItems);
 
     const student = await prisma.user.create({
       data: {
@@ -537,8 +580,8 @@ export async function seedAnalyticsDemo(teacher: Pick<User, "id">) {
 
     const firstAttempt = await createAttempt({
       studentId: student.id,
-      questionSetId: examSets.diagnosticId,
-      questions: finalQuestions,
+      questionSetId: examSets.firstExamId,
+      questions: examQuestions,
       targetPct: plan.firstScore,
       submittedAt: daysAgo(plan.daysAgoFirst, 9 + (index % 6)),
       attemptType: AttemptType.FIRST,
@@ -571,7 +614,7 @@ export async function seedAnalyticsDemo(teacher: Pick<User, "id">) {
       const retakeAttempt = await createAttempt({
         studentId: student.id,
         questionSetId: examSets.retakeId,
-        questions: finalQuestions,
+        questions: examQuestions,
         targetPct: retakeScores[retakeIndex],
         submittedAt: daysAgo(retakeDates[retakeIndex] ?? 5, 14 + retakeIndex),
         attemptType: AttemptType.RETAKE,
@@ -616,7 +659,7 @@ export async function seedAnalyticsDemo(teacher: Pick<User, "id">) {
 
   for (let index = 0; index < trendStudents.length; index += 1) {
     const plan = trendStudents[index];
-    const examSets = programExamSets.get(plan.programCourse);
+    const examSets = programExamSets.get(examSetKey(plan.programCourse, 2));
     if (!examSets) continue;
 
     const student = await prisma.user.create({
@@ -631,10 +674,12 @@ export async function seedAnalyticsDemo(teacher: Pick<User, "id">) {
       },
     });
 
+    const trendQuestions = await getExamQuestions(examSets.totalItems);
+
     await createAttempt({
       studentId: student.id,
-      questionSetId: examSets.diagnosticId,
-      questions: finalQuestions,
+      questionSetId: examSets.firstExamId,
+      questions: trendQuestions,
       targetPct: plan.score,
       submittedAt: daysAgo(plan.daysAgo, 8),
       attemptType: AttemptType.FIRST,
@@ -648,7 +693,7 @@ export async function seedAnalyticsDemo(teacher: Pick<User, "id">) {
     students: allPlans.length + trendStudents.length,
     attempts: attemptCount,
     pendingApprovals,
-    questionsUsed: finalQuestions.length,
+    questionsUsed: referenceQuestions.length,
     subjectsInExam: subjectCount,
     programs: ANALYTICS_DEMO_PROGRAMS.length,
     topics: EXTRA_TOPICS.length + 1,

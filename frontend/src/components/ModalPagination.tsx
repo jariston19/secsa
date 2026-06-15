@@ -5,7 +5,6 @@ interface Props {
   pageEnd: number;
   totalItems: number;
   onPageChange: (page: number) => void;
-  variant?: "default" | "inline";
   itemNoun?: string;
 }
 
@@ -16,7 +15,6 @@ export default function ModalPagination({
   pageEnd,
   totalItems,
   onPageChange,
-  variant = "default",
   itemNoun,
 }: Props) {
   if (totalItems === 0) return null;
@@ -27,12 +25,12 @@ export default function ModalPagination({
     : `Showing ${pageStart}–${pageEnd} of ${totalItems}`;
 
   return (
-    <div className={`modal-pagination${variant === "inline" ? " modal-pagination-inline" : ""}`}>
-      <span className="muted">
+    <div className="modal-pagination modal-pagination-inline">
+      <span className="muted modal-pagination-summary">
         {showNavigation ? `Showing ${pageStart}–${pageEnd} of ${totalItems}` : singlePageSummary}
       </span>
-      {showNavigation && (
-        <>
+      {showNavigation ? (
+        <div className="modal-pagination-actions">
           <button
             type="button"
             className="btn secondary btn-sm"
@@ -52,8 +50,8 @@ export default function ModalPagination({
           >
             Next
           </button>
-        </>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }

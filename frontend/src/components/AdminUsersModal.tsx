@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import AdminUserGroupTable, { type UserEditDraft, type UserRow } from "./AdminUserGroupTable";
+import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import SegmentedControl from "./SegmentedControl";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
@@ -10,6 +11,7 @@ import { parseYearLevel } from "../lib/constants";
 import { compareByName, formatFullName } from "../lib/names";
 import { DEFAULT_PROGRAM_COURSE } from "../lib/programCourse";
 import { toastDeleted, toastUpdated } from "../lib/toastMessages";
+import { useConfirm } from "../lib/confirm";
 
 type RoleTab = "students" | "teachers" | "admins";
 
@@ -39,6 +41,7 @@ export default function AdminUsersModal({
   onUpdated,
   inline = false,
 }: Props) {
+  const confirm = useConfirm();
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,9 +229,12 @@ export default function AdminUsersModal({
     if (currentUser?.id === user.id || user.role === "SUPERADMIN") return;
 
     const label = formatFullName(user.firstName, user.lastName);
-    const confirmed = window.confirm(
-      `Delete user "${label}" (${user.email})?\n\nThis cannot be undone. Exam and retake records for this account will also be removed.`
-    );
+    const confirmed = await confirm({
+      title: "Delete user?",
+      message: `Delete user "${label}" (${user.email})?\n\nThis cannot be undone. Exam and retake records for this account will also be removed.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
     if (!confirmed) return;
 
     setDeletingId(user.id);
@@ -294,35 +300,37 @@ export default function AdminUsersModal({
           <p className="muted">Loading users...</p>
         ) : (
           <>
-            <div className="admin-users-toolbar">
-              <ModalPagination
-                variant="inline"
-                page={page}
-                totalPages={totalPages}
-                pageStart={pageStart}
-                pageEnd={pageEnd}
-                totalItems={totalItems}
-                onPageChange={setPage}
+            <ListPanel
+              footer={
+                <ModalPagination
+                  page={page}
+                  totalPages={totalPages}
+                  pageStart={pageStart}
+                  pageEnd={pageEnd}
+                  totalItems={totalItems}
+                  onPageChange={setPage}
+                />
+              }
+            >
+              <AdminUserGroupTable
+                users={paginatedUsers}
+                group={tableGroup}
+                hideYearColumn={roleTab === "students"}
+                emptyMessage={emptyMessage}
+                editingId={editingId}
+                editDraft={editDraft}
+                savingId={savingId}
+                deletingId={deletingId}
+                togglingId={togglingId}
+                currentUserId={currentUser?.id ?? null}
+                onStartEdit={startEdit}
+                onCancelEdit={cancelEdit}
+                onSaveEdit={saveEdit}
+                onDelete={deleteUser}
+                onToggleActive={toggleActive}
+                setEditDraft={setEditDraft}
               />
-            </div>
-            <AdminUserGroupTable
-              users={paginatedUsers}
-              group={tableGroup}
-              hideYearColumn={roleTab === "students"}
-              emptyMessage={emptyMessage}
-              editingId={editingId}
-              editDraft={editDraft}
-              savingId={savingId}
-              deletingId={deletingId}
-              togglingId={togglingId}
-              currentUserId={currentUser?.id ?? null}
-              onStartEdit={startEdit}
-              onCancelEdit={cancelEdit}
-              onSaveEdit={saveEdit}
-              onDelete={deleteUser}
-              onToggleActive={toggleActive}
-              setEditDraft={setEditDraft}
-            />
+            </ListPanel>
           </>
         )}
       </div>

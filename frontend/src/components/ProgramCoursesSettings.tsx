@@ -3,7 +3,9 @@ import { usePagination } from "../hooks/usePagination";
 import { api } from "../lib/api";
 import { usePrograms } from "../lib/programs";
 import { previewProgramSlug, type ProgramRecord } from "../lib/programCourse";
+import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
+import { useConfirm } from "../lib/confirm";
 
 interface Props {
   token: string | null;
@@ -15,9 +17,8 @@ type EditDraft = {
   abbr: string;
 };
 
-const PAGE_SIZE = 5;
-
 export default function ProgramCoursesSettings({ token, onCreated }: Props) {
+  const confirm = useConfirm();
   const { programs, refresh, upsertProgram, removeProgram } = usePrograms();
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ label: "", abbr: "" });
@@ -34,7 +35,6 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
     pageEnd,
     totalItems,
   } = usePagination(programs, {
-    pageSize: PAGE_SIZE,
     resetKey: programs.map((program) => program.id).join(","),
   });
 
@@ -106,9 +106,12 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
   }
 
   async function handleRemoveProgram(program: ProgramRecord) {
-    const confirmed = window.confirm(
-      `Remove ${program.label} (${program.abbr})? This cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: "Remove program?",
+      message: `Remove ${program.label} (${program.abbr})? This cannot be undone.`,
+      tone: "danger",
+      confirmLabel: "Remove",
+    });
     if (!confirmed) return;
 
     setDeletingId(program.id);
@@ -182,7 +185,20 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
             <p className="muted">No program courses yet.</p>
           ) : (
             <div className="program-courses-list-panel">
-              <div className="program-courses-table-wrap table-wrap">
+              <ListPanel
+                footer={
+                  <ModalPagination
+                    itemNoun="program course"
+                    page={page}
+                    totalPages={totalPages}
+                    pageStart={pageStart}
+                    pageEnd={pageEnd}
+                    totalItems={totalItems}
+                    onPageChange={setPage}
+                  />
+                }
+              >
+                <div className="program-courses-table-wrap table-wrap">
                 <table className="data-table program-courses-table">
                   <thead>
                     <tr>
@@ -289,16 +305,7 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
                   </tbody>
                 </table>
               </div>
-              <ModalPagination
-                variant="inline"
-                itemNoun="program course"
-                page={page}
-                totalPages={totalPages}
-                pageStart={pageStart}
-                pageEnd={pageEnd}
-                totalItems={totalItems}
-                onPageChange={setPage}
-              />
+              </ListPanel>
             </div>
           )}
         </section>

@@ -35,9 +35,6 @@ export async function searchStudentsForAnalytics(
   const trimmed = query.trim();
   const hasYearFilter = Number.isFinite(filters.yearLevel);
   const hasProgramFilter = Boolean(filters.programCourse);
-  const hasFilters = hasYearFilter || hasProgramFilter;
-
-  if (trimmed.length < 2 && !hasFilters) return [];
 
   const tokens =
     trimmed.length >= 2 ? trimmed.toLowerCase().split(/\s+/).filter(Boolean) : [];
@@ -74,7 +71,7 @@ export async function searchStudentsForAnalytics(
       return tokens.every((token) => haystack.includes(token));
     })
     .filter((student) => student.examAttempts.length > 0)
-    .slice(0, 20)
+    .slice(0, tokens.length === 0 ? 150 : 50)
     .map((student) => ({
       id: student.id,
       firstName: student.firstName,

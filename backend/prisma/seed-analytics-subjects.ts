@@ -41,6 +41,8 @@ export const ANALYTICS_DEMO_SUBJECT_CODES = [
   "FIL 101",
   "HIST 105",
   "VAL 101",
+  "PHYS 201",
+  "CAP 301",
 ] as const;
 
 const DEMO_PROGRAM_COURSES = [
@@ -61,11 +63,15 @@ export const PROGRAM_COURSE_ABBREV: Record<string, string> = {
   ARCHITECTURE: "ARCH",
 };
 
-export function comprehensiveSetName(programCourse: string, type: QuestionSetType) {
+export function comprehensiveSetName(
+  programCourse: string,
+  type: QuestionSetType,
+  yearLevel = 2
+) {
   const abbrev = PROGRAM_COURSE_ABBREV[programCourse];
   const label =
     type === QuestionSetType.COMPREHENSIVE ? "Comprehensive Review" : "Comprehensive Retake";
-  return `${abbrev} Y2 ${label}`;
+  return `${abbrev} Y${yearLevel} ${label}`;
 }
 
 export function diagnosticSetName(programCourse: string) {
@@ -867,6 +873,256 @@ const DEMO_SUBJECTS: DemoSubject[] = [
       },
     ],
   },
+  {
+    courseCode: "PHYS 201",
+    courseTitle: "College Physics",
+    curriculumYear: 2,
+    topics: [
+      {
+        name: "Mechanics",
+        questions: [
+          {
+            text: "[Demo] Newton's second law states F equals:",
+            optionA: "mv",
+            optionB: "ma",
+            optionC: "m/a",
+            optionD: "m + a",
+            correctOption: "B",
+            difficulty: Difficulty.EASY,
+          },
+          {
+            text: "[Demo] Kinetic energy depends on:",
+            optionA: "Mass and velocity squared",
+            optionB: "Height only",
+            optionC: "Temperature",
+            optionD: "Charge",
+            correctOption: "A",
+            difficulty: Difficulty.EASY,
+          },
+          {
+            text: "[Demo] A 4 kg block accelerates at 3 m/s². Net force?",
+            optionA: "7 N",
+            optionB: "12 N",
+            optionC: "1.33 N",
+            optionD: "0.75 N",
+            correctOption: "B",
+            difficulty: Difficulty.MEDIUM,
+          },
+          {
+            text: "[Demo] Work done by a constant force is:",
+            optionA: "F/d",
+            optionB: "Fd cos θ",
+            optionC: "F + d",
+            optionD: "F − d",
+            correctOption: "B",
+            difficulty: Difficulty.MEDIUM,
+          },
+          {
+            text: "[Demo] In uniform circular motion, acceleration points:",
+            optionA: "Tangent to the path",
+            optionB: "Toward the center",
+            optionC: "Away from the center",
+            optionD: "Is zero",
+            correctOption: "B",
+            difficulty: Difficulty.HARD,
+          },
+          {
+            text: "[Demo] Impulse equals:",
+            optionA: "Force times time",
+            optionB: "Mass times acceleration only",
+            optionC: "Energy divided by time",
+            optionD: "Momentum squared",
+            correctOption: "A",
+            difficulty: Difficulty.HARD,
+          },
+        ],
+      },
+      {
+        name: "Electricity",
+        questions: [
+          {
+            text: "[Demo] Ohm's law relates voltage, current, and:",
+            optionA: "Resistance",
+            optionB: "Power only",
+            optionC: "Capacitance only",
+            optionD: "Magnetic flux",
+            correctOption: "A",
+            difficulty: Difficulty.EASY,
+          },
+          {
+            text: "[Demo] Current is measured in:",
+            optionA: "Volts",
+            optionB: "Ohms",
+            optionC: "Amperes",
+            optionD: "Watts",
+            correctOption: "C",
+            difficulty: Difficulty.EASY,
+          },
+          {
+            text: "[Demo] Two equal resistors in series have total resistance:",
+            optionA: "Half of one resistor",
+            optionB: "Twice one resistor",
+            optionC: "Zero",
+            optionD: "The product of the two",
+            correctOption: "B",
+            difficulty: Difficulty.MEDIUM,
+          },
+          {
+            text: "[Demo] Electric power in a resistor is:",
+            optionA: "IV",
+            optionB: "I/R",
+            optionC: "V/R²",
+            optionD: "I + V",
+            correctOption: "A",
+            difficulty: Difficulty.MEDIUM,
+          },
+          {
+            text: "[Demo] Kirchhoff's current law states:",
+            optionA: "Voltage drops sum to zero in any loop",
+            optionB: "Current into a junction equals current out",
+            optionC: "Resistance is constant for all materials",
+            optionD: "Charge cannot move",
+            correctOption: "B",
+            difficulty: Difficulty.HARD,
+          },
+          {
+            text: "[Demo] A capacitor stores energy in:",
+            optionA: "Its magnetic field only",
+            optionB: "Its electric field",
+            optionC: "Thermal vibration only",
+            optionD: "Nuclear bonds",
+            correctOption: "B",
+            difficulty: Difficulty.HARD,
+          },
+        ],
+      },
+    ],
+  },
+  {
+    courseCode: "CAP 301",
+    courseTitle: "Capstone Engineering",
+    curriculumYear: 3,
+    topics: [
+      {
+        name: "Design Process",
+        questions: [
+          {
+            text: "[Demo] The first stage of engineering design is usually:",
+            optionA: "Fabrication",
+            optionB: "Problem definition",
+            optionC: "Marketing",
+            optionD: "Disposal",
+            correctOption: "B",
+            difficulty: Difficulty.EASY,
+          },
+          {
+            text: "[Demo] A design constraint limits:",
+            optionA: "Only team size",
+            optionB: "Feasible solutions",
+            optionC: "Documentation format only",
+            optionD: "Nothing important",
+            correctOption: "B",
+            difficulty: Difficulty.EASY,
+          },
+          {
+            text: "[Demo] Prototyping helps teams:",
+            optionA: "Skip testing",
+            optionB: "Test ideas before full build",
+            optionC: "Avoid user feedback",
+            optionD: "Eliminate requirements",
+            correctOption: "B",
+            difficulty: Difficulty.MEDIUM,
+          },
+          {
+            text: "[Demo] A Gantt chart is used to:",
+            optionA: "Plot stress vs strain",
+            optionB: "Schedule project tasks over time",
+            optionC: "Measure voltage",
+            optionD: "Balance chemical equations",
+            correctOption: "B",
+            difficulty: Difficulty.MEDIUM,
+          },
+          {
+            text: "[Demo] Trade-off analysis compares:",
+            optionA: "Only aesthetic choices",
+            optionB: "Competing design alternatives",
+            optionC: "Unrelated historical events",
+            optionD: "Only material color",
+            correctOption: "B",
+            difficulty: Difficulty.HARD,
+          },
+          {
+            text: "[Demo] Design validation confirms:",
+            optionA: "The solution meets requirements",
+            optionB: "The budget is unlimited",
+            optionC: "No documentation is needed",
+            optionD: "Testing can be skipped",
+            correctOption: "A",
+            difficulty: Difficulty.HARD,
+          },
+        ],
+      },
+      {
+        name: "Professional Practice",
+        questions: [
+          {
+            text: "[Demo] Engineering ethics requires:",
+            optionA: "Public safety as a priority",
+            optionB: "Ignoring standards",
+            optionC: "Hiding defects",
+            optionD: "Avoiding accountability",
+            correctOption: "A",
+            difficulty: Difficulty.EASY,
+          },
+          {
+            text: "[Demo] A bill of materials lists:",
+            optionA: "Team birthdays",
+            optionB: "Components needed for a build",
+            optionC: "Only software licenses",
+            optionD: "Exam schedules",
+            correctOption: "B",
+            difficulty: Difficulty.EASY,
+          },
+          {
+            text: "[Demo] Peer review in capstone improves:",
+            optionA: "Secrecy",
+            optionB: "Design quality through feedback",
+            optionC: "Isolation",
+            optionD: "Random grading",
+            correctOption: "B",
+            difficulty: Difficulty.MEDIUM,
+          },
+          {
+            text: "[Demo] Risk assessment identifies:",
+            optionA: "Only financial profit",
+            optionB: "Potential failures and mitigations",
+            optionC: "Unrelated trivia",
+            optionD: "Team lunch menus only",
+            correctOption: "B",
+            difficulty: Difficulty.MEDIUM,
+          },
+          {
+            text: "[Demo] Sustainability in design considers:",
+            optionA: "Only short-term cost",
+            optionB: "Lifecycle environmental impact",
+            optionC: "Ignoring waste",
+            optionD: "Single-use only",
+            correctOption: "B",
+            difficulty: Difficulty.HARD,
+          },
+          {
+            text: "[Demo] A capstone oral defense primarily evaluates:",
+            optionA: "Memorized unrelated facts",
+            optionB: "Understanding of the project and results",
+            optionC: "Attendance only",
+            optionD: "Font choice in slides only",
+            correctOption: "B",
+            difficulty: Difficulty.HARD,
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 async function upsertSubjectPrograms(subjectId: string) {
@@ -946,14 +1202,15 @@ async function upsertComprehensiveQuestionSet({
   programCourse,
   type,
   subjectIds,
+  yearLevel,
 }: {
   teacherId: string;
   programCourse: string;
   type: QuestionSetType;
   subjectIds: string[];
+  yearLevel: number;
 }) {
-  const yearLevel = 2;
-  const name = comprehensiveSetName(programCourse, type);
+  const name = comprehensiveSetName(programCourse, type, yearLevel);
   const perSubjectEasy = 3;
   const perSubjectMedium = 3;
   const perSubjectHard = 2;
@@ -1147,8 +1404,7 @@ export async function ensureAnalyticsSubjects(teacher: Pick<User, "id">) {
   const questionSets: Array<{
     programCourse: string;
     diagnostic: string;
-    comprehensive: string;
-    retake: string;
+    comprehensiveByYear: Array<{ yearLevel: number; comprehensive: string; retake: string }>;
   }> = [];
   let itemsPerComprehensiveExam = 0;
   let itemsPerDiagnosticExam = 0;
@@ -1160,28 +1416,47 @@ export async function ensureAnalyticsSubjects(teacher: Pick<User, "id">) {
       subjectIds,
     });
 
-    const comprehensive = await upsertComprehensiveQuestionSet({
-      teacherId: teacher.id,
-      programCourse,
-      type: QuestionSetType.COMPREHENSIVE,
-      subjectIds,
-    });
+    const comprehensiveByYear = [];
+    for (const yearLevel of [2, 3, 4] as const) {
+      const comprehensive = await upsertComprehensiveQuestionSet({
+        teacherId: teacher.id,
+        programCourse,
+        type: QuestionSetType.COMPREHENSIVE,
+        subjectIds,
+        yearLevel,
+      });
 
-    const retake = await upsertComprehensiveQuestionSet({
-      teacherId: teacher.id,
-      programCourse,
-      type: QuestionSetType.RETAKE,
-      subjectIds,
-    });
+      const retake = await upsertComprehensiveQuestionSet({
+        teacherId: teacher.id,
+        programCourse,
+        type: QuestionSetType.RETAKE,
+        subjectIds,
+        yearLevel,
+      });
 
-    if (itemsPerComprehensiveExam === 0) itemsPerComprehensiveExam = comprehensive.totalItems;
+      comprehensiveByYear.push({
+        yearLevel,
+        comprehensive: comprehensive.name,
+        retake: retake.name,
+      });
+    }
+
+    if (itemsPerComprehensiveExam === 0) {
+      itemsPerComprehensiveExam = comprehensiveByYear[0]
+        ? (
+            await prisma.questionSet.findFirst({
+              where: { name: comprehensiveByYear[0].comprehensive },
+              select: { totalItems: true },
+            })
+          )?.totalItems ?? 0
+        : 0;
+    }
     if (itemsPerDiagnosticExam === 0) itemsPerDiagnosticExam = diagnostic.totalItems;
 
     questionSets.push({
       programCourse,
       diagnostic: diagnostic.name,
-      comprehensive: comprehensive.name,
-      retake: retake.name,
+      comprehensiveByYear,
     });
   }
 

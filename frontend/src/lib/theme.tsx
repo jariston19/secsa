@@ -26,6 +26,7 @@ export function getStoredTheme(): Theme {
 
 export function applyTheme(theme: Theme) {
   document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.classList.toggle("dark", theme === "dark");
   document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute("content", theme === "dark" ? "#000000" : "#f2f2f7");

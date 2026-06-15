@@ -1,5 +1,18 @@
+import { type ReactNode } from "react";
 import { VerticalHistogram } from "./charts/AnalyticsCharts";
-import AnalyticsPrintArea, { AnalyticsPrintAction } from "./AnalyticsPrintArea";
+import AnalyticsPrintArea from "./AnalyticsPrintArea";
+import SwappableChartGrid, { ChartReorderHint } from "./SwappableChartGrid";
+import { useChartOrder } from "../hooks/useChartOrder";
+
+export interface OverviewExamTypeHealth {
+  passRate: number;
+  examsTaken: number;
+  trend: {
+    week: { current: number; previous: number; delta: number; exams: number };
+    month: { current: number; previous: number; delta: number; exams: number };
+  };
+  scoreDistribution: Array<{ label: string; students: number }>;
+}
 
 export interface OverviewDashboardData {
   students: number;
@@ -7,12 +20,8 @@ export interface OverviewDashboardData {
   passRate: number;
   averageScore: number;
   performanceHealth: {
-    passRate: number;
-    trend: {
-      week: { current: number; previous: number; delta: number; exams: number };
-      month: { current: number; previous: number; delta: number; exams: number };
-    };
-    scoreDistribution: Array<{ label: string; students: number }>;
+    comprehensive: OverviewExamTypeHealth;
+    diagnostic: OverviewExamTypeHealth;
     failingStudents: number;
   };
   retakeEffectiveness: {
@@ -38,6 +47,20 @@ export interface OverviewDashboardData {
   };
   passRateByYear: Array<{ yearLevel: number; students: number; passRate: number }>;
 }
+
+const OVERVIEW_CHART_ORDER = [
+  "first-takers-retakers",
+  "pass-rate-comprehensive",
+  "pass-rate-diagnostic",
+  "score-distribution-comprehensive",
+  "score-distribution-diagnostic",
+  "retake-success",
+  "at-risk",
+  "exam-activity",
+  "pass-rate-by-year",
+] as const;
+
+type OverviewChartId = (typeof OVERVIEW_CHART_ORDER)[number];
 
 function TrendArrow({ delta }: { delta: number }) {
   if (Math.abs(delta) < 0.05) {
@@ -73,53 +96,166 @@ interface Props {
   data: OverviewDashboardData;
 }
 
-export default function AnalyticsOverview({ data }: Props) {
+function PassRateCard({
+  title,
+  description,
+  health,
+  icon,
+  className,
+}: {
+  title: string;
+  description: string;
+  health: OverviewExamTypeHealth;
+  icon: string;
+  className: string;
+}) {
+  return (
+    <article className={`overview-hero-card ${className}`}>
+      <div className="overview-hero-card-top">
+        <span className="overview-hero-icon" aria-hidden>
+          {icon}
+        </span>
+        <div>
+          <h3>{title}</h3>
+          <p className="muted">{description}</p>
+        </div>
+      </div>
+      <div className="overview-hero-metric">{health.passRate.toFixed(1)}%</div>
+      <TrendArrow delta={health.trend.week.delta} />
+      <p className="muted overview-hero-sub">
+        {health.trend.month.delta >= 0 ? "↑" : "↓"}{" "}
+        {Math.abs(health.trend.month.delta).toFixed(1)} pts vs last month · {health.examsTaken}{" "}
+        exam{health.examsTaken === 1 ? "" : "s"} total
+      </p>
+    </article>
+  );
+}
+
+function ScoreDistributionCard({
+  title,
+  description,
+  health,
+  icon,
+  className,
+}: {
+  title: string;
+  description: string;
+  health: OverviewExamTypeHealth;
+  icon: string;
+  className: string;
+}) {
+  return (
+    <article className={`overview-hero-card ${className}`}>
+      <div className="overview-hero-card-top">
+        <span className="overview-hero-icon" aria-hidden>
+          {icon}
+        </span>
+        <div>
+          <h3>{title}</h3>
+          <p className="muted">{description}</p>
+        </div>
+      </div>
+      <VerticalHistogram
+        buckets={health.scoreDistribution.map((bucket) => ({
+          label: bucket.label.replace("–", "-"),
+          value: bucket.students,
+        }))}
+      />
+    </article>
+  );
+}
+
+function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): ReactNode {
   const maxYearPass = Math.max(...data.passRateByYear.map((row) => row.passRate), 1);
 
-  return (
-    <AnalyticsPrintArea id="analytics-print-overview" title="Analytics — Overview">
-      <div className="analytics-overview">
-        <div className="analytics-overview-toolbar analytics-no-print">
-          <AnalyticsPrintAction areaId="analytics-print-overview" title="Analytics — Overview" />
-        </div>
-      <div className="analytics-overview-hero-grid">
-        <article className="overview-hero-card overview-hero-pass">
-          <div className="overview-hero-card-top">
-            <span className="overview-hero-icon" aria-hidden>
-              🟢
-            </span>
-            <div>
-              <h3>Pass Rate</h3>
-              <p className="muted">Performance health across all submitted exams</p>
-            </div>
-          </div>
-          <div className="overview-hero-metric">{data.performanceHealth.passRate.toFixed(1)}%</div>
-          <TrendArrow delta={data.performanceHealth.trend.week.delta} />
-          <p className="muted overview-hero-sub">
-            {data.performanceHealth.trend.month.delta >= 0 ? "↑" : "↓"}{" "}
-            {Math.abs(data.performanceHealth.trend.month.delta).toFixed(1)} pts vs last month ·{" "}
-            {data.examsTaken} exams total
+  switch (id) {
+    case "first-takers-retakers":
+      return (
+        <section className="card overview-panel">
+          <h2>First Takers vs Retakers</h2>
+          <p className="muted section-desc">
+            Compare pass rate and average score between first-time and retake attempts.
           </p>
-        </article>
-
-        <article className="overview-hero-card overview-hero-distribution">
-          <div className="overview-hero-card-top">
-            <span className="overview-hero-icon" aria-hidden>
-              📊
-            </span>
-            <div>
-              <h3>Score Distribution</h3>
-              <p className="muted">Latest attempt per student, in 10-point intervals</p>
-            </div>
+          <div className="overview-cohort-compare">
+            <article className="overview-cohort-card">
+              <h3>First Takers</h3>
+              <div className="overview-cohort-metric">
+                {data.retakeEffectiveness.firstTakers.passRate.toFixed(1)}%
+              </div>
+              <span className="muted">Pass rate</span>
+              <dl className="overview-mini-stats">
+                <div>
+                  <dt>Average score</dt>
+                  <dd>{data.retakeEffectiveness.firstTakers.averageScore.toFixed(1)}%</dd>
+                </div>
+                <div>
+                  <dt>Exams</dt>
+                  <dd>{data.retakeEffectiveness.firstTakers.count}</dd>
+                </div>
+              </dl>
+            </article>
+            <article className="overview-cohort-card">
+              <h3>Retakers</h3>
+              <div className="overview-cohort-metric">
+                {data.retakeEffectiveness.retakers.passRate.toFixed(1)}%
+              </div>
+              <span className="muted">Pass rate</span>
+              <dl className="overview-mini-stats">
+                <div>
+                  <dt>Average score</dt>
+                  <dd>{data.retakeEffectiveness.retakers.averageScore.toFixed(1)}%</dd>
+                </div>
+                <div>
+                  <dt>Exams</dt>
+                  <dd>{data.retakeEffectiveness.retakers.count}</dd>
+                </div>
+              </dl>
+            </article>
           </div>
-          <VerticalHistogram
-            buckets={data.performanceHealth.scoreDistribution.map((bucket) => ({
-              label: bucket.label.replace("–", "-"),
-              value: bucket.students,
-            }))}
-          />
-        </article>
-
+        </section>
+      );
+    case "pass-rate-comprehensive":
+      return (
+        <PassRateCard
+          title="Pass Rate — Comprehensive"
+          description="Performance on comprehensive and retake exams"
+          health={data.performanceHealth.comprehensive}
+          icon="🟢"
+          className="overview-hero-pass"
+        />
+      );
+    case "pass-rate-diagnostic":
+      return (
+        <PassRateCard
+          title="Pass Rate — Diagnostic"
+          description="Performance on incoming diagnostic exams"
+          health={data.performanceHealth.diagnostic}
+          icon="🔵"
+          className="overview-hero-pass overview-hero-pass-diagnostic"
+        />
+      );
+    case "score-distribution-comprehensive":
+      return (
+        <ScoreDistributionCard
+          title="Score Distribution — Comprehensive"
+          description="Latest comprehensive or retake attempt per student"
+          health={data.performanceHealth.comprehensive}
+          icon="📊"
+          className="overview-hero-distribution"
+        />
+      );
+    case "score-distribution-diagnostic":
+      return (
+        <ScoreDistributionCard
+          title="Score Distribution — Diagnostic"
+          description="Latest diagnostic attempt per student"
+          health={data.performanceHealth.diagnostic}
+          icon="📈"
+          className="overview-hero-distribution overview-hero-distribution-diagnostic"
+        />
+      );
+    case "retake-success":
+      return (
         <article className="overview-hero-card overview-hero-retake">
           <div className="overview-hero-card-top">
             <span className="overview-hero-icon" aria-hidden>
@@ -152,7 +288,9 @@ export default function AnalyticsOverview({ data }: Props) {
             </div>
           </dl>
         </article>
-
+      );
+    case "at-risk":
+      return (
         <article className="overview-hero-card overview-hero-risk">
           <div className="overview-hero-card-top">
             <span className="overview-hero-icon" aria-hidden>
@@ -166,9 +304,7 @@ export default function AnalyticsOverview({ data }: Props) {
           <div className="overview-hero-metric overview-hero-metric-risk">
             {data.atRisk.failedNotRetaken}
           </div>
-          <p className="overview-hero-highlight">
-            Failed and haven&apos;t retaken yet
-          </p>
+          <p className="overview-hero-highlight">Failed and haven&apos;t retaken yet</p>
           <dl className="overview-mini-stats">
             <div>
               <dt>Failing (latest attempt)</dt>
@@ -180,9 +316,9 @@ export default function AnalyticsOverview({ data }: Props) {
             </div>
           </dl>
         </article>
-      </div>
-
-      <div className="analytics-overview-secondary-grid">
+      );
+    case "exam-activity":
+      return (
         <section className="card overview-panel">
           <h2>Exam Activity</h2>
           <div className="overview-activity-grid">
@@ -218,7 +354,9 @@ export default function AnalyticsOverview({ data }: Props) {
             </div>
           </div>
         </section>
-
+      );
+    case "pass-rate-by-year":
+      return (
         <section className="card overview-panel">
           <h2>Pass Rate by Year</h2>
           <p className="muted section-desc">Quick snapshot across year levels</p>
@@ -227,9 +365,7 @@ export default function AnalyticsOverview({ data }: Props) {
               <div key={row.yearLevel} className="overview-year-pill">
                 <div className="overview-year-pill-header">
                   <span>Year {row.yearLevel}</span>
-                  <strong>
-                    {row.students > 0 ? `${row.passRate.toFixed(0)}%` : "—"}
-                  </strong>
+                  <strong>{row.students > 0 ? `${row.passRate.toFixed(0)}%` : "—"}</strong>
                 </div>
                 <div className="overview-year-pill-track">
                   <span
@@ -249,51 +385,30 @@ export default function AnalyticsOverview({ data }: Props) {
             ))}
           </div>
         </section>
+      );
+    default:
+      return null;
+  }
+}
 
-        <section className="card overview-panel overview-panel-wide">
-          <h2>First Takers vs Retakers</h2>
-          <p className="muted section-desc">
-            Compare pass rate and average score between first-time and retake attempts.
-          </p>
-          <div className="overview-cohort-compare">
-            <article className="overview-cohort-card overview-cohort-first">
-              <h3>First Takers</h3>
-              <div className="overview-cohort-metric">
-                {data.retakeEffectiveness.firstTakers.passRate.toFixed(1)}%
-              </div>
-              <span className="muted">Pass rate</span>
-              <dl className="overview-mini-stats">
-                <div>
-                  <dt>Average score</dt>
-                  <dd>{data.retakeEffectiveness.firstTakers.averageScore.toFixed(1)}%</dd>
-                </div>
-                <div>
-                  <dt>Exams</dt>
-                  <dd>{data.retakeEffectiveness.firstTakers.count}</dd>
-                </div>
-              </dl>
-            </article>
-            <article className="overview-cohort-card overview-cohort-retake">
-              <h3>Retakers</h3>
-              <div className="overview-cohort-metric">
-                {data.retakeEffectiveness.retakers.passRate.toFixed(1)}%
-              </div>
-              <span className="muted">Pass rate</span>
-              <dl className="overview-mini-stats">
-                <div>
-                  <dt>Average score</dt>
-                  <dd>{data.retakeEffectiveness.retakers.averageScore.toFixed(1)}%</dd>
-                </div>
-                <div>
-                  <dt>Exams</dt>
-                  <dd>{data.retakeEffectiveness.retakers.count}</dd>
-                </div>
-              </dl>
-            </article>
-          </div>
-        </section>
+export default function AnalyticsOverview({ data }: Props) {
+  const [chartOrder, setChartOrder] = useChartOrder(
+    "analytics-overview-chart-order",
+    OVERVIEW_CHART_ORDER
+  );
+
+  return (
+    <AnalyticsPrintArea id="analytics-print-overview" title="Analytics — Overview">
+      <div className="analytics-overview">
+        <ChartReorderHint />
+        <SwappableChartGrid
+          order={chartOrder}
+          onOrderChange={setChartOrder}
+          wideIds={["first-takers-retakers"]}
+        >
+          {(id) => renderOverviewChart(id as OverviewChartId, data)}
+        </SwappableChartGrid>
       </div>
-    </div>
     </AnalyticsPrintArea>
   );
 }

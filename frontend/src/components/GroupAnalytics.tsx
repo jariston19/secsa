@@ -1,18 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import AnalyticsPrintArea, { AnalyticsPrintAction } from "./AnalyticsPrintArea";
+import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import { AnalyticsReportBody } from "./AnalyticsReports";
-import SegmentedControl from "./SegmentedControl";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
-import { formatProgramCourse } from "../lib/programCourse";
+import {
+  formatProgramCourse,
+  type ProgramCourseFilter,
+} from "../lib/programCourse";
+import { useProgramCourseOptions } from "../lib/programs";
 
-const YEAR_SEGMENTS = [
-  { id: "all", label: "All years" },
-  ...Array.from({ length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 }, (_, index) => {
-    const year = MIN_YEAR_LEVEL + index;
-    return { id: String(year), label: `Year ${year}` };
-  }),
-];
+type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
 
 interface CohortSummary {
   programCourse: string;
@@ -149,7 +146,9 @@ function readinessTone(level: string) {
 }
 
 export default function GroupAnalytics({ token }: Props) {
-  const [yearFilter, setYearFilter] = useState("all");
+  const programCourseOptions = useProgramCourseOptions();
+  const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
+  const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
   const [selectedCohort, setSelectedCohort] = useState<SelectedCohort | null>(null);
   const [reports, setReports] = useState<GroupReportsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -162,12 +161,13 @@ export default function GroupAnalytics({ token }: Props) {
     if (selectedCohort) {
       params.set("programCourse", selectedCohort.programCourse);
       params.set("yearLevel", String(selectedCohort.yearLevel));
-    } else if (yearFilter !== "all") {
-      params.set("yearLevel", yearFilter);
+    } else {
+      if (courseFilter !== "ALL") params.set("programCourse", courseFilter);
+      if (yearFilter !== "ALL") params.set("yearLevel", yearFilter);
     }
     const serialized = params.toString();
     return serialized ? `?${serialized}` : "";
-  }, [selectedCohort, yearFilter]);
+  }, [selectedCohort, courseFilter, yearFilter]);
 
   useEffect(() => {
     setError("");
@@ -193,9 +193,10 @@ export default function GroupAnalytics({ token }: Props) {
   const printTitle = "Analytics — Group";
   const printSubtitle = selectedCohort
     ? `${formatProgramCourse(selectedCohort.programCourse)} · Year ${selectedCohort.yearLevel}`
-    : yearFilter === "all"
-      ? "All cohorts"
-      : `Year ${yearFilter}`;
+    : [
+        courseFilter === "ALL" ? "All" : formatProgramCourse(courseFilter),
+        yearFilter === "ALL" ? "All" : `Year ${yearFilter}`,
+      ].join(" · ");
 
   const cohortSummaries = reports?.cohortSummaries ?? [];
 
@@ -219,18 +220,44 @@ export default function GroupAnalytics({ token }: Props) {
                 </div>
               </div>
             ) : (
-              <SegmentedControl
-                segments={YEAR_SEGMENTS}
-                value={yearFilter}
-                onChange={setYearFilter}
-                scrollable
-              />
+              <div className="analytics-reports-filters">
+                <label className="analytics-reports-filter-field">
+                  Course
+                  <select
+                    value={courseFilter}
+                    onChange={(e) =>
+                      setCourseFilter(e.target.value as ProgramCourseFilter)
+                    }
+                  >
+                    <option value="ALL">All</option>
+                    {programCourseOptions.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="analytics-reports-filter-field">
+                  Year
+                  <select
+                    value={yearFilter}
+                    onChange={(e) =>
+                      setYearFilter(e.target.value as YearLevelFilter)
+                    }
+                  >
+                    <option value="ALL">All</option>
+                    {Array.from(
+                      { length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 },
+                      (_, i) => MIN_YEAR_LEVEL + i
+                    ).map((level) => (
+                      <option key={level} value={String(level)}>
+                        Year {level}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             )}
-            <AnalyticsPrintAction
-              areaId={printAreaId}
-              title={printTitle}
-              disabled={loading && !reports}
-            />
           </div>
         </div>
 

@@ -1,6 +1,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ArchivedQuestionSetsModal from "../components/ArchivedQuestionSetsModal";
 import BuildQuestionSetModal from "../components/BuildQuestionSetModal";
+import ListPanel from "../components/ListPanel";
+import ModalPagination from "../components/ModalPagination";
 import QuestionEncoder from "../components/QuestionEncoder";
 import QuestionSetPreviewModal from "../components/QuestionSetPreviewModal";
 import RetakeApprovalsModal from "../components/RetakeApprovalsModal";
@@ -8,10 +10,12 @@ import SavedQuestionsModal from "../components/SavedQuestionsModal";
 import SavedSubjectsModal from "../components/SavedSubjectsModal";
 import SavedTopicsModal from "../components/SavedTopicsModal";
 import TabPanel from "../components/TabPanel";
+import { usePagination } from "../hooks/usePagination";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useSidebar } from "../lib/sidebar";
 import { useToast } from "../lib/toast";
+import { useConfirm } from "../lib/confirm";
 import { formatExamType, parseYearLevel, sanitizeYearInput, type QuestionSetExamType } from "../lib/constants";
 import {
   subjectLabel,
@@ -91,6 +95,7 @@ export default function TeacherDashboard() {
   const { token } = useAuth();
   const { setPageNav, setPageNavValue, patchPageNav } = useSidebar();
   const toast = useToast();
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState<Tab>("setup");
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -392,9 +397,12 @@ export default function TeacherDashboard() {
   }
 
   async function undeploySet(id: string, name: string) {
-    const confirmed = window.confirm(
-      `Cancel deploy for "${name}"?\n\nStudents will no longer be able to start this exam until you deploy a set again.`
-    );
+    const confirmed = await confirm({
+      title: "Cancel deploy?",
+      message: `Cancel deploy for "${name}"?\n\nStudents will no longer be able to start this exam until you deploy a set again.`,
+      tone: "warning",
+      confirmLabel: "Cancel deploy",
+    });
     if (!confirmed) return;
 
     try {
@@ -407,9 +415,12 @@ export default function TeacherDashboard() {
   }
 
   async function archiveSet(id: string, name: string) {
-    const confirmed = window.confirm(
-      `Archive question set "${name}"?\n\nIt will be removed from this list. You can restore it later from Archive.`
-    );
+    const confirmed = await confirm({
+      title: "Archive question set?",
+      message: `Archive question set "${name}"?\n\nIt will be removed from this list. You can restore it later from Archive.`,
+      tone: "warning",
+      confirmLabel: "Archive",
+    });
     if (!confirmed) return;
 
     try {
@@ -423,9 +434,12 @@ export default function TeacherDashboard() {
   }
 
   async function deleteSet(id: string, name: string) {
-    const confirmed = window.confirm(
-      `Delete question set "${name}"?\n\nThis cannot be undone. Questions in the pool will not be deleted.`
-    );
+    const confirmed = await confirm({
+      title: "Delete question set?",
+      message: `Delete question set "${name}"?\n\nThis cannot be undone. Questions in the pool will not be deleted.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
     if (!confirmed) return;
 
     try {
@@ -484,6 +498,17 @@ export default function TeacherDashboard() {
       ),
     [sets, setsProgramFilter, setsStatusFilter, setsTypeFilter]
   );
+
+  const setsPaginationResetKey = `${setsProgramFilter}|${setsStatusFilter}|${setsTypeFilter}|${courseSets.map((set) => set.id).join(",")}`;
+  const {
+    page: setsPage,
+    setPage: setSetsPage,
+    totalPages: setsTotalPages,
+    paginatedItems: paginatedCourseSets,
+    pageStart: setsPageStart,
+    pageEnd: setsPageEnd,
+    totalItems: setsTotalItems,
+  } = usePagination(courseSets, { resetKey: setsPaginationResetKey });
 
   const topicBatchCount = useMemo(
     () =>
@@ -717,7 +742,7 @@ export default function TeacherDashboard() {
       )}
 
       {activeTab === "sets" && (
-        <section className="card">
+        <section className="card build-sets-panel">
           <div className="sets-header">
             <div>
               <h2>Build &amp; Deploy Question Sets</h2>
@@ -789,100 +814,108 @@ export default function TeacherDashboard() {
             </div>
           </div>
 
-          <div className="table-responsive">
-            <table className="sets-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th className="sets-col-center">Year</th>
-                <th>Course</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th className="sets-col-center">Items</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {courseSets.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="muted sets-empty-row">
-                    No question sets match these filters. Try Program, Status, or Exam type
-                    set to &quot;All&quot;.
-                  </td>
-                </tr>
-              ) : (
-              courseSets.map((set) => (
-                <tr key={set.id}>
-                  <td>{set.name}</td>
-                  <td className="sets-col-center">{set.yearLevel}</td>
-                  <td>{formatProgramCourse(set.programCourse)}</td>
-                  <td>{formatExamType(set.type)}</td>
-                  <td>{set.status}</td>
-                  <td className="sets-col-center">{set.totalItems}</td>
-                  <td>
-                    <div className="action-buttons">
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        onClick={() => setPreviewSetId(set.id)}
-                      >
-                        Preview
-                      </button>
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        onClick={() => {
-                          setEditingSetId(set.id);
-                          setShowBuildSet(true);
-                        }}
-                      >
-                        Edit
-                      </button>
-                      {set.status === "DEPLOYED" ? (
-                        <button
-                          type="button"
-                          className="btn secondary"
-                          onClick={() => undeploySet(set.id, set.name)}
-                        >
-                          Cancel Deploy
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn secondary"
-                          onClick={() => deploySet(set.id, set.name)}
-                        >
-                          Deploy
-                        </button>
-                      )}
-                      {set.status !== "DEPLOYED" && (
-                        <>
-                          {(set._count?.examAttempts ?? 0) === 0 && (
+          {courseSets.length === 0 ? (
+            <p className="muted">No question sets match these filters. Try Program, Status, or Exam type set to &quot;All&quot;.</p>
+          ) : (
+            <ListPanel
+              footer={
+                <ModalPagination
+                  page={setsPage}
+                  totalPages={setsTotalPages}
+                  pageStart={setsPageStart}
+                  pageEnd={setsPageEnd}
+                  totalItems={setsTotalItems}
+                  onPageChange={setSetsPage}
+                />
+              }
+            >
+              <div className="table-responsive build-sets-table-wrap">
+                <table className="sets-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th className="sets-col-center">Year</th>
+                      <th>Course</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th className="sets-col-center">Items</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedCourseSets.map((set) => (
+                      <tr key={set.id}>
+                        <td>{set.name}</td>
+                        <td className="sets-col-center">{set.yearLevel}</td>
+                        <td>{formatProgramCourse(set.programCourse)}</td>
+                        <td>{formatExamType(set.type)}</td>
+                        <td>{set.status}</td>
+                        <td className="sets-col-center">{set.totalItems}</td>
+                        <td>
+                          <div className="action-buttons">
                             <button
                               type="button"
-                              className="btn danger"
-                              onClick={() => deleteSet(set.id, set.name)}
+                              className="btn secondary"
+                              onClick={() => setPreviewSetId(set.id)}
                             >
-                              Delete
+                              Preview
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            className="btn secondary"
-                            onClick={() => archiveSet(set.id, set.name)}
-                          >
-                            Archive
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
-              )}
-            </tbody>
-          </table>
-          </div>
+                            <button
+                              type="button"
+                              className="btn secondary"
+                              onClick={() => {
+                                setEditingSetId(set.id);
+                                setShowBuildSet(true);
+                              }}
+                            >
+                              Edit
+                            </button>
+                            {set.status === "DEPLOYED" ? (
+                              <button
+                                type="button"
+                                className="btn secondary"
+                                onClick={() => undeploySet(set.id, set.name)}
+                              >
+                                Cancel Deploy
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn secondary"
+                                onClick={() => deploySet(set.id, set.name)}
+                              >
+                                Deploy
+                              </button>
+                            )}
+                            {set.status !== "DEPLOYED" && (
+                              <>
+                                {(set._count?.examAttempts ?? 0) === 0 && (
+                                  <button
+                                    type="button"
+                                    className="btn danger"
+                                    onClick={() => deleteSet(set.id, set.name)}
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn secondary"
+                                  onClick={() => archiveSet(set.id, set.name)}
+                                >
+                                  Archive
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </ListPanel>
+          )}
         </section>
       )}
 

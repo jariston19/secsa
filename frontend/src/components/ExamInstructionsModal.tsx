@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
-import { formatExamTimeLimit } from "../lib/constants";
+import { formatExamTimeLimit, MAX_EXAM_FOCUS_VIOLATIONS } from "../lib/constants";
 
 interface Props {
   examType: "comprehensive" | "incoming_diagnostic" | "retake";
@@ -107,8 +107,15 @@ export default function ExamInstructionsModal({
           <ul className="instructions-list">
             <li>When you begin, the exam enters <strong>fullscreen mode</strong> and takes over your screen.</li>
             <li>Do <strong>not</strong> switch tabs, minimize the window, or open other applications during the exam.</li>
-            <li>If you leave the exam view, it will <strong>pause</strong> until you return to fullscreen.</li>
-            <li>You must <strong>submit the exam</strong> before closing or leaving this page.</li>
+            <li>
+              You may switch away <strong>up to {MAX_EXAM_FOCUS_VIOLATIONS - 1} times</strong> — each time
+              the exam pauses until you return to fullscreen.
+            </li>
+            <li>
+              On the <strong>{MAX_EXAM_FOCUS_VIOLATIONS}rd</strong> tab or window switch, your exam is{" "}
+              <strong>auto-submitted</strong>.
+            </li>
+            <li>You must <strong>submit the exam</strong> before closing or leaving this page once you are finished.</li>
           </ul>
 
           <h3>Technical reminders</h3>

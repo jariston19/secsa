@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
+import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
@@ -11,6 +12,7 @@ import {
   type ProgramCourseId,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
+import { useConfirm } from "../lib/confirm";
 
 interface Subject {
   id: string;
@@ -47,6 +49,7 @@ export default function SavedTopicsModal({
   onUpdated,
   inline = false,
 }: Props) {
+  const confirm = useConfirm();
   const programCourseOptions = useProgramCourseOptions();
   const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
@@ -160,9 +163,12 @@ export default function SavedTopicsModal({
   }
 
   async function deleteTopic(id: string, label: string, questionCount: number) {
-    const confirmed = window.confirm(
-      `Delete topic "${label}"?\n\nThis will also remove ${questionCount} question(s). This cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: "Delete topic?",
+      message: `Delete topic "${label}"?\n\nThis will also remove ${questionCount} question(s). This cannot be undone.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
     if (!confirmed) return;
 
     setDeletingId(id);
@@ -274,22 +280,24 @@ export default function SavedTopicsModal({
             <strong>
               {selectedSubject.courseCode} — {selectedSubject.courseTitle}
             </strong>
-            {filteredTopics.length > 0 && (
-              <ModalPagination
-                variant="inline"
-                page={page}
-                totalPages={totalPages}
-                pageStart={pageStart}
-                pageEnd={pageEnd}
-                totalItems={totalItems}
-                onPageChange={setPage}
-              />
-            )}
           </div>
 
           {filteredTopics.length === 0 ? (
             <p className="muted">No topics for this subject yet. Add one from the Setup tab.</p>
           ) : (
+            <>
+            <ListPanel
+              footer={
+                <ModalPagination
+                  page={page}
+                  totalPages={totalPages}
+                  pageStart={pageStart}
+                  pageEnd={pageEnd}
+                  totalItems={totalItems}
+                  onPageChange={setPage}
+                />
+              }
+            >
             <div className="modal-table-wrap">
               <table>
               <thead>
@@ -368,6 +376,8 @@ export default function SavedTopicsModal({
               </tbody>
             </table>
             </div>
+            </ListPanel>
+            </>
           )}
         </>
       )}

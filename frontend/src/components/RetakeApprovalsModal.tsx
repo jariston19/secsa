@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
+import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { formatFullName } from "../lib/names";
 import { toastApproved } from "../lib/toastMessages";
+import { useConfirm } from "../lib/confirm";
 
 interface RetakeApproval {
   id: string;
@@ -34,6 +36,7 @@ export default function RetakeApprovalsModal({
   onUpdated,
   inline = false,
 }: Props) {
+  const confirm = useConfirm();
   const [approvals, setApprovals] = useState<RetakeApproval[]>([]);
   const [loading, setLoading] = useState(true);
   const [approvingId, setApprovingId] = useState<string | null>(null);
@@ -104,7 +107,12 @@ export default function RetakeApprovalsModal({
   }
 
   async function approveRetake(id: string, studentName: string) {
-    const confirmed = window.confirm(`Approve retake for ${studentName}?`);
+    const confirmed = await confirm({
+      title: "Approve retake?",
+      message: `Approve retake for ${studentName}?`,
+      tone: "default",
+      confirmLabel: "Approve",
+    });
     if (!confirmed) return;
 
     setApprovingId(id);
@@ -126,9 +134,12 @@ export default function RetakeApprovalsModal({
     const ids = [...selectedIds];
     if (ids.length === 0) return;
 
-    const confirmed = window.confirm(
-      `Approve ${ids.length} retake request${ids.length === 1 ? "" : "s"}?`
-    );
+    const confirmed = await confirm({
+      title: "Approve retakes?",
+      message: `Approve ${ids.length} retake request${ids.length === 1 ? "" : "s"}?`,
+      tone: "default",
+      confirmLabel: "Approve all",
+    });
     if (!confirmed) return;
 
     setBulkApproving(true);
@@ -201,16 +212,19 @@ export default function RetakeApprovalsModal({
                 ? "Approving..."
                 : `Approve selected${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`}
             </button>
-            <ModalPagination
-              variant="inline"
-              page={page}
-              totalPages={totalPages}
-              pageStart={pageStart}
-              pageEnd={pageEnd}
-              totalItems={totalItems}
-              onPageChange={setPage}
-            />
           </div>
+          <ListPanel
+            footer={
+              <ModalPagination
+                page={page}
+                totalPages={totalPages}
+                pageStart={pageStart}
+                pageEnd={pageEnd}
+                totalItems={totalItems}
+                onPageChange={setPage}
+              />
+            }
+          >
           <div className="modal-table-wrap">
             <table>
               <thead>
@@ -271,6 +285,7 @@ export default function RetakeApprovalsModal({
               </tbody>
             </table>
           </div>
+          </ListPanel>
         </>
       )}
     </>

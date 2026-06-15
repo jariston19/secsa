@@ -4,14 +4,19 @@ import { useAnimatedModal } from "../hooks/useAnimatedModal";
 interface Props {
   src: string;
   alt?: string;
+  variant?: "thumbnail" | "inline";
 }
 
-export default function QuestionImage({ src, alt = "Question image" }: Props) {
+export default function QuestionImage({ src, alt = "Question image", variant = "thumbnail" }: Props) {
   const [open, setOpen] = useState(false);
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
     () => setOpen(false),
     open
   );
+
+  if (variant === "inline") {
+    return <img src={src} alt={alt} className="exam-question-inline-image" />;
+  }
 
   return (
     <>

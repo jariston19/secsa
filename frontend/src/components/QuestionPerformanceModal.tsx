@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
+import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 
@@ -68,14 +69,18 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
             <p className="muted">No question data yet.</p>
           ) : (
             <>
-              <ModalPagination
-                page={page}
-                totalPages={totalPages}
-                pageStart={pageStart}
-                pageEnd={pageEnd}
-                totalItems={totalItems}
-                onPageChange={setPage}
-              />
+              <ListPanel
+                footer={
+                  <ModalPagination
+                    page={page}
+                    totalPages={totalPages}
+                    pageStart={pageStart}
+                    pageEnd={pageEnd}
+                    totalItems={totalItems}
+                    onPageChange={setPage}
+                  />
+                }
+              >
               <div className="modal-table-wrap">
                 <table>
                 <thead>
@@ -100,6 +105,7 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
                 </tbody>
               </table>
               </div>
+              </ListPanel>
             </>
           )}
         </div>

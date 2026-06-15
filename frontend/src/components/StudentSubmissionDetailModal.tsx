@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
+import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { formatExamType } from "../lib/constants";
@@ -123,16 +124,19 @@ export default function StudentSubmissionDetailModal({ submissionId, token, onCl
               </div>
             </div>
 
-            <ModalPagination
-              page={page}
-              totalPages={totalPages}
-              pageStart={pageStart}
-              pageEnd={pageEnd}
-              totalItems={totalItems}
-              onPageChange={setPage}
-            />
-
-            <div className="modal-table-scroll student-submission-answers-scroll">
+            <ListPanel
+              footer={
+                <ModalPagination
+                  page={page}
+                  totalPages={totalPages}
+                  pageStart={pageStart}
+                  pageEnd={pageEnd}
+                  totalItems={totalItems}
+                  onPageChange={setPage}
+                />
+              }
+            >
+              <div className="modal-table-wrap student-submission-answers-table">
               <table>
                 <thead>
                   <tr>
@@ -169,6 +173,7 @@ export default function StudentSubmissionDetailModal({ submissionId, token, onCl
                 </tbody>
               </table>
             </div>
+            </ListPanel>
           </div>
         ) : null}
       </div>

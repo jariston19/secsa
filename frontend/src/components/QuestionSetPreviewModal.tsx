@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { api } from "../lib/api";
 import { formatExamType } from "../lib/constants";
+import { useConfirm } from "../lib/confirm";
 
 interface PreviewQuestion {
   id: string;
@@ -60,6 +61,7 @@ export default function QuestionSetPreviewModal({
   onSetArchived,
   onSetUndeployed,
 }: Props) {
+  const confirm = useConfirm();
   const [data, setData] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -89,9 +91,12 @@ export default function QuestionSetPreviewModal({
   async function undeployQuestionSet() {
     if (!data) return;
 
-    const confirmed = window.confirm(
-      `Cancel deploy for "${data.questionSet.name}"?\n\nStudents will no longer be able to start this exam until you deploy a set again.`
-    );
+    const confirmed = await confirm({
+      title: "Cancel deploy?",
+      message: `Cancel deploy for "${data.questionSet.name}"?\n\nStudents will no longer be able to start this exam until you deploy a set again.`,
+      tone: "warning",
+      confirmLabel: "Cancel deploy",
+    });
     if (!confirmed) return;
 
     setUndeployingSet(true);
@@ -110,9 +115,12 @@ export default function QuestionSetPreviewModal({
   async function archiveQuestionSet() {
     if (!data) return;
 
-    const confirmed = window.confirm(
-      `Archive question set "${data.questionSet.name}"?\n\nIt will be removed from your Build list. You can restore it later from Archive.`
-    );
+    const confirmed = await confirm({
+      title: "Archive question set?",
+      message: `Archive question set "${data.questionSet.name}"?\n\nIt will be removed from your Build list. You can restore it later from Archive.`,
+      tone: "warning",
+      confirmLabel: "Archive",
+    });
     if (!confirmed) return;
 
     setArchivingSet(true);
@@ -131,9 +139,12 @@ export default function QuestionSetPreviewModal({
   async function deleteQuestionSet() {
     if (!data) return;
 
-    const confirmed = window.confirm(
-      `Delete question set "${data.questionSet.name}"?\n\nThis cannot be undone. Questions in the pool will not be deleted.`
-    );
+    const confirmed = await confirm({
+      title: "Delete question set?",
+      message: `Delete question set "${data.questionSet.name}"?\n\nThis cannot be undone. Questions in the pool will not be deleted.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
     if (!confirmed) return;
 
     setDeletingSet(true);
@@ -150,9 +161,12 @@ export default function QuestionSetPreviewModal({
   }
 
   async function removeQuestion(questionId: string, questionText: string) {
-    const confirmed = window.confirm(
-      `Remove this question from the pool?\n\n"${questionText.slice(0, 80)}${questionText.length > 80 ? "…" : ""}"`
-    );
+    const confirmed = await confirm({
+      title: "Remove question?",
+      message: `Remove this question from the pool?\n\n"${questionText.slice(0, 80)}${questionText.length > 80 ? "…" : ""}"`,
+      tone: "danger",
+      confirmLabel: "Remove",
+    });
     if (!confirmed) return;
 
     setRemovingId(questionId);

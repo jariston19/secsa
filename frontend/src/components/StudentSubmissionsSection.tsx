@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import SegmentedControl from "./SegmentedControl";
+import { usePagination } from "../hooks/usePagination";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, formatExamType } from "../lib/constants";
 import { formatFullName } from "../lib/names";
@@ -34,8 +36,6 @@ const YEAR_SEGMENTS = [
   }),
 ];
 
-const PAGE_SIZE = 20;
-
 interface Props {
   token: string | null;
   onViewSubmission: (submissionId: string) => void;
@@ -54,10 +54,10 @@ export default function StudentSubmissionsSection({ token, onViewSubmission }: P
   const [yearFilter, setYearFilter] = useState("all");
   const [firstNameFilter, setFirstNameFilter] = useState("");
   const [lastNameFilter, setLastNameFilter] = useState("");
-  const [page, setPage] = useState(1);
   const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
   useEffect(() => {
     setLoading(true);
     setError("");
@@ -68,10 +68,6 @@ export default function StudentSubmissionsSection({ token, onViewSubmission }: P
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load submissions"))
       .finally(() => setLoading(false));
   }, [token, yearFilter]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [yearFilter, firstNameFilter, lastNameFilter]);
 
   const filteredSubmissions = useMemo(() => {
     const first = firstNameFilter.trim().toLowerCase();
@@ -84,24 +80,21 @@ export default function StudentSubmissionsSection({ token, onViewSubmission }: P
     });
   }, [submissions, firstNameFilter, lastNameFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredSubmissions.length / PAGE_SIZE));
-
-  const paginatedSubmissions = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredSubmissions.slice(start, start + PAGE_SIZE);
-  }, [filteredSubmissions, page]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+  const paginationResetKey = `${yearFilter}|${firstNameFilter}|${lastNameFilter}|${filteredSubmissions.length}`;
+  const {
+    page,
+    setPage,
+    totalPages,
+    paginatedItems: paginatedSubmissions,
+    pageStart,
+    pageEnd,
+    totalItems,
+  } = usePagination(filteredSubmissions, { resetKey: paginationResetKey });
 
   const countLabel = useMemo(() => {
     const count = filteredSubmissions.length;
     return `${count} submission${count === 1 ? "" : "s"}`;
   }, [filteredSubmissions.length]);
-
-  const pageStart = filteredSubmissions.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const pageEnd = Math.min(page * PAGE_SIZE, filteredSubmissions.length);
 
   return (
     <section className="card student-submissions-panel">
@@ -139,84 +132,85 @@ export default function StudentSubmissionsSection({ token, onViewSubmission }: P
         </div>
       </div>
 
-      {!loading && !error && filteredSubmissions.length > 0 && (
-        <ModalPagination
-          page={page}
-          totalPages={totalPages}
-          pageStart={pageStart}
-          pageEnd={pageEnd}
-          totalItems={filteredSubmissions.length}
-          onPageChange={setPage}
-        />
-      )}
-
-      <div className="student-submissions-table-wrap">
-        {loading ? (
-          <p className="muted">Loading submissions...</p>
-        ) : error ? (
-          <p className="error">{error}</p>
-        ) : filteredSubmissions.length === 0 ? (
-          <p className="muted">No submissions match your filters.</p>
-        ) : (
-          <table className="student-submissions-table">
-            <thead>
-              <tr>
-                <th>Student</th>
-                <th>Year</th>
-                <th>Exam set</th>
-                <th>Attempt</th>
-                <th>Score</th>
-                <th>Result</th>
-                <th>Submitted</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedSubmissions.map((submission) => (
-                <tr key={submission.id}>
-                  <td>
-                    <strong>
-                      {formatFullName(submission.student.firstName, submission.student.lastName)}
-                    </strong>
-                    <div className="muted table-subtext">{submission.student.email}</div>
-                  </td>
-                  <td>{submission.student.yearLevel ?? "—"}</td>
-                  <td>
-                    {submission.questionSetName}
-                    <div className="muted table-subtext">
-                      {formatExamType(submission.questionSetType)} · set year{" "}
-                      {submission.questionSetYear}
-                    </div>
-                  </td>
-                  <td>
-                    {formatAttemptType(submission.attemptType)} #{submission.attemptNumber}
-                  </td>
-                  <td>
-                    {submission.score ?? 0}/{submission.totalItems}
-                    <div className="muted table-subtext">
-                      {submission.percentage?.toFixed(1) ?? "0.0"}%
-                    </div>
-                  </td>
-                  <td className={submission.passed ? "success" : "error"}>
-                    {submission.passed ? "Pass" : "Fail"}
-                  </td>
-                  <td>{formatDate(submission.submittedAt)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn secondary btn-sm"
-                      onClick={() => onViewSubmission(submission.id)}
-                    >
-                      View
-                    </button>
-                  </td>
+      {loading ? (
+        <p className="muted">Loading submissions...</p>
+      ) : error ? (
+        <p className="error">{error}</p>
+      ) : filteredSubmissions.length === 0 ? (
+        <p className="muted">No submissions match your filters.</p>
+      ) : (
+        <ListPanel
+          footer={
+            <ModalPagination
+              page={page}
+              totalPages={totalPages}
+              pageStart={pageStart}
+              pageEnd={pageEnd}
+              totalItems={totalItems}
+              onPageChange={setPage}
+            />
+          }
+        >
+          <div className="student-submissions-table-inner">
+            <table className="student-submissions-table">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Year</th>
+                  <th>Exam set</th>
+                  <th>Attempt</th>
+                  <th>Score</th>
+                  <th>Result</th>
+                  <th>Submitted</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
+              </thead>
+              <tbody>
+                {paginatedSubmissions.map((submission) => (
+                  <tr key={submission.id}>
+                    <td>
+                      <strong>
+                        {formatFullName(submission.student.firstName, submission.student.lastName)}
+                      </strong>
+                      <div className="muted table-subtext">{submission.student.email}</div>
+                    </td>
+                    <td>{submission.student.yearLevel ?? "—"}</td>
+                    <td>
+                      {submission.questionSetName}
+                      <div className="muted table-subtext">
+                        {formatExamType(submission.questionSetType)} · set year{" "}
+                        {submission.questionSetYear}
+                      </div>
+                    </td>
+                    <td>
+                      {formatAttemptType(submission.attemptType)} #{submission.attemptNumber}
+                    </td>
+                    <td>
+                      {submission.score ?? 0}/{submission.totalItems}
+                      <div className="muted table-subtext">
+                        {submission.percentage?.toFixed(1) ?? "0.0"}%
+                      </div>
+                    </td>
+                    <td className={submission.passed ? "success" : "error"}>
+                      {submission.passed ? "Pass" : "Fail"}
+                    </td>
+                    <td>{formatDate(submission.submittedAt)}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn secondary btn-sm"
+                        onClick={() => onViewSubmission(submission.id)}
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </ListPanel>
+      )}
     </section>
   );
 }

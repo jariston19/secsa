@@ -1,9 +1,17 @@
-import { AttemptType, ApprovalStatus } from "@prisma/client";
+import { AttemptType, ApprovalStatus, QuestionSetType } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { nonQaExamAttemptWhere, nonQaStudentWhere } from "../lib/studentFilters.js";
 import { countStudentsInScoreBuckets } from "../lib/scoreBuckets.js";
 
 const MAX_RETAKES = 2;
+
+function isComprehensiveExamType(type: QuestionSetType) {
+  return type === QuestionSetType.COMPREHENSIVE || type === QuestionSetType.RETAKE;
+}
+
+function isDiagnosticExamType(type: QuestionSetType) {
+  return type === QuestionSetType.DIAGNOSTIC;
+}
 
 function passRate(attempts: Array<{ passed: boolean | null }>) {
   if (attempts.length === 0) return 0;
@@ -46,6 +54,7 @@ export async function buildOverviewDashboard(yearLevel?: number) {
         percentage: true,
         passed: true,
         submittedAt: true,
+        questionSet: { select: { type: true } },
       },
       orderBy: [{ submittedAt: "desc" }],
     }),
@@ -82,6 +91,13 @@ export async function buildOverviewDashboard(yearLevel?: number) {
 
   const overallPassRate = passRate(submittedAttempts);
 
+  const comprehensiveAttempts = submittedAttempts.filter((attempt) =>
+    isComprehensiveExamType(attempt.questionSet.type)
+  );
+  const diagnosticAttempts = submittedAttempts.filter((attempt) =>
+    isDiagnosticExamType(attempt.questionSet.type)
+  );
+
   const latestAttemptByStudent = new Map<string, (typeof submittedAttempts)[number]>();
   for (const attempt of submittedAttempts) {
     if (!latestAttemptByStudent.has(attempt.studentId)) {
@@ -89,9 +105,68 @@ export async function buildOverviewDashboard(yearLevel?: number) {
     }
   }
 
-  const scoreDistribution = countStudentsInScoreBuckets(
-    [...latestAttemptByStudent.values()].map((attempt) => attempt.percentage ?? 0)
+  const latestComprehensiveByStudent = new Map<string, (typeof submittedAttempts)[number]>();
+  for (const attempt of comprehensiveAttempts) {
+    if (!latestComprehensiveByStudent.has(attempt.studentId)) {
+      latestComprehensiveByStudent.set(attempt.studentId, attempt);
+    }
+  }
+
+  const latestDiagnosticByStudent = new Map<string, (typeof submittedAttempts)[number]>();
+  for (const attempt of diagnosticAttempts) {
+    if (!latestDiagnosticByStudent.has(attempt.studentId)) {
+      latestDiagnosticByStudent.set(attempt.studentId, attempt);
+    }
+  }
+
+  const comprehensiveScoreDistribution = countStudentsInScoreBuckets(
+    [...latestComprehensiveByStudent.values()].map((attempt) => attempt.percentage ?? 0)
   );
+  const diagnosticScoreDistribution = countStudentsInScoreBuckets(
+    [...latestDiagnosticByStudent.values()].map((attempt) => attempt.percentage ?? 0)
+  );
+
+  const comprehensiveIn = (start: Date, end: Date) =>
+    comprehensiveAttempts.filter((attempt) => inPeriod(attempt.submittedAt, start, end));
+  const diagnosticIn = (start: Date, end: Date) =>
+    diagnosticAttempts.filter((attempt) => inPeriod(attempt.submittedAt, start, end));
+
+  const comprehensiveWeekCurrent = comprehensiveIn(thisWeek.start, now);
+  const comprehensiveWeekPrevious = comprehensiveIn(lastWeek.start, lastWeek.end);
+  const comprehensiveMonthCurrent = comprehensiveIn(thisMonth.start, now);
+  const comprehensiveMonthPrevious = comprehensiveIn(lastMonth.start, lastMonth.end);
+
+  const diagnosticWeekCurrent = diagnosticIn(thisWeek.start, now);
+  const diagnosticWeekPrevious = diagnosticIn(lastWeek.start, lastWeek.end);
+  const diagnosticMonthCurrent = diagnosticIn(thisMonth.start, now);
+  const diagnosticMonthPrevious = diagnosticIn(lastMonth.start, lastMonth.end);
+
+  const buildExamTypeHealth = (
+    attemptsForType: typeof submittedAttempts,
+    weekCurrent: typeof submittedAttempts,
+    weekPrevious: typeof submittedAttempts,
+    monthCurrent: typeof submittedAttempts,
+    monthPrevious: typeof submittedAttempts,
+    scoreDistribution: ReturnType<typeof countStudentsInScoreBuckets>
+  ) => ({
+    passRate: passRate(attemptsForType),
+    examsTaken: attemptsForType.length,
+    trend: {
+      week: {
+        current: passRate(weekCurrent),
+        previous: passRate(weekPrevious),
+        delta: delta(passRate(weekCurrent), passRate(weekPrevious)),
+        exams: weekCurrent.length,
+      },
+      month: {
+        current: passRate(monthCurrent),
+        previous: passRate(monthPrevious),
+        delta: delta(passRate(monthCurrent), passRate(monthPrevious)),
+        exams: monthCurrent.length,
+      },
+    },
+    scoreDistribution,
+  });
 
   const failingStudents = [...latestAttemptByStudent.values()].filter(
     (attempt) => attempt.passed === false
@@ -175,22 +250,22 @@ export async function buildOverviewDashboard(yearLevel?: number) {
     passRate: overallPassRate,
     averageScore: average(submittedAttempts.map((attempt) => attempt.percentage ?? 0)),
     performanceHealth: {
-      passRate: overallPassRate,
-      trend: {
-        week: {
-          current: passRate(weekCurrent),
-          previous: passRate(weekPrevious),
-          delta: delta(passRate(weekCurrent), passRate(weekPrevious)),
-          exams: weekCurrent.length,
-        },
-        month: {
-          current: passRate(monthCurrent),
-          previous: passRate(monthPrevious),
-          delta: delta(passRate(monthCurrent), passRate(monthPrevious)),
-          exams: monthCurrent.length,
-        },
-      },
-      scoreDistribution,
+      comprehensive: buildExamTypeHealth(
+        comprehensiveAttempts,
+        comprehensiveWeekCurrent,
+        comprehensiveWeekPrevious,
+        comprehensiveMonthCurrent,
+        comprehensiveMonthPrevious,
+        comprehensiveScoreDistribution
+      ),
+      diagnostic: buildExamTypeHealth(
+        diagnosticAttempts,
+        diagnosticWeekCurrent,
+        diagnosticWeekPrevious,
+        diagnosticMonthCurrent,
+        diagnosticMonthPrevious,
+        diagnosticScoreDistribution
+      ),
       failingStudents,
     },
     retakeEffectiveness: {

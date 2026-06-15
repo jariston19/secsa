@@ -256,7 +256,7 @@ export function DonutChart({
             cy="60"
             r={radius}
             className="chart-donut-ring-bg"
-            strokeWidth="12"
+            strokeWidth="14"
             fill="none"
           />
           <circle
@@ -264,7 +264,7 @@ export function DonutChart({
             cy="60"
             r={radius}
             className="chart-donut-ring-fill"
-            strokeWidth="12"
+            strokeWidth="14"
             fill="none"
             strokeDasharray={circumference}
             strokeDashoffset={offset}
@@ -518,14 +518,16 @@ export function DistractorBarChart({
     <div className="chart-distractor-bars">
       {options.map((option) => (
         <div key={option.option} className="chart-distractor-bar-col">
-          <span className="chart-distractor-bar-value">{option.rate.toFixed(0)}%</span>
-          <div className="chart-distractor-bar-track">
-            <span
-              className={`chart-distractor-bar-fill ${
-                option.isCorrect || option.option === correctOption ? "correct" : ""
-              }`}
-              style={{ height: `${(option.rate / max) * 100}%` }}
-            />
+          <div className="chart-distractor-bar-stack">
+            <span className="chart-distractor-bar-value">{option.rate.toFixed(0)}%</span>
+            <div className="chart-distractor-bar-track">
+              <span
+                className={`chart-distractor-bar-fill ${
+                  option.isCorrect || option.option === correctOption ? "correct" : ""
+                }`}
+                style={{ height: `${(option.rate / max) * 100}%` }}
+              />
+            </div>
           </div>
           <span className="chart-distractor-bar-label">{option.option}</span>
         </div>

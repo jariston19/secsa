@@ -1,6 +1,7 @@
 import { ChangeEvent, Fragment, useEffect, useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
+import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
@@ -11,6 +12,7 @@ import {
   type ProgramCourseId,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
+import { useConfirm } from "../lib/confirm";
 
 interface Subject {
   id: string;
@@ -83,6 +85,7 @@ export default function SavedQuestionsModal({
   onUpdated,
   inline = false,
 }: Props) {
+  const confirm = useConfirm();
   const programCourseOptions = useProgramCourseOptions();
   const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
@@ -299,9 +302,12 @@ export default function SavedQuestionsModal({
   }
 
   async function deleteQuestion(id: string, preview: string) {
-    const confirmed = window.confirm(
-      `Delete this question?\n\n"${truncate(preview, 120)}"\n\nThis cannot be undone.`
-    );
+    const confirmed = await confirm({
+      title: "Delete question?",
+      message: `Delete this question?\n\n"${truncate(preview, 120)}"\n\nThis cannot be undone.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
     if (!confirmed) return;
 
     setDeletingId(id);
@@ -426,17 +432,6 @@ export default function SavedQuestionsModal({
               <strong>
                 {selectedSubject.courseCode} — {selectedSubject.courseTitle}
               </strong>
-              {!loading && questions.length > 0 && (
-                <ModalPagination
-                  variant="inline"
-                  page={page}
-                  totalPages={totalPages}
-                  pageStart={pageStart}
-                  pageEnd={pageEnd}
-                  totalItems={totalItems}
-                  onPageChange={setPage}
-                />
-              )}
             </div>
 
             {loading ? (
@@ -446,7 +441,21 @@ export default function SavedQuestionsModal({
                 No questions found for this filter. Encode questions from the Encode tab.
               </p>
             ) : (
-              <div className="modal-table-wrap saved-questions-table-wrap">
+              <>
+                <ListPanel
+                  rowHeight="tall"
+                  footer={
+                    <ModalPagination
+                      page={page}
+                      totalPages={totalPages}
+                      pageStart={pageStart}
+                      pageEnd={pageEnd}
+                      totalItems={totalItems}
+                      onPageChange={setPage}
+                    />
+                  }
+                >
+                <div className="modal-table-wrap saved-questions-table-wrap">
                 <table>
                   <thead>
                     <tr>
@@ -641,6 +650,8 @@ export default function SavedQuestionsModal({
                   </tbody>
                 </table>
               </div>
+              </ListPanel>
+              </>
             )}
           </>
         )}

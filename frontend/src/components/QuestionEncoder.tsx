@@ -1,6 +1,6 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
-import { subjectHasProgram, type ProgramCourseId } from "../lib/programCourse";
+import { subjectHasProgram, type ProgramCourseFilter, type ProgramCourseId } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
 import { subjectLabel, toastBatchCreated, toastCreated, truncateLabel } from "../lib/toastMessages";
 
@@ -39,6 +39,15 @@ interface Props {
   onSaved: (message: string) => void;
 }
 
+function subjectMatchesProgramFilter(
+  subject: Subject,
+  programFilter: ProgramCourseFilter
+) {
+  return (
+    programFilter === "ALL" || subjectHasProgram(subject.programCourses, programFilter)
+  );
+}
+
 function createQuestionId() {
   try {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -71,6 +80,7 @@ function isComplete(q: QuestionDraft) {
 
 export default function QuestionEncoder({ subjects, topics, programCourse, token, onSaved }: Props) {
   const programCourseOptions = useProgramCourseOptions();
+  const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>(programCourse);
   const [yearLevel, setYearLevel] = useState("1");
   const [subjectId, setSubjectId] = useState("");
   const [topicId, setTopicId] = useState("");
@@ -188,13 +198,18 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
     () =>
       subjects
         .filter(
-          (s) => s.yearLevel === Number(yearLevel) && subjectHasProgram(s.programCourses, programCourse)
+          (s) =>
+            s.yearLevel === Number(yearLevel) && subjectMatchesProgramFilter(s, programFilter)
         )
         .sort((a, b) => a.courseCode.localeCompare(b.courseCode)),
-    [subjects, yearLevel, programCourse]
+    [subjects, yearLevel, programFilter]
   );
 
   const filteredTopics = topics.filter((t) => t.subjectId === subjectId);
+
+  useEffect(() => {
+    setProgramFilter(programCourse);
+  }, [programCourse]);
 
   useEffect(() => {
     const subjectStillValid = filteredSubjects.some((s) => s.id === subjectId);
@@ -202,7 +217,14 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
       setSubjectId("");
       setTopicId("");
     }
-  }, [filteredSubjects, subjectId, programCourse]);
+  }, [filteredSubjects, subjectId]);
+
+  function handleProgramFilterChange(value: ProgramCourseFilter) {
+    setProgramFilter(value);
+    setSubjectId("");
+    setTopicId("");
+    setError("");
+  }
 
   function handleYearLevelChange(value: string) {
     setYearLevel(value);
@@ -216,11 +238,24 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
       <div className="encoder-header card">
         <h2>Encode Questions</h2>
         <p className="muted section-desc">
-          Pick a curriculum year level for{" "}
-          {programCourseOptions.find((c) => c.id === programCourse)?.label ?? "this program"}, then
-          choose the subject and optional topic for all questions below.
+          Filter by program course and curriculum year, then choose the subject and optional topic
+          for all questions below.
         </p>
         <div className="encoder-meta">
+          <label>
+            Program course
+            <select
+              value={programFilter}
+              onChange={(e) => handleProgramFilterChange(e.target.value as ProgramCourseFilter)}
+            >
+              <option value="ALL">All</option>
+              {programCourseOptions.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             Curriculum year level
             <select value={yearLevel} onChange={(e) => handleYearLevelChange(e.target.value)}>
@@ -247,7 +282,7 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
             >
               <option value="">
                 {filteredSubjects.length === 0
-                  ? "No subjects for this year and program course"
+                  ? "No subjects for these filters"
                   : "Select a subject"}
               </option>
               {filteredSubjects.map((s) => (

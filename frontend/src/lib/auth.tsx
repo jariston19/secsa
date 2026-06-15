@@ -21,10 +21,24 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const TOKEN_STORAGE_KEY = "token";
+
+function readStoredToken() {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  return sessionStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+function writeStoredToken(token: string) {
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+}
+
+function clearStoredToken() {
+  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
+  const [token, setToken] = useState<string | null>(readStoredToken());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -36,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     api<{ user: User }>("/auth/me", {}, token)
       .then((data) => setUser(data.user))
       .catch(() => {
-        localStorage.removeItem("token");
+        clearStoredToken();
         setToken(null);
       })
       .finally(() => setLoading(false));
@@ -47,13 +61,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
-    localStorage.setItem("token", data.token);
+    writeStoredToken(data.token);
     setToken(data.token);
     setUser(data.user);
   }
 
   function logout() {
-    localStorage.removeItem("token");
+    clearStoredToken();
     setToken(null);
     setUser(null);
   }

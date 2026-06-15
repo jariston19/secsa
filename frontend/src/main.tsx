@@ -6,6 +6,8 @@ import { AuthProvider } from "./lib/auth";
 import { ProgramsProvider } from "./lib/programs";
 import { ThemeProvider } from "./lib/theme";
 import { ToastProvider } from "./lib/toast";
+import { ConfirmProvider } from "./lib/confirm";
+import "./index.css";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -15,7 +17,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <AuthProvider>
           <ProgramsProvider>
             <ToastProvider>
-              <App />
+              <ConfirmProvider>
+                <App />
+              </ConfirmProvider>
             </ToastProvider>
           </ProgramsProvider>
         </AuthProvider>
