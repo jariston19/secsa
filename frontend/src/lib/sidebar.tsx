@@ -49,11 +49,11 @@ const STORAGE_KEY = "secsa-sidebar-open";
 const SidebarContext = createContext<SidebarContextValue | null>(null);
 
 function readStoredOpen() {
-  if (typeof window === "undefined") return true;
+  if (typeof window === "undefined") return false;
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored === "true") return true;
   if (stored === "false") return false;
-  return window.innerWidth >= 1024;
+  return false;
 }
 
 export function SidebarProvider({ children }: { children: ReactNode }) {

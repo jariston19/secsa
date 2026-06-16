@@ -19,6 +19,8 @@ let programRegistry: ProgramRecord[] = FALLBACK_PROGRAMS;
 
 export const DEFAULT_PROGRAM_COURSE = "INFORMATION_TECHNOLOGY";
 
+export const SHARED_DIAGNOSTIC_PROGRAM = "ALL_PROGRAMS";
+
 export function toProgramSlug(label: string) {
   const slug = label
     .trim()
@@ -51,11 +53,13 @@ export type ProgramCourseFilter = ProgramCourseId | "ALL";
 
 export function formatProgramCourse(course: string | null | undefined) {
   if (!course) return "—";
+  if (course === SHARED_DIAGNOSTIC_PROGRAM) return "All Programs";
   return programRegistry.find((item) => item.slug === course)?.label ?? course;
 }
 
 export function abbreviateProgramCourse(course: string | null | undefined) {
   if (!course) return "—";
+  if (course === SHARED_DIAGNOSTIC_PROGRAM) return "ALL";
   return programRegistry.find((item) => item.slug === course)?.abbr ?? course;
 }
 
@@ -63,6 +67,9 @@ export function subjectHasProgram(
   programCourses: Array<{ programCourse: ProgramCourseId }> | ProgramCourseId[],
   course: ProgramCourseId
 ) {
+  if (course === SHARED_DIAGNOSTIC_PROGRAM) {
+    return programCourses.length > 0;
+  }
   return programCourses.some((item) =>
     typeof item === "string" ? item === course : item.programCourse === course
   );

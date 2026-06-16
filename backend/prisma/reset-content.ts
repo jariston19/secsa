@@ -70,7 +70,7 @@ async function main() {
   console.log("Content reset complete.");
   console.log("Removed:", removed);
   console.log("");
-  console.log("Kept: user accounts (admin, teacher, students).");
+  console.log("Kept: staff accounts and @southlandcollege.edu.ph users.");
   console.log("Cleared: subjects, topics, questions, question sets, exams, analytics.");
 }
 

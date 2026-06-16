@@ -14,6 +14,7 @@ import {
   DiscriminationScatter,
   DonutChart,
   GroupedDifficultyBars,
+  GroupedBloomBars,
   HorizontalBarChart,
   PercentileBand,
   PerformanceHeatmap,
@@ -45,6 +46,7 @@ const GROUP_ANALYTICS_CHART_ORDER = [
   "score-distribution",
   "average-score-topic",
   "performance-difficulty",
+  "performance-bloom",
   "topic-difficulty-heatmap",
   "at-risk-topic",
 ] as const;
@@ -54,6 +56,7 @@ type GroupAnalyticsChartId = (typeof GROUP_ANALYTICS_CHART_ORDER)[number];
 const STUDENT_ANALYTICS_CHART_ORDER = [
   "score-per-topic",
   "score-per-difficulty",
+  "score-per-bloom",
   "time-vs-correctness",
   "rank-batch",
   "weak-topics",
@@ -103,6 +106,13 @@ interface ReportsData {
   }>;
   byDifficulty: Array<{
     difficulty: string;
+    score: number;
+    tone: "strong" | "moderate" | "weak";
+    total: number;
+    correct: number;
+  }>;
+  byBloomLevel?: Array<{
+    bloomLevel: string;
     score: number;
     tone: "strong" | "moderate" | "weak";
     total: number;
@@ -593,6 +603,17 @@ export function AnalyticsReportBody({
             <GroupedDifficultyBars items={reports.byDifficulty} />
           </ChartCard>
         );
+      case "performance-bloom":
+        return (
+          <ChartCard
+            className="analytics-chart-card-paired analytics-chart-card-bloom"
+            title="Performance by domain"
+            description="L1–L6 cognitive domains. Spot surface recall vs deeper analysis and evaluation gaps."
+            icon={<ChartIconBars direction="vertical" />}
+          >
+            <GroupedBloomBars items={reports.byBloomLevel ?? []} />
+          </ChartCard>
+        );
       case "topic-difficulty-heatmap":
         return (
           <ChartCard
@@ -685,6 +706,16 @@ export function AnalyticsReportBody({
             icon={<ChartIconBars direction="vertical" />}
           >
             <GroupedDifficultyBars items={reports.byDifficulty} />
+          </ChartCard>
+        );
+      case "score-per-bloom":
+        return (
+          <ChartCard
+            title="Score per domain"
+            description="L1 Knowledge through L6 Evaluation — reveals which domains need re-teaching."
+            icon={<ChartIconBars direction="vertical" />}
+          >
+            <GroupedBloomBars items={reports.byBloomLevel ?? []} />
           </ChartCard>
         );
       case "time-vs-correctness":

@@ -1619,9 +1619,23 @@ body {
   grid-column: 1 / -1;
 }
 
+.encoder-question-meta-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.encoder-question-meta-row label {
+  min-width: 0;
+}
+
 @media (max-width: 768px) {
   .encoder-meta,
   .encoder-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .encoder-question-meta-row {
     grid-template-columns: 1fr;
   }
 }
@@ -3314,6 +3328,50 @@ textarea {
 .chart-grouped-bar-value {
   font-size: 0.75rem;
   color: var(--ios-label-secondary);
+}
+
+.bloom-profile-callout {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.bloom-profile-callout-deep {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #166534;
+}
+
+.bloom-profile-callout-surface {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #92400e;
+}
+
+.bloom-profile-callout-mixed {
+  background: rgba(100, 116, 139, 0.1);
+  border: 1px solid rgba(100, 116, 139, 0.25);
+  color: var(--ios-label-secondary);
+}
+
+.individual-student-bloom-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.saved-questions-bloom-tag {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.analytics-chart-card-bloom .chart-grouped-bars {
+  min-height: 220px;
 }
 
 .chart-heatmap-wrap {

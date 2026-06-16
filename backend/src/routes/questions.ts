@@ -1,24 +1,36 @@
 import { unlink } from "fs/promises";
 import path from "path";
 import type { FastifyInstance } from "fastify";
-import { Difficulty, Role } from "@prisma/client";
+import { Difficulty, Role, BloomLevel } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
+import { isBloomLevelAllowed } from "../lib/bloomLevel.js";
 import { uploadDir } from "../lib/paths.js";
 import { saveOptimizedImage } from "../services/imageUpload.js";
 
-const questionSchema = z.object({
-  subjectId: z.string().min(1),
-  topicId: z.string().optional().nullable(),
-  difficulty: z.nativeEnum(Difficulty),
-  text: z.string().min(1),
-  optionA: z.string().min(1),
-  optionB: z.string().min(1),
-  optionC: z.string().min(1),
-  optionD: z.string().min(1),
-  correctOption: z.enum(["A", "B", "C", "D"]),
-});
+const questionSchema = z
+  .object({
+    subjectId: z.string().min(1),
+    topicId: z.string().optional().nullable(),
+    difficulty: z.nativeEnum(Difficulty),
+    bloomLevel: z.nativeEnum(BloomLevel),
+    text: z.string().min(1),
+    optionA: z.string().min(1),
+    optionB: z.string().min(1),
+    optionC: z.string().min(1),
+    optionD: z.string().min(1),
+    correctOption: z.enum(["A", "B", "C", "D"]),
+  })
+  .superRefine((data, ctx) => {
+    if (!isBloomLevelAllowed(data.difficulty, data.bloomLevel)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Domain ${data.bloomLevel} is not allowed for ${data.difficulty} difficulty.`,
+        path: ["bloomLevel"],
+      });
+    }
+  });
 
 export async function questionRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate);

@@ -9,13 +9,18 @@ import {
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
-import { calculateResult, generateExamQuestions } from "../services/examGenerator.js";
+import { calculateResult, prepareAttemptExamQuestions } from "../services/examGenerator.js";
 import {
   createExamAttemptIfNoneInProgress,
   findInProgressAttempt,
   type InProgressExamAttempt,
 } from "../services/inProgressExam.js";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, yearLevelSchema } from "../lib/yearLevel.js";
+import {
+  findDeployedIncomingDiagnostic,
+  findDeployedIncomingDiagnosticWithConfigs,
+  incomingDiagnosticAttemptFilter,
+} from "../lib/incomingDiagnostic.js";
 
 const submitSchema = z.object({
   answers: z.array(
@@ -58,26 +63,21 @@ async function getStudentProfile(userId: string) {
 }
 
 async function getQaExamOptions(programCourse: string) {
-  const deployedSets = await prisma.questionSet.findMany({
-    where: {
-      status: QuestionSetStatus.DEPLOYED,
-      programCourse,
-      OR: [
-        { yearLevel: MIN_YEAR_LEVEL, type: QuestionSetType.DIAGNOSTIC },
-        { type: QuestionSetType.COMPREHENSIVE },
-      ],
-    },
-    orderBy: [{ yearLevel: "asc" }, { type: "asc" }],
-    select: { yearLevel: true, name: true, type: true },
-  });
+  const [diagnosticSet, comprehensiveSets] = await Promise.all([
+    findDeployedIncomingDiagnostic(),
+    prisma.questionSet.findMany({
+      where: {
+        status: QuestionSetStatus.DEPLOYED,
+        programCourse,
+        type: QuestionSetType.COMPREHENSIVE,
+      },
+      orderBy: [{ yearLevel: "asc" }, { type: "asc" }],
+      select: { yearLevel: true, name: true, type: true },
+    }),
+  ]);
 
-  const diagnosticSet = deployedSets.find(
-    (set) => set.yearLevel === MIN_YEAR_LEVEL && set.type === QuestionSetType.DIAGNOSTIC
-  );
   const comprehensiveByYear = new Map(
-    deployedSets
-      .filter((set) => set.type === QuestionSetType.COMPREHENSIVE)
-      .map((set) => [set.yearLevel, set.name])
+    comprehensiveSets.map((set) => [set.yearLevel, set.name])
   );
 
   return Array.from({ length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 }, (_, i) => {
@@ -152,16 +152,7 @@ export async function examRoutes(app: FastifyInstance) {
     });
 
     const incomingDiagnosticSet =
-      student.yearLevel === MIN_YEAR_LEVEL
-        ? await prisma.questionSet.findFirst({
-            where: {
-              yearLevel: MIN_YEAR_LEVEL,
-              programCourse: student.programCourse,
-              type: QuestionSetType.DIAGNOSTIC,
-              status: QuestionSetStatus.DEPLOYED,
-            },
-          })
-        : null;
+      student.yearLevel === MIN_YEAR_LEVEL ? await findDeployedIncomingDiagnostic() : null;
 
     const retakeSet = await prisma.questionSet.findFirst({
       where: {
@@ -178,16 +169,7 @@ export async function examRoutes(app: FastifyInstance) {
       const qaExamOptions = await getQaExamOptions(student.programCourse);
 
       const qaDiagnosticSet =
-        examYearLevel === MIN_YEAR_LEVEL
-          ? await prisma.questionSet.findFirst({
-              where: {
-                yearLevel: MIN_YEAR_LEVEL,
-                programCourse: student.programCourse,
-                type: QuestionSetType.DIAGNOSTIC,
-                status: QuestionSetStatus.DEPLOYED,
-              },
-            })
-          : null;
+        examYearLevel === MIN_YEAR_LEVEL ? await findDeployedIncomingDiagnostic() : null;
 
       const qaComprehensiveSet =
         examYearLevel !== MIN_YEAR_LEVEL
@@ -356,54 +338,34 @@ export async function examRoutes(app: FastifyInstance) {
       const examYearLevel = parseQaExamYear(student, body.examYearLevel);
 
       if (examYearLevel === MIN_YEAR_LEVEL || body.examKind === "incoming_diagnostic") {
-        const diagnosticSet = await prisma.questionSet.findFirst({
-          where: {
-            yearLevel: MIN_YEAR_LEVEL,
-            programCourse: student.programCourse,
-            type: QuestionSetType.DIAGNOSTIC,
-            status: QuestionSetStatus.DEPLOYED,
-          },
-          include: { configs: true },
-        });
+        const diagnosticSet = await findDeployedIncomingDiagnosticWithConfigs();
 
         if (!diagnosticSet) {
           return reply.code(404).send({
-            error: "No deployed incoming diagnostic set for your program.",
+            error: "No deployed incoming diagnostic set.",
           });
         }
 
         const submittedDiagnosticAttempts = attempts.filter((a) => a.submittedAt);
         const attemptNumber = submittedDiagnosticAttempts.length + 1;
-        const selected = await generateExamQuestions(diagnosticSet.configs);
-        const outcome = await createExamAttemptIfNoneInProgress(user.id, async (tx) =>
-          tx.examAttempt.create({
-            data: {
-              studentId: user.id,
-              questionSetId: diagnosticSet.id,
-              attemptType: AttemptType.FIRST,
-              attemptNumber,
-              questionIds: JSON.stringify(selected.map((q) => q.id)),
-              totalItems: selected.length,
-              answers: {
-                create: selected.map((q) => ({ questionId: q.id })),
-              },
-            },
-          })
-        );
+        const examStart = await startNewExamAttempt({
+          userId: user.id,
+          questionSet: diagnosticSet,
+          attemptType: AttemptType.FIRST,
+          attemptNumber,
+        });
 
-        if (outcome.type === "resume") {
-          return reply.send(await buildResumeExamStartResponse(outcome.attempt));
+        if (examStart.type === "resume") {
+          return reply.send(await buildResumeExamStartResponse(examStart.attempt));
         }
-
-        const attempt = outcome.result;
 
         return reply.code(201).send(
           buildExamStartResponse({
-            attempt,
-            questions: selected.map(stripCorrectAnswer),
+            attempt: examStart.attempt,
+            questions: examStart.questions.map(stripCorrectAnswer),
             savedAnswers: [],
             resumeIndex: 0,
-            timeLimitMinutes: diagnosticSet.timeLimitMinutes,
+            timeLimitMinutes: examStart.timeLimitMinutes,
           })
         );
       }
@@ -428,36 +390,24 @@ export async function examRoutes(app: FastifyInstance) {
       const attemptNumber = submittedAttempts.length + 1;
       const attemptType = submittedAttempts.length === 0 ? AttemptType.FIRST : AttemptType.RETAKE;
 
-      const selected = await generateExamQuestions(questionSet.configs);
-      const outcome = await createExamAttemptIfNoneInProgress(user.id, async (tx) =>
-        tx.examAttempt.create({
-          data: {
-            studentId: user.id,
-            questionSetId: questionSet.id,
-            attemptType,
-            attemptNumber,
-            questionIds: JSON.stringify(selected.map((q) => q.id)),
-            totalItems: selected.length,
-            answers: {
-              create: selected.map((q) => ({ questionId: q.id })),
-            },
-          },
-        })
-      );
+      const examStart = await startNewExamAttempt({
+        userId: user.id,
+        questionSet,
+        attemptType,
+        attemptNumber,
+      });
 
-      if (outcome.type === "resume") {
-        return reply.send(await buildResumeExamStartResponse(outcome.attempt));
+      if (examStart.type === "resume") {
+        return reply.send(await buildResumeExamStartResponse(examStart.attempt));
       }
-
-      const attempt = outcome.result;
 
       return reply.code(201).send(
         buildExamStartResponse({
-          attempt,
-          questions: selected.map(stripCorrectAnswer),
+          attempt: examStart.attempt,
+          questions: examStart.questions.map(stripCorrectAnswer),
           savedAnswers: [],
           resumeIndex: 0,
-          timeLimitMinutes: questionSet.timeLimitMinutes,
+          timeLimitMinutes: examStart.timeLimitMinutes,
         })
       );
     }
@@ -477,7 +427,6 @@ export async function examRoutes(app: FastifyInstance) {
           submittedAt: { not: null },
           questionSet: {
             type: QuestionSetType.DIAGNOSTIC,
-            programCourse: student.programCourse,
             yearLevel: MIN_YEAR_LEVEL,
           },
         },
@@ -487,62 +436,39 @@ export async function examRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: "Incoming diagnostic exam already completed." });
       }
 
-      const questionSet = await prisma.questionSet.findFirst({
-        where: {
-          yearLevel: MIN_YEAR_LEVEL,
-          programCourse: student.programCourse,
-          type: QuestionSetType.DIAGNOSTIC,
-          status: QuestionSetStatus.DEPLOYED,
-        },
-        include: { configs: true },
-      });
+      const questionSet = await findDeployedIncomingDiagnosticWithConfigs();
 
       if (!questionSet) {
         return reply.code(404).send({
-          error: "No deployed incoming diagnostic set for your program.",
+          error: "No deployed incoming diagnostic set.",
         });
       }
 
       const priorIncomingAttempts = await prisma.examAttempt.count({
         where: {
           studentId: user.id,
-          questionSet: {
-            type: QuestionSetType.DIAGNOSTIC,
-            programCourse: student.programCourse,
-          },
+          ...incomingDiagnosticAttemptFilter(),
         },
       });
 
-      const selected = await generateExamQuestions(questionSet.configs);
-      const outcome = await createExamAttemptIfNoneInProgress(user.id, async (tx) =>
-        tx.examAttempt.create({
-          data: {
-            studentId: user.id,
-            questionSetId: questionSet.id,
-            attemptType: AttemptType.FIRST,
-            attemptNumber: priorIncomingAttempts + 1,
-            questionIds: JSON.stringify(selected.map((q) => q.id)),
-            totalItems: selected.length,
-            answers: {
-              create: selected.map((q) => ({ questionId: q.id })),
-            },
-          },
-        })
-      );
+      const examStart = await startNewExamAttempt({
+        userId: user.id,
+        questionSet,
+        attemptType: AttemptType.FIRST,
+        attemptNumber: priorIncomingAttempts + 1,
+      });
 
-      if (outcome.type === "resume") {
-        return reply.send(await buildResumeExamStartResponse(outcome.attempt));
+      if (examStart.type === "resume") {
+        return reply.send(await buildResumeExamStartResponse(examStart.attempt));
       }
-
-      const attempt = outcome.result;
 
       return reply.code(201).send(
         buildExamStartResponse({
-          attempt,
-          questions: selected.map(stripCorrectAnswer),
+          attempt: examStart.attempt,
+          questions: examStart.questions.map(stripCorrectAnswer),
           savedAnswers: [],
           resumeIndex: 0,
-          timeLimitMinutes: questionSet.timeLimitMinutes,
+          timeLimitMinutes: examStart.timeLimitMinutes,
         })
       );
     }
@@ -600,36 +526,24 @@ export async function examRoutes(app: FastifyInstance) {
       return reply.code(404).send({ error: `No deployed ${setType.toLowerCase()} set for this year level.` });
     }
 
-    const selected = await generateExamQuestions(questionSet.configs);
-    const outcome = await createExamAttemptIfNoneInProgress(user.id, async (tx) =>
-      tx.examAttempt.create({
-        data: {
-          studentId: user.id,
-          questionSetId: questionSet.id,
-          attemptType,
-          attemptNumber,
-          questionIds: JSON.stringify(selected.map((q) => q.id)),
-          totalItems: selected.length,
-          answers: {
-            create: selected.map((q) => ({ questionId: q.id })),
-          },
-        },
-      })
-    );
+    const examStart = await startNewExamAttempt({
+      userId: user.id,
+      questionSet,
+      attemptType,
+      attemptNumber,
+    });
 
-    if (outcome.type === "resume") {
-      return reply.send(await buildResumeExamStartResponse(outcome.attempt));
+    if (examStart.type === "resume") {
+      return reply.send(await buildResumeExamStartResponse(examStart.attempt));
     }
-
-    const attempt = outcome.result;
 
     return reply.code(201).send(
       buildExamStartResponse({
-        attempt,
-        questions: selected.map(stripCorrectAnswer),
+        attempt: examStart.attempt,
+        questions: examStart.questions.map(stripCorrectAnswer),
         savedAnswers: [],
         resumeIndex: 0,
-        timeLimitMinutes: questionSet.timeLimitMinutes,
+        timeLimitMinutes: examStart.timeLimitMinutes,
       })
     );
   });
@@ -904,6 +818,53 @@ function nextActionSetTimeLimit(
     return sets.comprehensive.timeLimitMinutes;
   }
   return 60;
+}
+
+type StartableQuestionSet = {
+  id: string;
+  examQuestionIds: string | null;
+  configs: import("@prisma/client").QuestionSetConfig[];
+  timeLimitMinutes: number;
+};
+
+async function startNewExamAttempt({
+  userId,
+  questionSet,
+  attemptType,
+  attemptNumber,
+}: {
+  userId: string;
+  questionSet: StartableQuestionSet;
+  attemptType: AttemptType;
+  attemptNumber: number;
+}) {
+  const { orderedIds, questions } = await prepareAttemptExamQuestions(questionSet);
+  const outcome = await createExamAttemptIfNoneInProgress(userId, async (tx) =>
+    tx.examAttempt.create({
+      data: {
+        studentId: userId,
+        questionSetId: questionSet.id,
+        attemptType,
+        attemptNumber,
+        questionIds: JSON.stringify(orderedIds),
+        totalItems: questions.length,
+        answers: {
+          create: orderedIds.map((questionId) => ({ questionId })),
+        },
+      },
+    })
+  );
+
+  if (outcome.type === "resume") {
+    return { type: "resume" as const, attempt: outcome.attempt };
+  }
+
+  return {
+    type: "created" as const,
+    attempt: outcome.result,
+    questions,
+    timeLimitMinutes: questionSet.timeLimitMinutes,
+  };
 }
 
 function buildExamStartResponse({

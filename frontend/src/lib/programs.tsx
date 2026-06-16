@@ -11,6 +11,7 @@ import { api } from "./api";
 import { useAuth } from "./auth";
 import {
   DEFAULT_PROGRAM_COURSE,
+  SHARED_DIAGNOSTIC_PROGRAM,
   syncProgramCourses,
   type ProgramRecord,
 } from "./programCourse";
@@ -105,17 +106,22 @@ export function usePrograms() {
   return context;
 }
 
-export function useProgramCourseOptions() {
+export function useProgramCourseOptions(options?: { includeSharedDiagnostic?: boolean }) {
   const { programs } = usePrograms();
 
   return useMemo(
     () =>
-      programs.map((program) => ({
-        id: program.slug,
-        programId: program.id,
-        label: program.label,
-        abbr: program.abbr,
-      })),
-    [programs]
+      programs
+        .filter(
+          (program) =>
+            options?.includeSharedDiagnostic || program.slug !== SHARED_DIAGNOSTIC_PROGRAM
+        )
+        .map((program) => ({
+          id: program.slug,
+          programId: program.id,
+          label: program.label,
+          abbr: program.abbr,
+        })),
+    [programs, options?.includeSharedDiagnostic]
   );
 }

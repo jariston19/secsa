@@ -9,6 +9,8 @@ export const DEFAULT_PROGRAM_SLUGS = [
   "ARCHITECTURE",
 ] as const;
 
+export { SHARED_DIAGNOSTIC_PROGRAM } from "./incomingDiagnostic.js";
+
 export const DEFAULT_PROGRAM_COURSE = "INFORMATION_TECHNOLOGY";
 
 export const programCourseSlugSchema = z

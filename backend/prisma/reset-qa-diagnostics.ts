@@ -84,7 +84,7 @@ async function main() {
     qaAccount: result.qaEmail,
     clearedAttempts: result.cleared.examAttempts,
     clearedRetakeApprovals: result.cleared.retakeApprovals,
-    diagnosticSets: result.demoContent.questionSets.map((set) => set.diagnostic),
+    diagnosticSet: result.demoContent.diagnostic,
     itemsPerDiagnosticExam: result.demoContent.itemsPerDiagnosticExam,
     repairedSets: result.demoContent.repairedSets,
   });

@@ -19,6 +19,15 @@ enum Difficulty {
   HARD
 }
 
+enum BloomLevel {
+  KNOWLEDGE
+  COMPREHENSION
+  APPLICATION
+  ANALYSIS
+  SYNTHESIS
+  EVALUATION
+}
+
 enum QuestionSetType {
   COMPREHENSIVE
   DIAGNOSTIC
@@ -127,6 +136,7 @@ model Question {
   subjectId     String
   topicId       String?
   difficulty    Difficulty
+  bloomLevel    BloomLevel @default(KNOWLEDGE)
   text          String
   optionA       String
   optionB       String
@@ -155,6 +165,7 @@ model QuestionSet {
   totalItems    Int
   passThreshold Float             @default(75)
   timeLimitMinutes Int            @default(60)
+  examQuestionIds String?
   createdById   String
   deployedAt    DateTime?
   createdAt     DateTime          @default(now())

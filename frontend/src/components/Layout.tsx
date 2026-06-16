@@ -14,7 +14,7 @@ const SUPERADMIN_SECTIONS = [
 const EXPANDED_MENUS_KEY = "secsa-sidebar-expanded-menus";
 
 function readExpandedMenus() {
-  const menus = new Set<string>(["saved", "users", "settings", "analytics"]);
+  const menus = new Set<string>();
   if (typeof window === "undefined") return menus;
   try {
     const stored = localStorage.getItem(EXPANDED_MENUS_KEY);
@@ -26,10 +26,6 @@ function readExpandedMenus() {
   } catch {
     // ignore invalid storage
   }
-  menus.add("saved");
-  menus.add("users");
-  menus.add("settings");
-  menus.add("analytics");
   return menus;
 }
 

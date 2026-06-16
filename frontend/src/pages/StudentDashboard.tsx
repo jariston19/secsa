@@ -453,7 +453,7 @@ export default function StudentDashboard() {
                       ? `Ready: ${selectedQaOption.setName} (incoming diagnostic)`
                       : `Ready: ${selectedQaOption.setName}`
                     : selectedQaOption?.examKind === "incoming_diagnostic"
-                      ? "No deployed incoming diagnostic set for this program yet."
+                      ? "No deployed incoming diagnostic set yet."
                       : "No deployed comprehensive set for this year level yet."}
                 </span>
               </label>

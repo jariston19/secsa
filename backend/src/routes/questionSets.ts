@@ -4,9 +4,11 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import { yearLevelSchema, curriculumYearForStudentYear } from "../lib/yearLevel.js";
-import { programCourseSlugSchema, assertActiveProgramSlug } from "../lib/programCourse.js";
+import { programCourseSlugSchema, assertActiveProgramSlug, SHARED_DIAGNOSTIC_PROGRAM } from "../lib/programCourse.js";
+import { isSharedDiagnosticProgram } from "../lib/incomingDiagnostic.js";
 import { subjectIncludesProgram } from "../lib/subjectPrograms.js";
 import {
+  generateCanonicalExamQuestions,
   getConfigPoolQuestions,
   validateQuestionSetConfigs,
 } from "../services/examGenerator.js";
@@ -72,7 +74,9 @@ async function validateSetConfigsForYear(
   }
 
   const mismatchedCourse = subjectsInConfigs.find(
-    (s) => !subjectIncludesProgram(s.programCourses, programCourse)
+    (s) =>
+      !isSharedDiagnosticProgram(programCourse) &&
+      !subjectIncludesProgram(s.programCourses, programCourse)
   );
   if (mismatchedCourse) {
     return {
@@ -137,10 +141,12 @@ export async function questionSetRoutes(app: FastifyInstance) {
     requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
 
     const body = createSetSchema.parse(request.body);
-    await assertActiveProgramSlug(body.programCourse);
+    const programCourse =
+      body.type === QuestionSetType.DIAGNOSTIC ? SHARED_DIAGNOSTIC_PROGRAM : body.programCourse;
+    await assertActiveProgramSlug(programCourse);
     const validation = await validateSetConfigsForYear(
       body.yearLevel,
-      body.programCourse,
+      programCourse,
       body.configs
     );
     if (validation.error) {
@@ -165,7 +171,7 @@ export async function questionSetRoutes(app: FastifyInstance) {
       data: {
         name: body.name,
         yearLevel: body.yearLevel,
-        programCourse: body.programCourse,
+        programCourse,
         type: body.type,
         totalItems: body.totalItems,
         passThreshold: body.passThreshold ?? 75,
@@ -231,6 +237,8 @@ export async function questionSetRoutes(app: FastifyInstance) {
           totalItems: body.totalItems,
           passThreshold: body.passThreshold ?? existing.passThreshold,
           timeLimitMinutes: body.timeLimitMinutes,
+          examQuestionIds:
+            existing.status === QuestionSetStatus.DEPLOYED ? undefined : null,
           configs: {
             create: body.configs.map((c) => ({
               subjectId: c.subjectId,
@@ -244,6 +252,19 @@ export async function questionSetRoutes(app: FastifyInstance) {
         include: { configs: { include: { subject: true, topic: true } } },
       });
     });
+
+    if (existing.status === QuestionSetStatus.DEPLOYED) {
+      const canonicalQuestions = await generateCanonicalExamQuestions(questionSet.configs);
+      const refreshed = await prisma.questionSet.update({
+        where: { id },
+        data: {
+          examQuestionIds: JSON.stringify(canonicalQuestions.map((question) => question.id)),
+          totalItems: canonicalQuestions.length,
+        },
+        include: { configs: { include: { subject: true, topic: true } } },
+      });
+      return { questionSet: refreshed };
+    }
 
     return { questionSet };
   });
@@ -409,21 +430,28 @@ export async function questionSetRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "Cannot deploy. Pools incomplete.", details: errors });
     }
 
+    const canonicalQuestions = await generateCanonicalExamQuestions(set.configs);
+    const examQuestionIds = JSON.stringify(canonicalQuestions.map((question) => question.id));
+
     await prisma.$transaction([
       prisma.questionSet.updateMany({
         where: {
           yearLevel: set.yearLevel,
-          programCourse: set.programCourse,
           type: set.type,
           status: QuestionSetStatus.DEPLOYED,
+          ...(set.type === QuestionSetType.DIAGNOSTIC
+            ? {}
+            : { programCourse: set.programCourse }),
         },
-        data: { status: QuestionSetStatus.ARCHIVED },
+        data: { status: QuestionSetStatus.ARCHIVED, examQuestionIds: null },
       }),
       prisma.questionSet.update({
         where: { id },
         data: {
           status: QuestionSetStatus.DEPLOYED,
           deployedAt: new Date(),
+          examQuestionIds,
+          totalItems: canonicalQuestions.length,
         },
       }),
     ]);
@@ -454,6 +482,7 @@ export async function questionSetRoutes(app: FastifyInstance) {
       data: {
         status: QuestionSetStatus.DRAFT,
         deployedAt: null,
+        examQuestionIds: null,
       },
       include: { configs: { include: { subject: true, topic: true } } },
     });

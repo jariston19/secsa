@@ -9,6 +9,7 @@ import {
   type User,
 } from "@prisma/client";
 import { ensureDemoImage } from "./seed-demo-images.js";
+import { bloomLevelForSeed } from "../src/lib/bloomLevel.js";
 
 const prisma = new PrismaClient();
 
@@ -331,7 +332,7 @@ export async function seedTrigonometryDemo({
   skipQuestionSets = false,
 }: {
   teacher: Pick<User, "id">;
-  student: Pick<User, "id">;
+  student?: Pick<User, "id">;
   resetStudentAttempts?: boolean;
   skipQuestionSets?: boolean;
 }) {
@@ -379,11 +380,12 @@ export async function seedTrigonometryDemo({
   });
 
   let createdQuestions = 0;
-  for (const q of TRIG_QUESTIONS) {
+  for (const [index, q] of TRIG_QUESTIONS.entries()) {
     const { imageKey, ...questionData } = q as (typeof TRIG_QUESTIONS)[number] & {
       imageKey?: string;
     };
     const imagePath = imageKey ? await ensureDemoImage(imageKey) : undefined;
+    const bloomLevel = bloomLevelForSeed(questionData.difficulty, index);
 
     const existing = await prisma.question.findFirst({
       where: { subjectId: subject.id, text: q.text },
@@ -392,6 +394,7 @@ export async function seedTrigonometryDemo({
       await prisma.question.create({
         data: {
           ...questionData,
+          bloomLevel,
           imagePath,
           subjectId: subject.id,
           topicId: topic.id,
@@ -402,7 +405,12 @@ export async function seedTrigonometryDemo({
     } else if (imagePath && existing.imagePath !== imagePath) {
       await prisma.question.update({
         where: { id: existing.id },
-        data: { imagePath },
+        data: { imagePath, bloomLevel },
+      });
+    } else if (existing.bloomLevel !== bloomLevel) {
+      await prisma.question.update({
+        where: { id: existing.id },
+        data: { bloomLevel },
       });
     }
   }
@@ -432,7 +440,7 @@ export async function seedTrigonometryDemo({
     });
   }
 
-  if (resetStudentAttempts) {
+  if (resetStudentAttempts && student) {
     await resetStudentExamState(student.id);
   }
 
@@ -447,7 +455,7 @@ export async function seedTrigonometryDemo({
     newQuestionsAdded: createdQuestions,
     diagnosticSet: diagnostic?.name ?? null,
     retakeSet: retake?.name ?? null,
-    student: student.id,
+    student: student?.id ?? null,
   };
 }
 

@@ -3,8 +3,9 @@ import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import SwappableChartGrid, { ChartReorderHint } from "./SwappableChartGrid";
-import { HorizontalBarChart, GroupedDifficultyBars } from "./charts/AnalyticsCharts";
+import { HorizontalBarChart, GroupedDifficultyBars, GroupedBloomBars, BloomCognitiveCallout } from "./charts/AnalyticsCharts";
 import { DIFFICULTY_LABELS } from "../lib/analyticsChartUtils";
+import { BLOOM_LEVEL_LABELS, type BloomLevelId } from "../lib/bloomLevel";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import { usePagination } from "../hooks/usePagination";
@@ -23,6 +24,7 @@ const STUDENT_TABLE_PAGE_SIZE = 5;
 const INDIVIDUAL_STUDENT_CHART_ORDER = [
   "topic-tiles",
   "class-compare",
+  "bloom-levels",
   "score-by-difficulty",
   "score-per-subject",
   "avg-time-difficulty",
@@ -102,6 +104,18 @@ interface IndividualReport {
     avgTimeSeconds: number | null;
     classAvgTimeSeconds: number | null;
   }>;
+  byBloomLevel?: Array<{
+    bloomLevel: string;
+    score: number;
+    classAverage: number;
+    tone: "strong" | "moderate" | "weak";
+    total: number;
+    correct: number;
+  }>;
+  bloomProfile?: {
+    type: "surface" | "deep" | "mixed";
+    message: string;
+  } | null;
   insights?: Array<{ type: InsightType; message: string }>;
 }
 
@@ -178,6 +192,31 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
           <p className="muted individual-student-legend">
             Blue bar = student · Grey tick = class average
           </p>
+        </section>
+      );
+    case "bloom-levels":
+      return (
+        <section className="card individual-student-section">
+          <h3>Domain profile</h3>
+          <p className="muted individual-student-section-lead">
+            L1–L6 bars show which domains are strong or weak — same score can hide very different learning needs.
+          </p>
+          <GroupedBloomBars
+            items={(report.byBloomLevel ?? []).map((row) => ({
+              bloomLevel: row.bloomLevel,
+              score: row.score,
+            }))}
+          />
+          <BloomCognitiveCallout profile={report.bloomProfile} />
+          <div className="individual-student-bloom-legend">
+            {(report.byBloomLevel ?? []).map((row) => (
+              <span key={row.bloomLevel} className="muted">
+                {BLOOM_LEVEL_LABELS[row.bloomLevel as BloomLevelId] ?? row.bloomLevel}:{" "}
+                {row.score.toFixed(0)}%
+                {row.classAverage > 0 ? ` (class ${row.classAverage.toFixed(0)}%)` : ""}
+              </span>
+            ))}
+          </div>
         </section>
       );
     case "score-by-difficulty":

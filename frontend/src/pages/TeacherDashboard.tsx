@@ -32,6 +32,7 @@ import {
   DEFAULT_PROGRAM_COURSE,
   formatProgramCourse,
   formatProgramCoursesList,
+  SHARED_DIAGNOSTIC_PROGRAM,
   subjectHasProgram,
   subjectProgramCourseIds,
   type ProgramCourseId,
@@ -492,7 +493,9 @@ export default function TeacherDashboard() {
       sets.filter(
         (s) =>
           s.status !== "ARCHIVED" &&
-          (setsProgramFilter === "ALL" || s.programCourse === setsProgramFilter) &&
+          (setsProgramFilter === "ALL" ||
+            s.programCourse === setsProgramFilter ||
+            (s.type === "DIAGNOSTIC" && s.programCourse === SHARED_DIAGNOSTIC_PROGRAM)) &&
           (setsStatusFilter === "ALL" || s.status === setsStatusFilter) &&
           (setsTypeFilter === "ALL" || s.type === setsTypeFilter)
       ),

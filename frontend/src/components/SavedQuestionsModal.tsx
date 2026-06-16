@@ -1,6 +1,12 @@
 import { ChangeEvent, Fragment, useEffect, useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
+import {
+  BLOOM_LEVEL_LABELS,
+  bloomOptionsForDifficulty,
+  defaultBloomLevelForDifficulty,
+  type BloomLevelId,
+} from "../lib/bloomLevel";
 import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
@@ -34,6 +40,7 @@ interface Question {
   subjectId: string;
   topicId: string | null;
   difficulty: string;
+  bloomLevel: string;
   text: string;
   optionA: string;
   optionB: string;
@@ -46,6 +53,7 @@ interface Question {
 
 interface QuestionEditDraft {
   difficulty: string;
+  bloomLevel: string;
   text: string;
   optionA: string;
   optionB: string;
@@ -211,6 +219,7 @@ export default function SavedQuestionsModal({
     setEditingId(question.id);
     setEditDraft({
       difficulty: question.difficulty,
+      bloomLevel: question.bloomLevel,
       text: question.text,
       optionA: question.optionA,
       optionB: question.optionB,
@@ -271,6 +280,7 @@ export default function SavedQuestionsModal({
     formData.append("subjectId", question.subjectId);
     formData.append("topicId", question.topicId ?? "");
     formData.append("difficulty", editDraft.difficulty);
+    formData.append("bloomLevel", editDraft.bloomLevel);
     formData.append("text", editDraft.text.trim());
     formData.append("optionA", editDraft.optionA.trim());
     formData.append("optionB", editDraft.optionB.trim());
@@ -479,6 +489,10 @@ export default function SavedQuestionsModal({
                               >
                                 {formatDifficulty(question.difficulty)}
                               </span>
+                              <span className="muted saved-questions-bloom-tag">
+                                {BLOOM_LEVEL_LABELS[question.bloomLevel as BloomLevelId] ??
+                                  question.bloomLevel}
+                              </span>
                             </td>
                             <td className="saved-questions-topic-col">
                               {question.topic?.name ?? "—"}
@@ -540,36 +554,58 @@ export default function SavedQuestionsModal({
                                     <h3>Edit question</h3>
                                   </div>
                                   <div className="saved-questions-edit-form encoder-form-grid">
-                                    <label>
-                                      Difficulty
-                                      <select
-                                        value={editDraft.difficulty}
-                                        onChange={(e) =>
-                                          setEditDraft({ ...editDraft, difficulty: e.target.value })
-                                        }
-                                      >
-                                        <option value="EASY">Easy</option>
-                                        <option value="MEDIUM">Medium</option>
-                                        <option value="HARD">Hard</option>
-                                      </select>
-                                    </label>
-                                    <label>
-                                      Correct answer
-                                      <select
-                                        value={editDraft.correctOption}
-                                        onChange={(e) =>
-                                          setEditDraft({
-                                            ...editDraft,
-                                            correctOption: e.target.value,
-                                          })
-                                        }
-                                      >
-                                        <option value="A">A</option>
-                                        <option value="B">B</option>
-                                        <option value="C">C</option>
-                                        <option value="D">D</option>
-                                      </select>
-                                    </label>
+                                    <div className="encoder-question-meta-row encoder-field-full">
+                                      <label>
+                                        Difficulty
+                                        <select
+                                          value={editDraft.difficulty}
+                                          onChange={(e) => {
+                                            const difficulty = e.target.value;
+                                            setEditDraft({
+                                              ...editDraft,
+                                              difficulty,
+                                              bloomLevel: defaultBloomLevelForDifficulty(difficulty),
+                                            });
+                                          }}
+                                        >
+                                          <option value="EASY">Easy</option>
+                                          <option value="MEDIUM">Medium</option>
+                                          <option value="HARD">Hard</option>
+                                        </select>
+                                      </label>
+                                      <label>
+                                        Domain
+                                        <select
+                                          value={editDraft.bloomLevel}
+                                          onChange={(e) =>
+                                            setEditDraft({ ...editDraft, bloomLevel: e.target.value })
+                                          }
+                                        >
+                                          {bloomOptionsForDifficulty(editDraft.difficulty).map((level) => (
+                                            <option key={level} value={level}>
+                                              {BLOOM_LEVEL_LABELS[level]}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                      <label>
+                                        Correct answer
+                                        <select
+                                          value={editDraft.correctOption}
+                                          onChange={(e) =>
+                                            setEditDraft({
+                                              ...editDraft,
+                                              correctOption: e.target.value,
+                                            })
+                                          }
+                                        >
+                                          <option value="A">A</option>
+                                          <option value="B">B</option>
+                                          <option value="C">C</option>
+                                          <option value="D">D</option>
+                                        </select>
+                                      </label>
+                                    </div>
                                     <label className="encoder-field-full">
                                       Question
                                       <textarea

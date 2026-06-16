@@ -1,5 +1,10 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
+import {
+  BLOOM_LEVEL_LABELS,
+  bloomOptionsForDifficulty,
+  defaultBloomLevelForDifficulty,
+} from "../lib/bloomLevel";
 import { subjectHasProgram, type ProgramCourseFilter, type ProgramCourseId } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
 import { subjectLabel, toastBatchCreated, toastCreated, truncateLabel } from "../lib/toastMessages";
@@ -7,6 +12,7 @@ import { subjectLabel, toastBatchCreated, toastCreated, truncateLabel } from "..
 export interface QuestionDraft {
   id: string;
   difficulty: string;
+  bloomLevel: string;
   text: string;
   optionA: string;
   optionB: string;
@@ -63,6 +69,7 @@ function emptyQuestion(): QuestionDraft {
   return {
     id: createQuestionId(),
     difficulty: "EASY",
+    bloomLevel: "KNOWLEDGE",
     text: "",
     optionA: "",
     optionB: "",
@@ -145,6 +152,7 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
       formData.append("subjectId", subjectId);
       if (topicId) formData.append("topicId", topicId);
       formData.append("difficulty", q.difficulty);
+      formData.append("bloomLevel", q.bloomLevel);
       formData.append("text", q.text.trim());
       formData.append("optionA", q.optionA.trim());
       formData.append("optionB", q.optionB.trim());
@@ -325,30 +333,52 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
             </div>
 
             <div className="encoder-form-grid">
-              <label>
-                Difficulty
-                <select
-                  value={q.difficulty}
-                  onChange={(e) => updateQuestion(q.id, { difficulty: e.target.value })}
-                >
-                  <option value="EASY">Easy</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HARD">Hard</option>
-                </select>
-              </label>
+              <div className="encoder-question-meta-row encoder-field-full">
+                <label>
+                  Difficulty
+                  <select
+                    value={q.difficulty}
+                    onChange={(e) => {
+                      const difficulty = e.target.value;
+                      updateQuestion(q.id, {
+                        difficulty,
+                        bloomLevel: defaultBloomLevelForDifficulty(difficulty),
+                      });
+                    }}
+                  >
+                    <option value="EASY">Easy</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HARD">Hard</option>
+                  </select>
+                </label>
 
-              <label>
-                Correct answer
-                <select
-                  value={q.correctOption}
-                  onChange={(e) => updateQuestion(q.id, { correctOption: e.target.value })}
-                >
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="C">C</option>
-                  <option value="D">D</option>
-                </select>
-              </label>
+                <label>
+                  Domain
+                  <select
+                    value={q.bloomLevel}
+                    onChange={(e) => updateQuestion(q.id, { bloomLevel: e.target.value })}
+                  >
+                    {bloomOptionsForDifficulty(q.difficulty).map((level) => (
+                      <option key={level} value={level}>
+                        {BLOOM_LEVEL_LABELS[level]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Correct answer
+                  <select
+                    value={q.correctOption}
+                    onChange={(e) => updateQuestion(q.id, { correctOption: e.target.value })}
+                  >
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                    <option value="D">D</option>
+                  </select>
+                </label>
+              </div>
 
               <label className="encoder-field-full">
                 Question

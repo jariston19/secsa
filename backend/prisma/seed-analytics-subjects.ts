@@ -6,7 +6,12 @@ import {
   type Question,
   type User,
 } from "@prisma/client";
-import { validateQuestionSetConfigs } from "../src/services/examGenerator.js";
+import { generateCanonicalExamQuestions, validateQuestionSetConfigs } from "../src/services/examGenerator.js";
+import { bloomLevelForSeed } from "../src/lib/bloomLevel.js";
+import {
+  SHARED_DIAGNOSTIC_PROGRAM,
+  SHARED_INCOMING_DIAGNOSTIC_NAME,
+} from "../src/lib/incomingDiagnostic.js";
 import { ensureDemoImage } from "./seed-demo-images.js";
 
 const prisma = new PrismaClient();
@@ -45,6 +50,15 @@ export const ANALYTICS_DEMO_SUBJECT_CODES = [
   "CAP 301",
 ] as const;
 
+export const GEN_ED_SUBJECT_CODES = [
+  "MATH 105",
+  "ENG 101",
+  "SCI 102",
+  "FIL 101",
+  "HIST 105",
+  "VAL 101",
+] as const;
+
 const DEMO_PROGRAM_COURSES = [
   "INFORMATION_TECHNOLOGY",
   "CIVIL_ENGINEERING",
@@ -74,9 +88,93 @@ export function comprehensiveSetName(
   return `${abbrev} Y${yearLevel} ${label}`;
 }
 
-export function diagnosticSetName(programCourse: string) {
-  const abbrev = PROGRAM_COURSE_ABBREV[programCourse];
-  return `${abbrev} Y1 Incoming Diagnostic`;
+export function diagnosticSetName() {
+  return SHARED_INCOMING_DIAGNOSTIC_NAME;
+}
+
+async function archiveLegacyProgramDiagnostics() {
+  await prisma.questionSet.updateMany({
+    where: {
+      yearLevel: 1,
+      type: QuestionSetType.DIAGNOSTIC,
+      programCourse: { not: SHARED_DIAGNOSTIC_PROGRAM },
+      status: QuestionSetStatus.DEPLOYED,
+    },
+    data: { status: QuestionSetStatus.ARCHIVED },
+  });
+}
+
+export const DEMO_DIAGNOSTIC_TOTAL_ITEMS = 20;
+export const DEMO_COMPREHENSIVE_TOTAL_ITEMS = 10;
+
+type ExamDifficultyCounts = {
+  easyCount: number;
+  mediumCount: number;
+  hardCount: number;
+};
+
+function difficultyCountsForTotal(totalItems: number): ExamDifficultyCounts {
+  if (totalItems <= 0) {
+    return { easyCount: 0, mediumCount: 0, hardCount: 0 };
+  }
+  if (totalItems === 1) {
+    return { easyCount: 1, mediumCount: 0, hardCount: 0 };
+  }
+  if (totalItems === 2) {
+    return { easyCount: 1, mediumCount: 1, hardCount: 0 };
+  }
+
+  const hardCount = Math.max(1, Math.round(totalItems * 0.3));
+  const mediumCount = Math.max(1, Math.round(totalItems * 0.3));
+  const easyCount = Math.max(1, totalItems - hardCount - mediumCount);
+  return { easyCount, mediumCount, hardCount };
+}
+
+function distributeItemsAcrossSubjects(subjectCount: number, totalItems: number) {
+  const counts: number[] = [];
+  let remaining = totalItems;
+
+  for (let index = 0; index < subjectCount; index += 1) {
+    const slotsLeft = subjectCount - index;
+    const share = Math.ceil(remaining / slotsLeft);
+    counts.push(share);
+    remaining -= share;
+  }
+
+  return counts;
+}
+
+function buildDemoExamConfigs(subjectIds: string[], totalItems: number) {
+  if (!subjectIds.length) {
+    throw new Error("At least one subject is required for demo exam configs.");
+  }
+
+  if (subjectIds.length === 1) {
+    return [
+      {
+        subjectId: subjectIds[0],
+        topicId: null,
+        ...difficultyCountsForTotal(totalItems),
+      },
+    ];
+  }
+
+  const perSubjectCounts = distributeItemsAcrossSubjects(subjectIds.length, totalItems);
+  return subjectIds.map((subjectId, index) => ({
+    subjectId,
+    topicId: null,
+    ...difficultyCountsForTotal(perSubjectCounts[index]),
+  }));
+}
+
+function totalItemsForQuestionSetType(type: QuestionSetType) {
+  return type === QuestionSetType.DIAGNOSTIC
+    ? DEMO_DIAGNOSTIC_TOTAL_ITEMS
+    : DEMO_COMPREHENSIVE_TOTAL_ITEMS;
+}
+
+function countsForQuestionSet(type: QuestionSetType) {
+  return difficultyCountsForTotal(totalItemsForQuestionSetType(type));
 }
 
 const DEMO_SUBJECTS: DemoSubject[] = [
@@ -1167,9 +1265,10 @@ async function seedSubjectContent(teacherId: string, plan: DemoSubject) {
     });
     topicsCreated += 1;
 
-    for (const question of topicPlan.questions) {
+    for (const [questionIndex, question] of topicPlan.questions.entries()) {
       const { imageKey, ...questionData } = question;
       const imagePath = imageKey ? await ensureDemoImage(imageKey) : undefined;
+      const bloomLevel = bloomLevelForSeed(questionData.difficulty, questionsCreated + questionIndex);
 
       const existing = await prisma.question.findFirst({
         where: { subjectId: subject.id, text: question.text },
@@ -1178,6 +1277,7 @@ async function seedSubjectContent(teacherId: string, plan: DemoSubject) {
         await prisma.question.create({
           data: {
             ...questionData,
+            bloomLevel,
             imagePath,
             subjectId: subject.id,
             topicId: topic.id,
@@ -1188,13 +1288,37 @@ async function seedSubjectContent(teacherId: string, plan: DemoSubject) {
       } else if (imagePath && existing.imagePath !== imagePath) {
         await prisma.question.update({
           where: { id: existing.id },
-          data: { imagePath },
+          data: { imagePath, bloomLevel },
+        });
+      } else if (existing.bloomLevel !== bloomLevel) {
+        await prisma.question.update({
+          where: { id: existing.id },
+          data: { bloomLevel },
         });
       }
     }
   }
 
   return { subjectId: subject.id, topicsCreated, questionsCreated };
+}
+
+async function attachCanonicalExamPool(questionSetId: string) {
+  const set = await prisma.questionSet.findUnique({
+    where: { id: questionSetId },
+    include: { configs: true },
+  });
+  if (!set) {
+    throw new Error(`Question set ${questionSetId} not found while building exam pool.`);
+  }
+
+  const questions = await generateCanonicalExamQuestions(set.configs);
+  return prisma.questionSet.update({
+    where: { id: questionSetId },
+    data: {
+      examQuestionIds: JSON.stringify(questions.map((question) => question.id)),
+      totalItems: questions.length,
+    },
+  });
 }
 
 async function upsertComprehensiveQuestionSet({
@@ -1211,47 +1335,35 @@ async function upsertComprehensiveQuestionSet({
   yearLevel: number;
 }) {
   const name = comprehensiveSetName(programCourse, type, yearLevel);
-  const perSubjectEasy = 3;
-  const perSubjectMedium = 3;
-  const perSubjectHard = 2;
-  const totalItems = subjectIds.length * (perSubjectEasy + perSubjectMedium + perSubjectHard);
+  const totalItems = DEMO_COMPREHENSIVE_TOTAL_ITEMS;
+  const configCreates = buildDemoExamConfigs(subjectIds, totalItems);
 
   const existing = await prisma.questionSet.findFirst({
     where: { name, yearLevel, programCourse, type },
   });
 
-  const configCreates = [];
-  for (const subjectId of subjectIds) {
-    configCreates.push({
-      subjectId,
-      topicId: null,
-      easyCount: perSubjectEasy,
-      mediumCount: perSubjectMedium,
-      hardCount: perSubjectHard,
-    });
-  }
-
   if (existing) {
     await prisma.questionSetConfig.deleteMany({ where: { questionSetId: existing.id } });
-    return prisma.questionSet.update({
+    const updated = await prisma.questionSet.update({
       where: { id: existing.id },
       data: {
         totalItems,
         passThreshold: 75,
-        timeLimitMinutes: 60,
+        timeLimitMinutes: 20,
         status: QuestionSetStatus.DEPLOYED,
         deployedAt: new Date(),
         configs: { create: configCreates },
       },
     });
+    return attachCanonicalExamPool(updated.id);
   }
 
   await prisma.questionSet.updateMany({
     where: { yearLevel, programCourse, type, status: QuestionSetStatus.DEPLOYED },
-    data: { status: QuestionSetStatus.ARCHIVED },
+    data: { status: QuestionSetStatus.ARCHIVED, examQuestionIds: null },
   });
 
-  return prisma.questionSet.create({
+  const created = await prisma.questionSet.create({
     data: {
       name,
       yearLevel,
@@ -1260,58 +1372,65 @@ async function upsertComprehensiveQuestionSet({
       status: QuestionSetStatus.DEPLOYED,
       totalItems,
       passThreshold: 75,
-      timeLimitMinutes: 60,
+      timeLimitMinutes: 20,
       deployedAt: new Date(),
       createdById: teacherId,
       configs: { create: configCreates },
     },
   });
+  return attachCanonicalExamPool(created.id);
+}
+
+async function resolveGenEdSubjectIds() {
+  const subjects = await prisma.subject.findMany({
+    where: { courseCode: { in: [...GEN_ED_SUBJECT_CODES] } },
+    select: { id: true, courseCode: true },
+  });
+
+  const subjectIds = GEN_ED_SUBJECT_CODES.map((courseCode) => {
+    const subject = subjects.find((row) => row.courseCode === courseCode);
+    if (!subject) {
+      throw new Error(`Gen ed subject ${courseCode} not found. Run demo subject seed first.`);
+    }
+    return subject.id;
+  });
+
+  return subjectIds;
 }
 
 async function upsertDiagnosticQuestionSet({
   teacherId,
-  programCourse,
-  subjectIds,
+  genEdSubjectIds,
 }: {
   teacherId: string;
-  programCourse: string;
-  subjectIds: string[];
+  genEdSubjectIds: string[];
 }) {
   const yearLevel = 1;
-  const name = diagnosticSetName(programCourse);
-  const perSubjectEasy = 2;
-  const perSubjectMedium = 2;
-  const perSubjectHard = 1;
-  const totalItems = subjectIds.length * (perSubjectEasy + perSubjectMedium + perSubjectHard);
+  const programCourse = SHARED_DIAGNOSTIC_PROGRAM;
+  const name = diagnosticSetName();
+  const totalItems = DEMO_DIAGNOSTIC_TOTAL_ITEMS;
+  const configCreates = buildDemoExamConfigs(genEdSubjectIds, totalItems);
 
   const existing = await prisma.questionSet.findFirst({
-    where: { name, yearLevel, programCourse, type: QuestionSetType.DIAGNOSTIC },
+    where: { yearLevel, programCourse, type: QuestionSetType.DIAGNOSTIC },
+    orderBy: { updatedAt: "desc" },
   });
-
-  const configCreates = [];
-  for (const subjectId of subjectIds) {
-    configCreates.push({
-      subjectId,
-      topicId: null,
-      easyCount: perSubjectEasy,
-      mediumCount: perSubjectMedium,
-      hardCount: perSubjectHard,
-    });
-  }
 
   if (existing) {
     await prisma.questionSetConfig.deleteMany({ where: { questionSetId: existing.id } });
-    return prisma.questionSet.update({
+    const updated = await prisma.questionSet.update({
       where: { id: existing.id },
       data: {
+        name,
         totalItems,
         passThreshold: 75,
-        timeLimitMinutes: 30,
+        timeLimitMinutes: 15,
         status: QuestionSetStatus.DEPLOYED,
         deployedAt: new Date(),
         configs: { create: configCreates },
       },
     });
+    return attachCanonicalExamPool(updated.id);
   }
 
   await prisma.questionSet.updateMany({
@@ -1321,10 +1440,10 @@ async function upsertDiagnosticQuestionSet({
       type: QuestionSetType.DIAGNOSTIC,
       status: QuestionSetStatus.DEPLOYED,
     },
-    data: { status: QuestionSetStatus.ARCHIVED },
+    data: { status: QuestionSetStatus.ARCHIVED, examQuestionIds: null },
   });
 
-  return prisma.questionSet.create({
+  const created = await prisma.questionSet.create({
     data: {
       name,
       yearLevel,
@@ -1333,19 +1452,13 @@ async function upsertDiagnosticQuestionSet({
       status: QuestionSetStatus.DEPLOYED,
       totalItems,
       passThreshold: 75,
-      timeLimitMinutes: 30,
+      timeLimitMinutes: 15,
       deployedAt: new Date(),
       createdById: teacherId,
       configs: { create: configCreates },
     },
   });
-}
-
-function countsForQuestionSet(type: QuestionSetType) {
-  if (type === QuestionSetType.DIAGNOSTIC) {
-    return { easyCount: 2, mediumCount: 2, hardCount: 1 };
-  }
-  return { easyCount: 3, mediumCount: 3, hardCount: 2 };
+  return attachCanonicalExamPool(created.id);
 }
 
 export async function repairIncompleteQuestionSetPools() {
@@ -1360,19 +1473,17 @@ export async function repairIncompleteQuestionSetPools() {
     if (!errors.length) continue;
 
     const subjectIds = [...new Set(set.configs.map((config) => config.subjectId))];
+    if (!subjectIds.length) continue;
+
     const counts = countsForQuestionSet(set.type);
-    const perSubjectTotal = counts.easyCount + counts.mediumCount + counts.hardCount;
-    const configCreates = subjectIds.map((subjectId) => ({
-      subjectId,
-      topicId: null,
-      ...counts,
-    }));
+    const totalItems = totalItemsForQuestionSetType(set.type);
+    const configCreates = buildDemoExamConfigs(subjectIds, totalItems);
 
     await prisma.questionSetConfig.deleteMany({ where: { questionSetId: set.id } });
     await prisma.questionSet.update({
       where: { id: set.id },
       data: {
-        totalItems: subjectIds.length * perSubjectTotal,
+        totalItems,
         configs: { create: configCreates },
       },
     });
@@ -1396,26 +1507,32 @@ export async function ensureAnalyticsSubjects(teacher: Pick<User, "id">) {
     where: { courseCode: "MATH 105" },
     select: { id: true },
   });
-  if (mathSubject && !subjectIds.includes(mathSubject.id)) {
+  if (!mathSubject) {
+    throw new Error("MATH 105 subject not found. Run trigonometry demo seed first.");
+  }
+  if (!subjectIds.includes(mathSubject.id)) {
     subjectIds.unshift(mathSubject.id);
     await upsertSubjectPrograms(mathSubject.id);
   }
 
   const questionSets: Array<{
     programCourse: string;
-    diagnostic: string;
     comprehensiveByYear: Array<{ yearLevel: number; comprehensive: string; retake: string }>;
   }> = [];
   let itemsPerComprehensiveExam = 0;
   let itemsPerDiagnosticExam = 0;
 
-  for (const programCourse of DEMO_PROGRAM_COURSES) {
-    const diagnostic = await upsertDiagnosticQuestionSet({
-      teacherId: teacher.id,
-      programCourse,
-      subjectIds,
-    });
+  await archiveLegacyProgramDiagnostics();
 
+  const genEdSubjectIds = await resolveGenEdSubjectIds();
+
+  const diagnostic = await upsertDiagnosticQuestionSet({
+    teacherId: teacher.id,
+    genEdSubjectIds,
+  });
+  itemsPerDiagnosticExam = diagnostic.totalItems;
+
+  for (const programCourse of DEMO_PROGRAM_COURSES) {
     const comprehensiveByYear = [];
     for (const yearLevel of [2, 3, 4] as const) {
       const comprehensive = await upsertComprehensiveQuestionSet({
@@ -1451,24 +1568,21 @@ export async function ensureAnalyticsSubjects(teacher: Pick<User, "id">) {
           )?.totalItems ?? 0
         : 0;
     }
-    if (itemsPerDiagnosticExam === 0) itemsPerDiagnosticExam = diagnostic.totalItems;
 
     questionSets.push({
       programCourse,
-      diagnostic: diagnostic.name,
       comprehensiveByYear,
     });
   }
 
-  const repairedSets = await repairIncompleteQuestionSetPools();
-
   return {
     subjects: subjectIds.length,
     questionsCreated,
+    diagnostic: diagnostic.name,
     questionSets,
     itemsPerComprehensiveExam,
     itemsPerDiagnosticExam,
-    repairedSets,
+    repairedSets: await repairIncompleteQuestionSetPools(),
   };
 }
 

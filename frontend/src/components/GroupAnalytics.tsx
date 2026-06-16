@@ -47,6 +47,13 @@ interface GroupReportsData {
     total: number;
     correct: number;
   }>;
+  byBloomLevel?: Array<{
+    bloomLevel: string;
+    score: number;
+    tone: "strong" | "moderate" | "weak";
+    total: number;
+    correct: number;
+  }>;
   topicDifficultyMatrix: Array<{
     topicId: string;
     topic: string;

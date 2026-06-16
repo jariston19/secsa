@@ -1,6 +1,9 @@
 import bcrypt from "bcryptjs";
 import { PrismaClient, Role } from "@prisma/client";
 import { ensureAnalyticsSubjects } from "./seed-analytics-subjects.js";
+import { ensureAllQuestionBloomLevels } from "./ensure-question-bloom-levels.js";
+import { ensureDeployedExamPools } from "./ensure-deployed-exam-pools.js";
+import { removeSeedStudents } from "./seed-cleanup-students.js";
 import { seedTrigonometryDemo } from "./seed-trigonometry-demo.js";
 
 const prisma = new PrismaClient();
@@ -9,6 +12,7 @@ async function main() {
   const passwordHash = await bcrypt.hash("password123", 10);
 
   const defaultPrograms = [
+    { id: "prog_all", slug: "ALL_PROGRAMS", label: "All Programs", abbr: "ALL" },
     { id: "prog_ce", slug: "CIVIL_ENGINEERING", label: "Civil Engineering", abbr: "CE" },
     { id: "prog_me", slug: "MECHANICAL_ENGINEERING", label: "Mechanical Engineering", abbr: "ME" },
     { id: "prog_ee", slug: "ELECTRICAL_ENGINEERING", label: "Electrical Engineering", abbr: "EE" },
@@ -50,7 +54,11 @@ async function main() {
 
   const student = await prisma.user.upsert({
     where: { email: "student@secsa.local" },
-    update: {},
+    update: {
+      yearLevel: 2,
+      programCourse: "INFORMATION_TECHNOLOGY",
+      isActive: true,
+    },
     create: {
       email: "student@secsa.local",
       passwordHash,
@@ -82,6 +90,8 @@ async function main() {
     },
   });
 
+  const removedStudents = await removeSeedStudents(prisma);
+
   await seedTrigonometryDemo({
     teacher,
     student,
@@ -90,6 +100,8 @@ async function main() {
   });
 
   const demoContent = await ensureAnalyticsSubjects(teacher);
+  const bloomLevelsUpdated = await ensureAllQuestionBloomLevels(prisma);
+  const examPoolsUpdated = await ensureDeployedExamPools(prisma);
 
   console.log("Seed complete.");
   console.log({
@@ -97,9 +109,11 @@ async function main() {
     teacher: teacher.email,
     student: student.email,
     qaStudent: qaStudent.email,
+    removedAnalyticsDemoStudents: removedStudents.users,
   });
   console.log("Default password: password123");
-  console.log("Demo content:", demoContent);
+  console.log("Demo content:", { ...demoContent, bloomLevelsUpdated, examPoolsUpdated });
+  console.log("Real accounts such as @southlandcollege.edu.ph are kept.");
 }
 
 main()

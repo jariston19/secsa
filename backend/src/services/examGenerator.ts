@@ -1,7 +1,8 @@
-import { Difficulty, type Question, type QuestionSetConfig } from "@prisma/client";
+import { BloomLevel, Difficulty, type Question, type QuestionSetConfig } from "@prisma/client";
+import { BLOOM_LEVEL_ORDER } from "../lib/bloomLevel.js";
 import { prisma } from "../lib/prisma.js";
 
-function shuffle<T>(items: T[]): T[] {
+export function shuffle<T>(items: T[]): T[] {
   const copy = [...items];
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -10,11 +11,50 @@ function shuffle<T>(items: T[]): T[] {
   return copy;
 }
 
-function pickRandom(pool: Question[], count: number): Question[] {
-  if (count > pool.length) {
-    throw new Error(`Not enough questions in pool. Need ${count}, have ${pool.length}.`);
+function distributeCountAcrossSlots(slotCount: number, total: number) {
+  const counts: number[] = [];
+  let remaining = total;
+
+  for (let index = 0; index < slotCount; index += 1) {
+    const slotsLeft = slotCount - index;
+    const share = Math.ceil(remaining / slotsLeft);
+    counts.push(share);
+    remaining -= share;
   }
-  return shuffle(pool).slice(0, count);
+
+  return counts;
+}
+
+function pickBalancedByDomain(pool: Question[], count: number): Question[] {
+  if (count <= 0) return [];
+  if (pool.length <= count) return shuffle(pool);
+
+  const domainsPresent = BLOOM_LEVEL_ORDER.filter((domain) =>
+    pool.some((question) => question.bloomLevel === domain)
+  );
+  const domainTargets = distributeCountAcrossSlots(domainsPresent.length, count);
+  const selected: Question[] = [];
+  const usedIds = new Set<string>();
+
+  for (const [index, domain] of domainsPresent.entries()) {
+    const need = domainTargets[index] ?? 0;
+    const domainPool = pool.filter(
+      (question) => question.bloomLevel === domain && !usedIds.has(question.id)
+    );
+    for (const question of shuffle(domainPool).slice(0, need)) {
+      usedIds.add(question.id);
+      selected.push(question);
+    }
+  }
+
+  if (selected.length < count) {
+    const remainder = pool.filter((question) => !usedIds.has(question.id));
+    for (const question of shuffle(remainder).slice(0, count - selected.length)) {
+      selected.push(question);
+    }
+  }
+
+  return selected.slice(0, count);
 }
 
 async function getPool(
@@ -46,6 +86,10 @@ export async function getConfigPoolQuestions(
     },
     orderBy: [{ difficulty: "asc" }, { createdAt: "desc" }],
   });
+}
+
+function domainLabel(domain: BloomLevel) {
+  return domain.toLowerCase();
 }
 
 export async function validateQuestionSetConfigs(configs: QuestionSetConfig[]) {
@@ -91,6 +135,21 @@ export async function validateQuestionSetConfigs(configs: QuestionSetConfig[]) {
         errors.push(
           `${label} needs ${count} ${difficulty.toLowerCase()} questions but only ${pool.length} available.`
         );
+        continue;
+      }
+
+      const domainsPresent = BLOOM_LEVEL_ORDER.filter((domain) =>
+        pool.some((question) => question.bloomLevel === domain)
+      );
+      const domainTargets = distributeCountAcrossSlots(domainsPresent.length, count);
+      for (const [index, domain] of domainsPresent.entries()) {
+        const need = domainTargets[index] ?? 0;
+        const available = pool.filter((question) => question.bloomLevel === domain).length;
+        if (available < need) {
+          errors.push(
+            `${label} needs ${need} ${domainLabel(domain)} domain question(s) within ${difficulty.toLowerCase()} but only ${available} available.`
+          );
+        }
       }
     }
   }
@@ -98,7 +157,9 @@ export async function validateQuestionSetConfigs(configs: QuestionSetConfig[]) {
   return errors;
 }
 
-export async function generateExamQuestions(configs: QuestionSetConfig[]): Promise<Question[]> {
+export async function generateCanonicalExamQuestions(
+  configs: QuestionSetConfig[]
+): Promise<Question[]> {
   const selected: Question[] = [];
 
   for (const config of configs) {
@@ -111,11 +172,58 @@ export async function generateExamQuestions(configs: QuestionSetConfig[]): Promi
     for (const [difficulty, count] of buckets) {
       if (count <= 0) continue;
       const pool = await getPool(config.subjectId, config.topicId, difficulty);
-      selected.push(...pickRandom(pool, count));
+      selected.push(...pickBalancedByDomain(pool, count));
     }
   }
 
-  return shuffle(selected);
+  return selected;
+}
+
+export async function resolveCanonicalQuestionIds(questionSet: {
+  id: string;
+  examQuestionIds: string | null;
+  configs: QuestionSetConfig[];
+}) {
+  if (questionSet.examQuestionIds) {
+    try {
+      const ids = JSON.parse(questionSet.examQuestionIds) as string[];
+      if (ids.length > 0) return ids;
+    } catch {
+      // fall through and rebuild the canonical set
+    }
+  }
+
+  const questions = await generateCanonicalExamQuestions(questionSet.configs);
+  const ids = questions.map((question) => question.id);
+
+  await prisma.questionSet.update({
+    where: { id: questionSet.id },
+    data: { examQuestionIds: JSON.stringify(ids) },
+  });
+
+  return ids;
+}
+
+export async function loadQuestionsInOrder(ids: string[]) {
+  const questions = await prisma.question.findMany({ where: { id: { in: ids } } });
+  const map = new Map(questions.map((question) => [question.id, question]));
+  return ids.map((id) => map.get(id)).filter((question): question is Question => Boolean(question));
+}
+
+export async function prepareAttemptExamQuestions(questionSet: {
+  id: string;
+  examQuestionIds: string | null;
+  configs: QuestionSetConfig[];
+}) {
+  const canonicalIds = await resolveCanonicalQuestionIds(questionSet);
+  const orderedIds = shuffle(canonicalIds);
+  const questions = await loadQuestionsInOrder(orderedIds);
+  return { orderedIds, questions };
+}
+
+/** @deprecated Use prepareAttemptExamQuestions for student attempts. */
+export async function generateExamQuestions(configs: QuestionSetConfig[]): Promise<Question[]> {
+  return shuffle(await generateCanonicalExamQuestions(configs));
 }
 
 export function calculateResult(score: number, totalItems: number, passThreshold: number) {

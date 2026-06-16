@@ -5,6 +5,7 @@ import {
   toneColor,
   type ScoreTone,
 } from "../../lib/analyticsChartUtils";
+import { BLOOM_LEVEL_COLORS, BLOOM_LEVEL_SHORT_LABELS } from "../../lib/bloomLevel";
 
 interface HistogramBucket {
   label: string;
@@ -111,6 +112,55 @@ export function GroupedDifficultyBars({
       })}
     </div>
   );
+}
+
+export function GroupedBloomBars({
+  items,
+}: {
+  items: Array<{ bloomLevel: string; score: number }>;
+}) {
+  const max = 100;
+
+  return (
+    <div className="chart-grouped-bars" role="img" aria-label="Performance by domain">
+      {items.map((item) => {
+        const color = BLOOM_LEVEL_COLORS[item.bloomLevel as keyof typeof BLOOM_LEVEL_COLORS] ?? "#64748b";
+        const height = Math.min(100, Math.max(0, (item.score / max) * 100));
+        return (
+          <div key={item.bloomLevel} className="chart-grouped-bar-col">
+            <span className="chart-grouped-bar-value">{item.score.toFixed(0)}%</span>
+            <div className="chart-grouped-bar-track">
+              <span
+                className="chart-grouped-bar-fill"
+                style={{ height: `${height}%`, backgroundColor: color }}
+              />
+            </div>
+            <span className="chart-grouped-bar-label">
+              {BLOOM_LEVEL_SHORT_LABELS[item.bloomLevel as keyof typeof BLOOM_LEVEL_SHORT_LABELS] ??
+                item.bloomLevel}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function BloomCognitiveCallout({
+  profile,
+}: {
+  profile: { type: "surface" | "deep" | "mixed"; message: string } | null | undefined;
+}) {
+  if (!profile) return null;
+
+  const className =
+    profile.type === "deep"
+      ? "bloom-profile-callout bloom-profile-callout-deep"
+      : profile.type === "surface"
+        ? "bloom-profile-callout bloom-profile-callout-surface"
+        : "bloom-profile-callout bloom-profile-callout-mixed";
+
+  return <p className={className}>{profile.message}</p>;
 }
 
 interface HeatmapCell {

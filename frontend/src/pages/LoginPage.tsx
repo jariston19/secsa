@@ -9,8 +9,8 @@ import { useAuth } from "../lib/auth";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState("teacher@secsa.local");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -46,15 +46,16 @@ export default function LoginPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-4" onSubmit={handleSubmit}>
+          <form className="grid gap-4" onSubmit={handleSubmit} autoComplete="off">
             <div className="grid gap-2">
               <Label htmlFor="login-email">Email</Label>
               <Input
                 id="login-email"
+                name="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 type="email"
-                autoComplete="email"
+                autoComplete="off"
                 required
               />
             </div>
@@ -62,10 +63,11 @@ export default function LoginPage() {
               <Label htmlFor="login-password">Password</Label>
               <Input
                 id="login-password"
+                name="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 type="password"
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
               />
             </div>

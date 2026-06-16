@@ -1,4 +1,5 @@
-import { Role } from "@prisma/client";
+import { BloomLevel, Role } from "@prisma/client";
+import { BLOOM_LEVEL_ORDER } from "../lib/bloomLevel.js";
 import { formatFullName } from "../lib/names.js";
 import { nonQaStudentWhere, nonQaSubmittedExamWhere } from "../lib/studentFilters.js";
 import { prisma } from "../lib/prisma.js";
@@ -249,6 +250,9 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     ["MEDIUM", { total: 0, correct: 0 }],
     ["HARD", { total: 0, correct: 0 }],
   ]);
+  const bloomStats = new Map<BloomLevel, { total: number; correct: number }>(
+    BLOOM_LEVEL_ORDER.map((bloomLevel) => [bloomLevel, { total: 0, correct: 0 }])
+  );
   const topicDifficultyStats = new Map<
     string,
     {
@@ -292,6 +296,7 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     const topicId = answer.question.topic?.id ?? `${subjectId}-general`;
     const topicLabel = answer.question.topic?.name ?? "General";
     const difficulty = answer.question.difficulty;
+    const bloomLevel = answer.question.bloomLevel;
 
     if (!subjectStats.has(subjectId)) {
       subjectStats.set(subjectId, { subjectId, subject: subjectLabel, total: 0, correct: 0 });
@@ -322,6 +327,10 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     const diffRow = difficultyStats.get(difficulty)!;
     diffRow.total += 1;
     if (answer.isCorrect) diffRow.correct += 1;
+
+    const bloomRow = bloomStats.get(bloomLevel)!;
+    bloomRow.total += 1;
+    if (answer.isCorrect) bloomRow.correct += 1;
 
     const topicDifficultyKey = `${topicId}-${difficulty}`;
     if (!topicDifficultyStats.has(topicDifficultyKey)) {
@@ -463,6 +472,17 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     score: pct(row.correct, row.total),
     tone: scoreTone(pct(row.correct, row.total)),
   }));
+
+  const byBloomLevel = BLOOM_LEVEL_ORDER.map((bloomLevel) => {
+    const row = bloomStats.get(bloomLevel)!;
+    return {
+      bloomLevel,
+      total: row.total,
+      correct: row.correct,
+      score: pct(row.correct, row.total),
+      tone: scoreTone(pct(row.correct, row.total)),
+    };
+  });
 
   const strongAreas = byTopic
     .filter((row) => row.total >= MIN_AREA_ATTEMPTS && row.score >= STRONG_THRESHOLD)
@@ -758,6 +778,7 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     bySubject,
     byTopic,
     byDifficulty,
+    byBloomLevel,
     topicDifficultyMatrix,
     atRiskByTopic,
     knowledgeGaps: {

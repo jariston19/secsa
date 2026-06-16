@@ -6,6 +6,7 @@ import { toastCreated, toastUpdated } from "../lib/toastMessages";
 import {
   abbreviateProgramCourse,
   formatProgramCourse,
+  SHARED_DIAGNOSTIC_PROGRAM,
   subjectHasProgram,
   type ProgramCourseId,
 } from "../lib/programCourse";
@@ -112,7 +113,7 @@ export default function BuildQuestionSetModal({
   onClose,
   onCreated,
 }: Props) {
-  const programCourseOptions = useProgramCourseOptions();
+  const programCourseOptions = useProgramCourseOptions({ includeSharedDiagnostic: true });
   const isEditing = Boolean(setId);
   const [name, setName] = useState("");
   const [yearLevel, setYearLevel] = useState("2");
@@ -204,6 +205,7 @@ export default function BuildQuestionSetModal({
   const parsedStudentYear = parseYearLevel(yearLevel);
   const curriculumYear = curriculumYearForStudentYear(parsedStudentYear);
   const isIncomingDiagnosticYear = parsedStudentYear === 1;
+  const isSharedDiagnostic = type === "DIAGNOSTIC";
 
   useEffect(() => {
     if (isEditing) return;
@@ -213,6 +215,11 @@ export default function BuildQuestionSetModal({
     }
     setType((current) => (current === "DIAGNOSTIC" ? "COMPREHENSIVE" : current));
   }, [isIncomingDiagnosticYear, isEditing]);
+
+  useEffect(() => {
+    if (isEditing || !isSharedDiagnostic) return;
+    setSetProgramCourse(SHARED_DIAGNOSTIC_PROGRAM);
+  }, [isSharedDiagnostic, isEditing]);
 
   function updateYearLevel(value: string) {
     setYearLevel(value);
@@ -497,7 +504,7 @@ export default function BuildQuestionSetModal({
                 <select
                   value={setProgramCourse}
                   onChange={(e) => setSetProgramCourse(e.target.value as ProgramCourseId)}
-                  disabled={isEditing}
+                  disabled={isEditing || isSharedDiagnostic}
                   required
                 >
                   {programCourseOptions.map((course) => (
@@ -563,7 +570,7 @@ export default function BuildQuestionSetModal({
               </span>
               <span className="build-set-details-bar-copy">
                 {isIncomingDiagnosticYear
-                  ? "Incoming 1st-year placement diagnostic."
+                  ? "Shared incoming diagnostic for all programs."
                   : "Comprehensive or retake exam for year levels 2–4."}
               </span>
               <span
