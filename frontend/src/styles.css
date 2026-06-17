@@ -404,8 +404,7 @@ body {
 .card.build-sets-panel .list-panel,
 .modal .list-panel,
 .modal .admin-users-modal-body,
-.modal .question-performance-modal-body,
-.modal .student-submission-detail-body {
+.modal .question-performance-modal-body {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1031,6 +1030,11 @@ body {
   gap: 0.75rem;
 }
 
+.program-courses-list-panel .modal-pagination,
+.program-courses-list-panel .modal-pagination-inline {
+  justify-content: flex-end;
+}
+
 .program-courses-table-wrap {
   flex: 0 0 auto;
   overflow: visible;
@@ -1046,10 +1050,6 @@ body {
 
 .program-courses-table tbody tr {
   height: auto;
-}
-
-.program-courses-list-panel .list-panel {
-  flex-shrink: 0;
 }
 
 .program-courses-table td:has(.action-buttons) {
@@ -1922,7 +1922,7 @@ body {
 
 .login-logo {
   display: block;
-  width: min(180px, 60vw);
+  width: min(100px, 60vw);
   height: auto;
   margin: 0 auto 0.5rem;
   object-fit: contain;
@@ -2527,10 +2527,41 @@ textarea {
   font-size: 0.8125rem;
 }
 
+.chart-progression-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.chart-progression-controls-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ios-label-secondary);
+  margin-right: 0.15rem;
+}
+
 .chart-progression-legend li {
   display: flex;
   align-items: center;
   gap: 0.375rem;
+}
+
+.chart-progression-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.chart-progression-legend-item.is-off {
+  opacity: 0.55;
+}
+
+.chart-progression-legend-item input {
+  margin: 0;
+  flex-shrink: 0;
 }
 
 .chart-progression-legend-swatch {
@@ -2902,6 +2933,73 @@ textarea {
     size: auto;
   }
 
+  body.printing-analytics > *:not(.analytics-print-sandbox) {
+    display: none !important;
+  }
+
+  body.printing-analytics .analytics-print-sandbox {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body.printing-analytics .analytics-print-sandbox .analytics-print-target {
+    display: block !important;
+    width: 100% !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  body.printing-analytics .analytics-print-sandbox .submission-tab-scroll {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  body.printing-analytics .analytics-print-sandbox .submission-tab-scroll,
+  body.printing-analytics .analytics-print-sandbox .submission-answers-section,
+  body.printing-analytics .analytics-print-sandbox .submission-profile-section,
+  body.printing-analytics .analytics-print-sandbox .submission-print-only,
+  body.printing-analytics .analytics-print-sandbox .student-submission-answers-table {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    flex: none !important;
+    min-height: 0 !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  body.printing-analytics .analytics-print-sandbox .submission-answers-section table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  body.printing-analytics .analytics-print-sandbox .submission-answers-section thead {
+    display: table-header-group;
+  }
+
+  body.printing-analytics .analytics-print-sandbox .submission-answers-section tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.printing-analytics .analytics-print-sandbox .diagnostic-result-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.printing-analytics .analytics-print-sandbox .card,
+  body.printing-analytics .analytics-print-sandbox .submission-detail-summary {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
   body.printing-analytics {
     overflow: visible !important;
     background: #fff !important;
@@ -2916,11 +3014,13 @@ textarea {
     display: none !important;
   }
 
-  body.printing-analytics .analytics-chart-screen-only {
+  body.printing-analytics .analytics-chart-screen-only,
+  body.printing-analytics .submission-screen-only {
     display: none !important;
   }
 
-  body.printing-analytics .analytics-print-only {
+  body.printing-analytics .analytics-print-only,
+  body.printing-analytics .submission-print-only {
     display: block !important;
   }
 
@@ -4973,6 +5073,141 @@ body.modal-open {
   justify-self: stretch;
 }
 
+.student-gallery-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: calc(100dvh - 7rem);
+}
+
+.student-gallery-header {
+  flex-shrink: 0;
+}
+
+.student-gallery-header h2 {
+  margin: 0 0 0.35rem;
+}
+
+.student-gallery-empty code {
+  font-size: 0.8125rem;
+}
+
+.student-gallery-carousel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  width: 100%;
+  min-height: 0;
+}
+
+.student-gallery-carousel-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  flex: 1;
+  min-height: calc(100dvh - 13rem);
+}
+
+.student-gallery-arrow {
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+  align-self: center;
+}
+
+.student-gallery-slide {
+  margin: 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.student-gallery-slide img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: calc(100dvh - 13rem);
+  object-fit: contain;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.student-gallery-caption {
+  margin: 0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--ios-label-secondary);
+  flex-shrink: 0;
+}
+
+.student-gallery-counter {
+  margin: 0;
+  font-size: 0.8125rem;
+  flex-shrink: 0;
+}
+
+.student-gallery-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.student-gallery-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ios-label-tertiary) 45%, transparent);
+  cursor: pointer;
+}
+
+.student-gallery-dot.is-active {
+  background: var(--ios-blue);
+  transform: scale(1.15);
+}
+
+@media (max-width: 640px) {
+  .student-gallery-card {
+    min-height: calc(100dvh - 6rem);
+  }
+
+  .student-gallery-carousel-body {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    min-height: calc(100dvh - 14rem);
+  }
+
+  .student-gallery-slide img {
+    max-height: calc(100dvh - 14rem);
+  }
+
+  .student-gallery-arrow {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .student-gallery-slide {
+    order: -1;
+    width: 100%;
+  }
+}
+
 .exam-session-content {
   flex: 1;
   overflow-y: auto;
@@ -5505,7 +5740,6 @@ td:has(.action-buttons) {
 }
 
 .modal-scroll-area,
-.student-submission-detail-body,
 .instructions-body,
 .privacy-policy-body,
 .modal > .table-responsive {
@@ -6262,11 +6496,34 @@ td:has(.action-buttons) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .student-submission-detail-modal .modal-header {
   flex-shrink: 0;
   margin-bottom: 0.75rem;
+}
+
+.student-submission-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  margin-bottom: 0.75rem;
+}
+
+.student-submission-toolbar .segmented-control {
+  flex: 1;
+  min-width: min(100%, 20rem);
+}
+
+.student-submission-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .student-submission-detail-body {
@@ -6275,6 +6532,93 @@ td:has(.action-buttons) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.submission-tab-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.submission-tab-panel.is-hidden {
+  display: none;
+}
+
+.submission-tab-panel .analytics-print-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.submission-tab-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-right: 0.15rem;
+}
+
+.submission-profile-section {
+  flex-shrink: 0;
+}
+
+.submission-profile-section h3,
+.submission-answers-heading,
+.submission-domains-section h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.submission-domains-section {
+  flex-shrink: 0;
+}
+
+.submission-domain-chart {
+  margin-top: 0.5rem;
+}
+
+.submission-answers-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.submission-screen-only {
+  flex: 1;
+  min-height: 12rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.submission-screen-only .list-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.submission-print-only {
+  display: none;
+}
+
+.submission-print-header {
+  display: none;
+}
+
+.submission-print-header h2 {
+  margin: 0 0 0.25rem;
+}
+
+.submission-print-header p {
+  margin: 0.15rem 0;
 }
 
 .student-submission-answers-table {
@@ -7823,6 +8167,51 @@ td:has(.action-buttons) {
   body.printing-analytics .individual-student-print-header {
     display: block;
     margin-bottom: 0.75rem;
+  }
+
+  body.printing-analytics .submission-print-header {
+    display: block;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #ccc;
+  }
+
+  body.printing-analytics .modal-overlay {
+    position: static !important;
+    inset: auto !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+  }
+
+  body.printing-analytics .student-submission-detail-modal {
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  body.printing-analytics .student-submission-detail-body {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  body.printing-analytics .submission-tab-panel.is-hidden {
+    display: none !important;
+  }
+
+  body.printing-analytics .submission-tab-scroll {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  body.printing-analytics .submission-profile-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 

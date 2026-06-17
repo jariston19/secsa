@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import { AttemptType, Role } from "@prisma/client";
+import { AttemptType, QuestionSetType, Role } from "@prisma/client";
+import { buildStudentExamProfile } from "../lib/diagnosticStudentProfile.js";
+import { buildStudentDomainProgression } from "../services/studentDomainProgression.js";
 import { parseProgramCourseQuery } from "../lib/programCourse.js";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
@@ -288,6 +290,20 @@ export async function analyticsRoutes(app: FastifyInstance) {
       .map((questionId) => answersByQuestionId.get(questionId))
       .filter((answer): answer is NonNullable<typeof answer> => Boolean(answer));
 
+    const profileVariant =
+      attempt.questionSet.type === QuestionSetType.DIAGNOSTIC
+        ? ("diagnostic" as const)
+        : attempt.questionSet.type === QuestionSetType.COMPREHENSIVE ||
+            attempt.questionSet.type === QuestionSetType.RETAKE
+          ? ("comprehensive" as const)
+          : null;
+
+    const profile = profileVariant
+      ? await buildStudentExamProfile(attempt.id, profileVariant)
+      : null;
+
+    const domainProgression = await buildStudentDomainProgression(attempt.studentId);
+
     return {
       submission: {
         id: attempt.id,
@@ -301,6 +317,9 @@ export async function analyticsRoutes(app: FastifyInstance) {
         passed: attempt.passed,
         startedAt: attempt.startedAt,
         submittedAt: attempt.submittedAt,
+        profileVariant,
+        profile,
+        domainProgression,
         answers: orderedAnswers.map((answer) => ({
           id: answer.id,
           questionId: answer.questionId,

@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import {
   DIFFICULTY_COLORS,
   DIFFICULTY_LABELS,
@@ -6,6 +7,13 @@ import {
   type ScoreTone,
 } from "../../lib/analyticsChartUtils";
 import { BLOOM_LEVEL_COLORS, BLOOM_LEVEL_SHORT_LABELS } from "../../lib/bloomLevel";
+import {
+  DOMAIN_YEAR_LEVELS,
+  buildSmoothPath,
+  domainChartLayout,
+  domainSeriesColor,
+  seriesPlotPoints,
+} from "../../lib/domainProgressionChart";
 
 interface HistogramBucket {
   label: string;
@@ -1098,6 +1106,152 @@ export function ScoreCorrelationScatter({
       <p className="muted chart-correlation-note">
         Each dot is one student. Points on the diagonal held steady; above improved, below declined.
       </p>
+    </div>
+  );
+}
+
+export function DomainProgressionLineChart({
+  domains,
+}: {
+  domains: Array<{
+    bloomLevel: string;
+    label: string;
+    shortLabel: string;
+    points: Array<{ yearLevel: number; score: number | null; hasData: boolean }>;
+  }>;
+}) {
+  const activeDomains = useMemo(
+    () => domains.filter((domain) => domain.points.some((point) => point.hasData)),
+    [domains]
+  );
+  const [visibleLevels, setVisibleLevels] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    setVisibleLevels(new Set(activeDomains.map((domain) => domain.bloomLevel)));
+  }, [domains, activeDomains]);
+
+  if (activeDomains.length === 0) {
+    return <p className="muted">No domain scores across year levels yet for this student.</p>;
+  }
+
+  const visibleDomains = activeDomains.filter((domain) => visibleLevels.has(domain.bloomLevel));
+
+  const toggleDomain = (bloomLevel: string) => {
+    setVisibleLevels((current) => {
+      const next = new Set(current);
+      if (next.has(bloomLevel)) {
+        next.delete(bloomLevel);
+      } else {
+        next.add(bloomLevel);
+      }
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setVisibleLevels(new Set(activeDomains.map((domain) => domain.bloomLevel)));
+  };
+
+  const clearAll = () => {
+    setVisibleLevels(new Set());
+  };
+
+  const width = 520;
+  const height = 260;
+  const { pad, plotW, plotH, xForYear, yForScore } = domainChartLayout(width, height);
+
+  return (
+    <div className="chart-progression-wrap submission-domain-chart">
+      <div className="chart-progression-controls">
+        <span className="chart-progression-controls-label">Show domains</span>
+        <button type="button" className="btn secondary btn-sm" onClick={selectAll}>
+          Select all
+        </button>
+        <button type="button" className="btn secondary btn-sm" onClick={clearAll}>
+          Clear all
+        </button>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="chart-progression" role="img">
+        {[0, 25, 50, 75, 100].map((tick) => {
+          const y = pad.top + plotH - (tick / 100) * plotH;
+          return (
+            <g key={tick}>
+              <line x1={pad.left} y1={y} x2={pad.left + plotW} y2={y} className="chart-progression-grid" />
+              <text x={pad.left - 6} y={y + 4} className="chart-progression-axis-label" textAnchor="end">
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+        {visibleDomains.map((domain) => {
+          const color = domainSeriesColor(domain.bloomLevel);
+          const points = seriesPlotPoints(domain, xForYear, yForScore);
+          const linePath = buildSmoothPath(points);
+
+          return (
+            <g key={domain.bloomLevel}>
+              <path d={linePath} fill="none" stroke={color} strokeWidth={2.25} />
+              {points.map((point) => (
+                <circle key={`${domain.bloomLevel}-${point.yearLevel}`} cx={point.x} cy={point.y} r={2.5} fill={color}>
+                  <title>
+                    {domain.shortLabel} Y{point.yearLevel}: {point.score}%
+                  </title>
+                </circle>
+              ))}
+            </g>
+          );
+        })}
+        {DOMAIN_YEAR_LEVELS.map((yearLevel) => (
+          <text
+            key={yearLevel}
+            x={xForYear(yearLevel)}
+            y={height - 28}
+            className="chart-progression-milestone-label"
+            textAnchor="middle"
+          >
+            Year {yearLevel}
+          </text>
+        ))}
+        <text
+          x={width / 2}
+          y={height - 8}
+          className="chart-progression-axis-label"
+          textAnchor="middle"
+        >
+          Incoming year progression
+        </text>
+      </svg>
+      <ul className="chart-progression-legend">
+        {activeDomains.map((domain) => {
+          const checked = visibleLevels.has(domain.bloomLevel);
+          return (
+            <li key={domain.bloomLevel}>
+              <label className={`chart-progression-legend-item${checked ? "" : " is-off"}`}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleDomain(domain.bloomLevel)}
+                />
+                <span
+                  className="chart-progression-legend-swatch"
+                  style={{ background: domainSeriesColor(domain.bloomLevel) }}
+                />
+                <span>
+                  {domain.shortLabel} · {domain.label.replace(/^L\d+\s*/, "")}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      {visibleDomains.length === 0 ? (
+        <p className="muted chart-progression-note">Select one or more domains above to show trend lines.</p>
+      ) : (
+        <p className="muted chart-progression-note">
+          Each line tracks one cognitive domain (L1–L6) from Year 1 through Year 4 using the student&apos;s
+          latest submitted exam at each year level.
+        </p>
+      )}
     </div>
   );
 }

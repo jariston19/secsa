@@ -34,12 +34,12 @@ export const BLOOM_LEVEL_SHORT_LABELS: Record<BloomLevelId, string> = {
 };
 
 export const BLOOM_LEVEL_COLORS: Record<BloomLevelId, string> = {
-  KNOWLEDGE: "#22c55e",
-  COMPREHENSION: "#22c55e",
-  APPLICATION: "#f59e0b",
-  ANALYSIS: "#ef4444",
-  SYNTHESIS: "#ef4444",
-  EVALUATION: "#ef4444",
+  KNOWLEDGE: "#1d4ed8",
+  COMPREHENSION: "#0891b2",
+  APPLICATION: "#15803d",
+  ANALYSIS: "#a16207",
+  SYNTHESIS: "#be185d",
+  EVALUATION: "#7e22ce",
 };
 
 export function defaultBloomLevelForDifficulty(difficulty: string): BloomLevelId {

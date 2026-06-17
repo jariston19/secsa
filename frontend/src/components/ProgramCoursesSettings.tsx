@@ -3,7 +3,6 @@ import { usePagination } from "../hooks/usePagination";
 import { api } from "../lib/api";
 import { usePrograms } from "../lib/programs";
 import { previewProgramSlug, type ProgramRecord } from "../lib/programCourse";
-import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import { useConfirm } from "../lib/confirm";
 
@@ -19,7 +18,7 @@ type EditDraft = {
 
 export default function ProgramCoursesSettings({ token, onCreated }: Props) {
   const confirm = useConfirm();
-  const { programs, refresh, upsertProgram, removeProgram } = usePrograms();
+  const { programs, loading: programsLoading, refresh, upsertProgram, removeProgram } = usePrograms();
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ label: "", abbr: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -181,24 +180,13 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
 
         <section className="add-user-section program-courses-list-section">
           <h2 className="add-user-section-title">Existing programs</h2>
-          {programs.length === 0 ? (
+          {programsLoading && programs.length === 0 ? (
+            <p className="muted">Loading program courses…</p>
+          ) : programs.length === 0 ? (
             <p className="muted">No program courses yet.</p>
           ) : (
             <div className="program-courses-list-panel">
-              <ListPanel
-                footer={
-                  <ModalPagination
-                    itemNoun="program course"
-                    page={page}
-                    totalPages={totalPages}
-                    pageStart={pageStart}
-                    pageEnd={pageEnd}
-                    totalItems={totalItems}
-                    onPageChange={setPage}
-                  />
-                }
-              >
-                <div className="program-courses-table-wrap table-wrap">
+              <div className="program-courses-table-wrap table-wrap">
                 <table className="data-table program-courses-table">
                   <thead>
                     <tr>
@@ -305,7 +293,15 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
                   </tbody>
                 </table>
               </div>
-              </ListPanel>
+              <ModalPagination
+                itemNoun="program course"
+                page={page}
+                totalPages={totalPages}
+                pageStart={pageStart}
+                pageEnd={pageEnd}
+                totalItems={totalItems}
+                onPageChange={setPage}
+              />
             </div>
           )}
         </section>

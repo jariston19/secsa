@@ -35,13 +35,11 @@ export default function LoginPage() {
       </div>
       <Card className="login-card w-full max-w-[420px] border-white/40 bg-card/80 shadow-2xl backdrop-blur-xl">
         <CardHeader className="items-center space-y-4 text-center">
-          <img className="login-logo" src="/secsa.png" alt="SECSA" />
+          <img className="login-logo" src="/logo.png" alt="SECSA" />
           <div className="space-y-2">
-            <CardTitle className="text-[1.375rem] tracking-tight">Ready for the Challenge?</CardTitle>
+            <CardTitle className="text-[1.375rem] tracking-tight">SECSA <br /> Academic Quality Assurance Portal</CardTitle>
             <CardDescription className="text-base leading-relaxed">
-              Sign in to access the
-              <br />
-              SECSA Comprehensive Examination.
+              Sign in to your account
             </CardDescription>
           </div>
         </CardHeader>

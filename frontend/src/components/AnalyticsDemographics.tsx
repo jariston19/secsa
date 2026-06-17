@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import ChartCard from "./charts/ChartCard";
 import {
@@ -6,6 +6,8 @@ import {
   HorizontalBarChart,
   PairedHorizontalBarChart,
 } from "./charts/AnalyticsCharts";
+import SwappableChartGrid, { ChartReorderHint } from "./SwappableChartGrid";
+import { useChartOrder } from "../hooks/useChartOrder";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import {
@@ -55,6 +57,161 @@ const SCHOOL_COLORS = {
   Private: "#34C759",
 };
 
+const DEMOGRAPHICS_CHART_ORDER = [
+  "school-overall",
+  "school-bloom-gap",
+  "school-topic-gap",
+  "gender-bloom",
+  "gender-topic",
+  "program-score",
+  "program-readiness",
+] as const;
+
+type DemographicsChartId = (typeof DEMOGRAPHICS_CHART_ORDER)[number];
+
+const DEMOGRAPHICS_WIDE_CHART_IDS: DemographicsChartId[] = ["gender-bloom", "gender-topic"];
+
+const PROGRAM_CHART_COLORS = ["#34C759", "#007AFF", "#FF9500", "#FF3B30", "#AF52DE", "#5856D6"];
+
+function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData): ReactNode {
+  switch (id) {
+    case "school-overall": {
+      const schoolOverallBars = data.schoolType.overallScores
+        .filter((row) => row.count > 0)
+        .map((row) => ({
+          label: row.label,
+          value: row.value,
+          color: SCHOOL_COLORS[row.label as keyof typeof SCHOOL_COLORS] ?? "#64748b",
+        }));
+
+      return (
+        <ChartCard
+          className="analytics-chart-card-balanced"
+          title="Overall diagnostic score by school type"
+          description="Average latest diagnostic score — public vs private."
+          icon={<ChartIconBars direction="horizontal" />}
+        >
+          <HorizontalBarChart bars={schoolOverallBars} valueDecimals={0} />
+        </ChartCard>
+      );
+    }
+    case "school-bloom-gap":
+      return (
+        <ChartCard
+          className="analytics-chart-card-balanced"
+          title="L1–L6 cognitive gap"
+          description="Absolute score gap between school types at each Bloom level."
+          icon={<ChartIconBars direction="horizontal" />}
+        >
+          <HorizontalBarChart
+            bars={data.schoolType.bloomGaps.map((row) => ({
+              label: row.label,
+              value: row.gap,
+              tone: row.gap >= 20 ? "weak" : row.gap >= 10 ? "moderate" : "strong",
+            }))}
+            suffix=" pt"
+            valueDecimals={0}
+          />
+        </ChartCard>
+      );
+    case "school-topic-gap":
+      return (
+        <ChartCard
+          className="analytics-chart-card-balanced"
+          title="Topic gap heatmap"
+          description="Largest subject/topic gaps between public and private."
+          icon={<ChartIconBars direction="horizontal" />}
+        >
+          <HorizontalBarChart
+            bars={data.schoolType.topicGaps.map((row) => ({
+              label: row.label,
+              value: row.gap,
+              tone: row.gap >= 20 ? "weak" : row.gap >= 10 ? "moderate" : "strong",
+            }))}
+            suffix=" pt"
+            valueDecimals={0}
+          />
+        </ChartCard>
+      );
+    case "gender-bloom":
+      return (
+        <ChartCard
+          className="analytics-chart-card-wide"
+          title="L1–L6 by gender"
+          description="Average diagnostic performance by cognitive level."
+          icon={<ChartIconBars direction="horizontal" />}
+        >
+          <PairedHorizontalBarChart
+            rows={data.gender.bloomComparison.map((row) => ({
+              label: row.label,
+              left: row.male,
+              right: row.female,
+            }))}
+            leftSeries={{ label: "Male", color: "#007AFF" }}
+            rightSeries={{ label: "Female", color: "#34C759" }}
+          />
+        </ChartCard>
+      );
+    case "gender-topic":
+      return (
+        <ChartCard
+          className="analytics-chart-card-wide"
+          title="Topic strengths by gender"
+          description="Shared topics with diagnostic attempts for both groups."
+          icon={<ChartIconBars direction="horizontal" />}
+        >
+          <PairedHorizontalBarChart
+            rows={data.gender.topicComparison.map((row) => ({
+              label: row.label,
+              left: row.male,
+              right: row.female,
+            }))}
+            leftSeries={{ label: "Male", color: "#007AFF" }}
+            rightSeries={{ label: "Female", color: "#34C759" }}
+          />
+        </ChartCard>
+      );
+    case "program-score": {
+      const programScoreBars = data.programs.map((row, index) => ({
+        label: formatProgramCourse(row.programCourse),
+        value: row.averageScore,
+        color: PROGRAM_CHART_COLORS[index % PROGRAM_CHART_COLORS.length],
+      }));
+
+      return (
+        <ChartCard
+          className="analytics-chart-card-balanced"
+          title="Diagnostic score by program"
+          description="Average latest diagnostic score per enrolled program."
+          icon={<ChartIconBars direction="horizontal" />}
+        >
+          <HorizontalBarChart bars={programScoreBars} valueDecimals={0} />
+        </ChartCard>
+      );
+    }
+    case "program-readiness": {
+      const programReadinessBars = data.programs.map((row, index) => ({
+        label: formatProgramCourse(row.programCourse),
+        value: row.higherOrderReadiness,
+        color: PROGRAM_CHART_COLORS[index % PROGRAM_CHART_COLORS.length],
+      }));
+
+      return (
+        <ChartCard
+          className="analytics-chart-card-balanced"
+          title="L4–L6 readiness by program"
+          description="Higher-order thinking average (Analysis, Synthesis, Evaluation)."
+          icon={<ChartIconBars direction="horizontal" />}
+        >
+          <HorizontalBarChart bars={programReadinessBars} valueDecimals={0} />
+        </ChartCard>
+      );
+    }
+    default:
+      return null;
+  }
+}
+
 export default function AnalyticsDemographics({ token }: Props) {
   const programCourseOptions = useProgramCourseOptions();
   const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
@@ -64,6 +221,10 @@ export default function AnalyticsDemographics({ token }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const hasLoadedRef = useRef(false);
+  const [chartOrder, setChartOrder] = useChartOrder(
+    "analytics-demographics-chart-order",
+    DEMOGRAPHICS_CHART_ORDER
+  );
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -98,6 +259,30 @@ export default function AnalyticsDemographics({ token }: Props) {
       });
   }, [token, query]);
 
+  const showProgramCharts = Boolean(
+    data?.showProgramBreakdown && (data?.programs.length ?? 0) > 0
+  );
+
+  const activeChartOrder = useMemo(
+    () =>
+      chartOrder.filter(
+        (id) => showProgramCharts || (id !== "program-score" && id !== "program-readiness")
+      ),
+    [chartOrder, showProgramCharts]
+  );
+
+  function handleChartOrderChange(nextActiveOrder: string[]) {
+    if (showProgramCharts) {
+      setChartOrder(nextActiveOrder);
+      return;
+    }
+
+    setChartOrder([
+      ...nextActiveOrder,
+      ...chartOrder.filter((id) => id === "program-score" || id === "program-readiness"),
+    ]);
+  }
+
   if (loading && !data) {
     return <p className="muted">Loading demographic analytics...</p>;
   }
@@ -105,26 +290,6 @@ export default function AnalyticsDemographics({ token }: Props) {
   if (!data) {
     return error ? <p className="error">{error}</p> : null;
   }
-
-  const schoolOverallBars = data.schoolType.overallScores
-    .filter((row) => row.count > 0)
-    .map((row) => ({
-      label: row.label,
-      value: row.value,
-      color: SCHOOL_COLORS[row.label as keyof typeof SCHOOL_COLORS] ?? "#64748b",
-    }));
-
-  const programScoreBars = data.programs.map((row, index) => ({
-    label: formatProgramCourse(row.programCourse),
-    value: row.averageScore,
-    color: ["#34C759", "#007AFF", "#FF9500", "#FF3B30", "#AF52DE", "#5856D6"][index % 6],
-  }));
-
-  const programReadinessBars = data.programs.map((row, index) => ({
-    label: formatProgramCourse(row.programCourse),
-    value: row.higherOrderReadiness,
-    color: ["#34C759", "#007AFF", "#FF9500", "#FF3B30", "#AF52DE", "#5856D6"][index % 6],
-  }));
 
   return (
     <AnalyticsPrintArea
@@ -194,109 +359,16 @@ export default function AnalyticsDemographics({ token }: Props) {
         {data.studentsWithDiagnostic === 0 ? (
           <p className="muted">No diagnostic exam data yet for this filter.</p>
         ) : (
-          <div className="analytics-chart-grid">
-            <ChartCard
-              className="analytics-chart-card-balanced"
-              title="Overall diagnostic score by school type"
-              description="Average latest diagnostic score — public vs private."
-              icon={<ChartIconBars direction="horizontal" />}
+          <>
+            <ChartReorderHint />
+            <SwappableChartGrid
+              order={activeChartOrder}
+              onOrderChange={handleChartOrderChange}
+              wideIds={DEMOGRAPHICS_WIDE_CHART_IDS}
             >
-              <HorizontalBarChart
-                bars={schoolOverallBars}
-                valueDecimals={0}
-              />
-            </ChartCard>
-
-            <ChartCard
-              className="analytics-chart-card-balanced"
-              title="L1–L6 cognitive gap"
-              description="Absolute score gap between school types at each Bloom level."
-              icon={<ChartIconBars direction="horizontal" />}
-            >
-              <HorizontalBarChart
-                bars={data.schoolType.bloomGaps.map((row) => ({
-                  label: row.label,
-                  value: row.gap,
-                  tone: row.gap >= 20 ? "weak" : row.gap >= 10 ? "moderate" : "strong",
-                }))}
-                suffix=" pt"
-                valueDecimals={0}
-              />
-            </ChartCard>
-
-            <ChartCard
-              className="analytics-chart-card-balanced"
-              title="Topic gap heatmap"
-              description="Largest subject/topic gaps between public and private."
-              icon={<ChartIconBars direction="horizontal" />}
-            >
-              <HorizontalBarChart
-                bars={data.schoolType.topicGaps.map((row) => ({
-                  label: row.label,
-                  value: row.gap,
-                  tone: row.gap >= 20 ? "weak" : row.gap >= 10 ? "moderate" : "strong",
-                }))}
-                suffix=" pt"
-                valueDecimals={0}
-              />
-            </ChartCard>
-
-            <ChartCard
-              className="analytics-chart-card-wide"
-              title="L1–L6 by gender"
-              description="Average diagnostic performance by cognitive level."
-              icon={<ChartIconBars direction="horizontal" />}
-            >
-              <PairedHorizontalBarChart
-                rows={data.gender.bloomComparison.map((row) => ({
-                  label: row.label,
-                  left: row.male,
-                  right: row.female,
-                }))}
-                leftSeries={{ label: "Male", color: "#007AFF" }}
-                rightSeries={{ label: "Female", color: "#34C759" }}
-              />
-            </ChartCard>
-
-            <ChartCard
-              className="analytics-chart-card-wide"
-              title="Topic strengths by gender"
-              description="Shared topics with diagnostic attempts for both groups."
-              icon={<ChartIconBars direction="horizontal" />}
-            >
-              <PairedHorizontalBarChart
-                rows={data.gender.topicComparison.map((row) => ({
-                  label: row.label,
-                  left: row.male,
-                  right: row.female,
-                }))}
-                leftSeries={{ label: "Male", color: "#007AFF" }}
-                rightSeries={{ label: "Female", color: "#34C759" }}
-              />
-            </ChartCard>
-
-            {data.showProgramBreakdown && data.programs.length > 0 ? (
-              <>
-                <ChartCard
-                  className="analytics-chart-card-balanced"
-                  title="Diagnostic score by program"
-                  description="Average latest diagnostic score per enrolled program."
-                  icon={<ChartIconBars direction="horizontal" />}
-                >
-                  <HorizontalBarChart bars={programScoreBars} valueDecimals={0} />
-                </ChartCard>
-
-                <ChartCard
-                  className="analytics-chart-card-balanced"
-                  title="L4–L6 readiness by program"
-                  description="Higher-order thinking average (Analysis, Synthesis, Evaluation)."
-                  icon={<ChartIconBars direction="horizontal" />}
-                >
-                  <HorizontalBarChart bars={programReadinessBars} valueDecimals={0} />
-                </ChartCard>
-              </>
-            ) : null}
-          </div>
+              {(id) => renderDemographicsChart(id as DemographicsChartId, data)}
+            </SwappableChartGrid>
+          </>
         )}
 
         <section className="card analytics-demographics-caveat">

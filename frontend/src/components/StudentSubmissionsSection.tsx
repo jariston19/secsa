@@ -191,8 +191,12 @@ export default function StudentSubmissionsSection({ token, onViewSubmission }: P
                         {submission.percentage?.toFixed(1) ?? "0.0"}%
                       </div>
                     </td>
-                    <td className={submission.passed ? "success" : "error"}>
-                      {submission.passed ? "Pass" : "Fail"}
+                    <td className={submission.questionSetType === "DIAGNOSTIC" ? undefined : submission.passed ? "success" : "error"}>
+                      {submission.questionSetType === "DIAGNOSTIC"
+                        ? "Profile complete"
+                        : submission.passed
+                          ? "Pass"
+                          : "Fail"}
                     </td>
                     <td>{formatDate(submission.submittedAt)}</td>
                     <td>

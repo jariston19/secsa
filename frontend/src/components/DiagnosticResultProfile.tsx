@@ -9,6 +9,7 @@ type BloomLevelRow = {
   bloomLevel: string;
   label: string;
   tone: "strong" | "moderate" | "weak";
+  score?: number;
 };
 
 export type DiagnosticProfile = {
@@ -21,6 +22,8 @@ export type DiagnosticProfile = {
 interface Props {
   profile: DiagnosticProfile;
   variant?: "diagnostic" | "comprehensive";
+  /** Admin/teacher report view — neutral wording instead of second-person student copy. */
+  reportMode?: boolean;
 }
 
 function toneBarWidth(tone: BloomLevelRow["tone"]) {
@@ -29,15 +32,33 @@ function toneBarWidth(tone: BloomLevelRow["tone"]) {
   return 35;
 }
 
+function toneFillColor(tone: BloomLevelRow["tone"]) {
+  if (tone === "strong") return "#22c55e";
+  if (tone === "moderate") return "#f59e0b";
+  return "#ef4444";
+}
+
+function displayBarWidth(row: BloomLevelRow) {
+  const width = row.score ?? toneBarWidth(row.tone);
+  return Math.max(4, Math.min(100, width));
+}
+
 function toneLabel(tone: BloomLevelRow["tone"]) {
   if (tone === "strong") return "Strong";
   if (tone === "moderate") return "Developing";
   return "Needs focus";
 }
 
-export default function DiagnosticResultProfile({ profile, variant = "diagnostic" }: Props) {
-  const leadCopy =
-    variant === "comprehensive"
+export default function DiagnosticResultProfile({
+  profile,
+  variant = "diagnostic",
+  reportMode = false,
+}: Props) {
+  const leadCopy = reportMode
+    ? variant === "comprehensive"
+      ? "Evaluation of strengths and areas to develop based on exam responses."
+      : "Learning profile based on diagnostic responses — not a graded score."
+    : variant === "comprehensive"
       ? "Your comprehensive exam is complete. Below is an evaluation of your strengths and areas to develop based on your responses."
       : "Your diagnostic is complete. Below is a learning profile based on your responses — not a graded score.";
 
@@ -47,7 +68,7 @@ export default function DiagnosticResultProfile({ profile, variant = "diagnostic
 
       {profile.qualities.length > 0 ? (
         <section className="diagnostic-result-section">
-          <h3>Your learning profile</h3>
+          <h3>{reportMode ? "Learning profile" : "Your learning profile"}</h3>
           <ul className="diagnostic-qualities-list">
             {profile.qualities.map((quality) => (
               <li key={quality}>{quality}</li>
@@ -94,10 +115,19 @@ export default function DiagnosticResultProfile({ profile, variant = "diagnostic
             {profile.bloomLevels.map((row) => (
               <div key={row.bloomLevel} className="score-bar-row diagnostic-bloom-row">
                 <span className="score-bar-label diagnostic-bloom-label">{row.label}</span>
-                <div className="score-bar-track" role="presentation">
+                <div
+                  className="score-bar-track"
+                  role="presentation"
+                  style={{ height: "10px", background: "#e5e7eb", borderRadius: "999px" }}
+                >
                   <span
-                    className={`score-bar-fill score-bar-fill-${row.tone}`}
-                    style={{ width: `${toneBarWidth(row.tone)}%` }}
+                    style={{
+                      display: "block",
+                      width: `${displayBarWidth(row)}%`,
+                      height: "10px",
+                      borderRadius: "999px",
+                      background: toneFillColor(row.tone),
+                    }}
                   />
                 </div>
                 <span className={`diagnostic-bloom-tone diagnostic-bloom-tone-${row.tone}`}>

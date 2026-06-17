@@ -18,20 +18,28 @@ export function markPrivacyPolicyAccepted(userId: string) {
 
 interface Props {
   userId: string;
-  onAccepted: () => void;
+  onClose: () => void;
+  requireAcknowledgement?: boolean;
 }
 
-export default function StudentPrivacyPolicyModal({ userId, onAccepted }: Props) {
+export default function StudentPrivacyPolicyModal({
+  userId,
+  onClose,
+  requireAcknowledgement = true,
+}: Props) {
   const [acknowledged, setAcknowledged] = useState(false);
-  const { overlayClass, panelClass, portal } = useAnimatedModal(() => {});
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   function handleAccept() {
     markPrivacyPolicyAccepted(userId);
-    onAccepted();
+    onClose();
   }
 
   return portal(
-    <div className={`${overlayClass} privacy-policy-overlay`}>
+    <div
+      className={`${overlayClass} privacy-policy-overlay`}
+      onClick={requireAcknowledgement ? undefined : requestClose}
+    >
       <div
         className={panelClass("privacy-policy-modal")}
         onClick={(event) => event.stopPropagation()}
@@ -42,7 +50,11 @@ export default function StudentPrivacyPolicyModal({ userId, onAccepted }: Props)
         <div className="modal-header privacy-policy-header">
           <div>
             <h2 id="privacy-policy-title">Privacy Policy</h2>
-            <p className="muted">Please review before using SECSA Comprehensive Exam System.</p>
+            <p className="muted">
+              {requireAcknowledgement
+                ? "Please review before using SECSA Comprehensive Exam System."
+                : "How SECSA handles your exam and account information."}
+            </p>
           </div>
         </div>
 
@@ -85,18 +97,26 @@ export default function StudentPrivacyPolicyModal({ userId, onAccepted }: Props)
         </div>
 
         <div className="privacy-policy-footer">
-          <label className="privacy-policy-acknowledge">
-            <input
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(event) => setAcknowledged(event.target.checked)}
-            />
-            <span>I have read and understand this privacy policy.</span>
-          </label>
+          {requireAcknowledgement ? (
+            <>
+              <label className="privacy-policy-acknowledge">
+                <input
+                  type="checkbox"
+                  checked={acknowledged}
+                  onChange={(event) => setAcknowledged(event.target.checked)}
+                />
+                <span>I have read and understand this privacy policy.</span>
+              </label>
 
-          <button type="button" className="btn" onClick={handleAccept} disabled={!acknowledged}>
-            Continue
-          </button>
+              <button type="button" className="btn" onClick={handleAccept} disabled={!acknowledged}>
+                Continue
+              </button>
+            </>
+          ) : (
+            <button type="button" className="btn" onClick={requestClose}>
+              Close
+            </button>
+          )}
         </div>
       </div>
     </div>

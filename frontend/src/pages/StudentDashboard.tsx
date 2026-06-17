@@ -3,12 +3,14 @@ import DiagnosticResultProfile, { type DiagnosticProfile } from "../components/D
 import ExamInstructionsModal from "../components/ExamInstructionsModal";
 import ExamSession from "../components/ExamSession";
 import QuestionImage from "../components/QuestionImage";
+import StudentGallery from "../components/StudentGallery";
 import StudentPrivacyPolicyModal, {
   hasAcceptedPrivacyPolicy,
 } from "../components/StudentPrivacyPolicyModal";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { resetBodyScrollLock } from "../lib/scrollLock";
+import { useSidebar } from "../lib/sidebar";
 import {
   MAX_EXAM_FOCUS_VIOLATIONS,
   MAX_YEAR_LEVEL,
@@ -89,8 +91,11 @@ function releaseExamSessionChrome() {
   document.body.classList.remove("exam-session-active");
 }
 
+type StudentView = "start-exam" | "gallery";
+
 export default function StudentDashboard() {
   const { token, user } = useAuth();
+  const { setPageNav, setPageNavValue } = useSidebar();
   const isQa = Boolean(user?.qaUnlimited);
   const [qaExamYear, setQaExamYear] = useState(String(user?.yearLevel ?? 2));
   const [status, setStatus] = useState<ExamStatus | null>(null);
@@ -123,6 +128,8 @@ export default function StudentDashboard() {
   } | null>(null);
   const [loadingComprehensiveProfile, setLoadingComprehensiveProfile] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [privacyPolicyRequired, setPrivacyPolicyRequired] = useState(false);
+  const [activeView, setActiveView] = useState<StudentView>("start-exam");
   const [error, setError] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
   const [startingExam, setStartingExam] = useState(false);
@@ -138,6 +145,7 @@ export default function StudentDashboard() {
   const examInteractionGuardRef = useRef<((durationMs?: number) => void) | null>(null);
   const examDeadlineMsRef = useRef<number | null>(null);
   const submittingExamRef = useRef(false);
+  const examSectionRef = useRef<HTMLElement | null>(null);
 
   const answerTimesRef = useRef<Record<string, number>>({});
   const questionShownAtRef = useRef(Date.now());
@@ -223,10 +231,47 @@ export default function StudentDashboard() {
     void loadComprehensiveProfile();
   }, [status?.showComprehensiveProfile, status?.comprehensiveAttemptId, loadComprehensiveProfile]);
 
+  const openPrivacyPolicy = useCallback((required: boolean) => {
+    setPrivacyPolicyRequired(required);
+    setShowPrivacyPolicy(true);
+  }, []);
+
+  const handlePageNavChange = useCallback(
+    (id: string) => {
+      if (id === "start-exam") {
+        setActiveView("start-exam");
+        setPageNavValue("start-exam");
+        examSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+
+      if (id === "gallery") {
+        setActiveView("gallery");
+        setPageNavValue("gallery");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+
+      if (id === "privacy-policy" && user?.id) {
+        openPrivacyPolicy(!hasAcceptedPrivacyPolicy(user.id));
+      }
+    },
+    [openPrivacyPolicy, setPageNavValue, user?.id]
+  );
+
   useEffect(() => {
-    if (!user?.id) return;
-    setShowPrivacyPolicy(!hasAcceptedPrivacyPolicy(user.id));
-  }, [user?.id]);
+    setPageNav({
+      segments: [
+        { id: "start-exam", label: "Start Exam" },
+        { id: "gallery", label: "Gallery" },
+        { id: "privacy-policy", label: "Privacy Policy" },
+      ],
+      value: activeView,
+      onChange: handlePageNavChange,
+    });
+
+    return () => setPageNav(null);
+  }, [activeView, handlePageNavChange, setPageNav]);
 
   const canResumeExam = status?.nextAction === "resume_exam";
   const studentYearLevel = status?.yearLevel ?? user?.yearLevel;
@@ -571,9 +616,11 @@ export default function StudentDashboard() {
     <div className="grid">
       {error && <p className="error">{error}</p>}
 
-      {!attemptId && (
+      {!attemptId && activeView === "gallery" ? <StudentGallery /> : null}
+
+      {!attemptId && activeView === "start-exam" ? (
         <>
-          <section className="card">
+          <section className="card" ref={examSectionRef}>
             <h2>Your Exam</h2>
             {(status.qaMode || user?.qaUnlimited) && (
               <p className="qa-profile-banner">
@@ -858,7 +905,7 @@ export default function StudentDashboard() {
             )}
           </section>
         </>
-      )}
+      ) : null}
 
       {attemptId && currentQuestion && (
         <ExamSession
@@ -997,7 +1044,8 @@ export default function StudentDashboard() {
       {showPrivacyPolicy && user?.id ? (
         <StudentPrivacyPolicyModal
           userId={user.id}
-          onAccepted={() => setShowPrivacyPolicy(false)}
+          requireAcknowledgement={privacyPolicyRequired}
+          onClose={() => setShowPrivacyPolicy(false)}
         />
       ) : null}
     </div>
