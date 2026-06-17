@@ -51,6 +51,16 @@ enum ApprovalStatus {
   REJECTED
 }
 
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum SchoolType {
+  PUBLIC
+  PRIVATE
+}
+
 model Program {
   id        String   @id @default(cuid())
   slug      String   @unique
@@ -75,6 +85,8 @@ model User {
   yearLevel     Int?
   programCourse String?
   program       Program? @relation(fields: [programCourse], references: [slug], onUpdate: Cascade)
+  gender        Gender?
+  schoolType    SchoolType?
   qaUnlimited  Boolean  @default(false)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())

@@ -232,6 +232,7 @@ export function calculateResult(score: number, totalItems: number, passThreshold
     score,
     totalItems,
     percentage: Math.round(percentage * 100) / 100,
+    passThreshold,
     passed: percentage >= passThreshold,
   };
 }

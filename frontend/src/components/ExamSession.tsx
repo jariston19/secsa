@@ -162,6 +162,8 @@ function useExamLockdown(
 
     return () => {
       window.cancelAnimationFrame(frame);
+      document.body.classList.remove("exam-session-active");
+      void exitFullscreen();
     };
   }, [active, containerRef]);
 

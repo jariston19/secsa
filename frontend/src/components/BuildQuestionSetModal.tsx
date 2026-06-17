@@ -129,6 +129,7 @@ export default function BuildQuestionSetModal({
   const [loading, setLoading] = useState(Boolean(setId));
   const [timeLimitHours, setTimeLimitHours] = useState("1");
   const [timeLimitMinutes, setTimeLimitMinutes] = useState("0");
+  const [passThreshold, setPassThreshold] = useState("75");
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
 
   useEffect(() => {
@@ -157,6 +158,7 @@ export default function BuildQuestionSetModal({
         type: "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE";
         status: string;
         timeLimitMinutes: number;
+        passThreshold: number;
         configs: Array<{
           subjectId: string;
           topicId: string | null;
@@ -177,6 +179,7 @@ export default function BuildQuestionSetModal({
         setSetStatus(set.status);
         setTimeLimitHours(String(Math.floor(set.timeLimitMinutes / 60)));
         setTimeLimitMinutes(String(set.timeLimitMinutes % 60));
+        setPassThreshold(String(set.passThreshold));
 
         const subjectIds = [...new Set(set.configs.map((c) => c.subjectId))];
         const loadedRows: ConfigRow[] = set.configs.map((config) => {
@@ -400,12 +403,19 @@ export default function BuildQuestionSetModal({
       return;
     }
 
+    const parsedPassThreshold = Number(passThreshold);
+    if (!Number.isFinite(parsedPassThreshold) || parsedPassThreshold < 0 || parsedPassThreshold > 100) {
+      setError("Passing rate must be between 0 and 100.");
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
         name: name.trim(),
         totalItems,
         timeLimitMinutes: timeLimitTotal,
+        passThreshold: parsedPassThreshold,
         configs,
       };
 
@@ -563,6 +573,23 @@ export default function BuildQuestionSetModal({
                 </label>
               </div>
               <span className="field-hint">Total exam duration for students. Auto-submits when time expires.</span>
+            </div>
+            <div className="build-set-meta-pass">
+              <span className="build-set-field-label">Passing rate</span>
+              <div className="build-set-pass-input">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  inputMode="numeric"
+                  value={passThreshold}
+                  onChange={(e) => setPassThreshold(e.target.value.replace(/[^\d.]/g, ""))}
+                  required
+                />
+                <span className="build-set-pass-suffix">%</span>
+              </div>
+              <span className="field-hint">Minimum score students need to pass this exam.</span>
             </div>
             <div className="build-set-details-bar">
               <span className={`build-set-exam-badge build-set-exam-badge-${type.toLowerCase()}`}>

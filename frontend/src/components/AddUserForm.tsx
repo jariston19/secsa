@@ -4,6 +4,12 @@ import { parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import { formatFullName } from "../lib/names";
 import { DEFAULT_PROGRAM_COURSE, type ProgramCourseId } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
+import {
+  GENDER_OPTIONS,
+  SCHOOL_TYPE_OPTIONS,
+  type GenderId,
+  type SchoolTypeId,
+} from "../lib/studentDemographics";
 import { toastCreated } from "../lib/toastMessages";
 
 type UserRole = "STUDENT" | "TEACHER" | "SUPERADMIN";
@@ -54,6 +60,8 @@ export default function AddUserForm({ token, onCreated }: Props) {
     role: "STUDENT" as UserRole,
     yearLevel: "2",
     programCourse: DEFAULT_PROGRAM_COURSE,
+    gender: "MALE" as GenderId,
+    schoolType: "PUBLIC" as SchoolTypeId,
     qaUnlimited: false,
   });
 
@@ -74,6 +82,8 @@ export default function AddUserForm({ token, onCreated }: Props) {
             role: form.role,
             yearLevel: form.role === "STUDENT" ? parseYearLevel(form.yearLevel) : undefined,
             programCourse: form.role === "STUDENT" ? form.programCourse : undefined,
+            gender: form.role === "STUDENT" ? form.gender : undefined,
+            schoolType: form.role === "STUDENT" ? form.schoolType : undefined,
             qaUnlimited: form.role === "STUDENT" ? form.qaUnlimited : undefined,
           }),
         },
@@ -89,6 +99,8 @@ export default function AddUserForm({ token, onCreated }: Props) {
         role: "STUDENT",
         yearLevel: "2",
         programCourse: DEFAULT_PROGRAM_COURSE,
+        gender: "MALE",
+        schoolType: "PUBLIC",
         qaUnlimited: false,
       });
       onCreated(toastCreated("user", createdName));
@@ -226,6 +238,36 @@ export default function AddUserForm({ token, onCreated }: Props) {
                     {programCourseOptions.map((course) => (
                       <option key={course.id} value={course.id}>
                         {course.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Gender" hint="Used for demographic cohort analytics.">
+                  <select
+                    value={form.gender}
+                    onChange={(event) =>
+                      setForm({ ...form, gender: event.target.value as GenderId })
+                    }
+                    required
+                  >
+                    {GENDER_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="School" hint="Public or private senior high school.">
+                  <select
+                    value={form.schoolType}
+                    onChange={(event) =>
+                      setForm({ ...form, schoolType: event.target.value as SchoolTypeId })
+                    }
+                    required
+                  >
+                    {SCHOOL_TYPE_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
                       </option>
                     ))}
                   </select>

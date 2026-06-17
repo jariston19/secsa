@@ -82,31 +82,107 @@ export function HorizontalBarChart({
   );
 }
 
+export function PairedHorizontalBarChart({
+  rows,
+  leftSeries,
+  rightSeries,
+  suffix = "%",
+}: {
+  rows: Array<{ label: string; left: number; right: number }>;
+  leftSeries: { label: string; color: string };
+  rightSeries: { label: string; color: string };
+  suffix?: string;
+}) {
+  if (rows.length === 0) {
+    return <p className="muted">No data yet.</p>;
+  }
+
+  return (
+    <div className="chart-paired-horizontal-bars">
+      <div className="chart-paired-horizontal-legend">
+        <span>
+          <i style={{ background: leftSeries.color }} /> {leftSeries.label}
+        </span>
+        <span>
+          <i style={{ background: rightSeries.color }} /> {rightSeries.label}
+        </span>
+      </div>
+      {rows.map((row) => (
+        <div key={row.label} className="chart-paired-horizontal-row">
+          <span className="chart-paired-horizontal-label">{row.label}</span>
+          <div className="chart-paired-horizontal-bars-wrap">
+            <div className="chart-paired-horizontal-bar-line">
+              <span
+                className="chart-paired-horizontal-bar-fill"
+                style={{ width: `${Math.min(100, row.left)}%`, backgroundColor: leftSeries.color }}
+              />
+              <span className="chart-paired-horizontal-value">
+                {row.left.toFixed(0)}
+                {suffix}
+              </span>
+            </div>
+            <div className="chart-paired-horizontal-bar-line">
+              <span
+                className="chart-paired-horizontal-bar-fill"
+                style={{ width: `${Math.min(100, row.right)}%`, backgroundColor: rightSeries.color }}
+              />
+              <span className="chart-paired-horizontal-value">
+                {row.right.toFixed(0)}
+                {suffix}
+              </span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function GroupedDifficultyBars({
   items,
 }: {
   items: Array<{ difficulty: string; score: number }>;
 }) {
+  return (
+    <GroupedPercentBars
+      ariaLabel="Performance by difficulty"
+      items={items.map((item) => ({
+        id: item.difficulty,
+        label: DIFFICULTY_LABELS[item.difficulty] ?? item.difficulty,
+        score: item.score,
+        color: DIFFICULTY_COLORS[item.difficulty as keyof typeof DIFFICULTY_COLORS] ?? "#64748b",
+      }))}
+    />
+  );
+}
+
+export function GroupedPercentBars({
+  items,
+  ariaLabel = "Grouped percentage bars",
+}: {
+  items: Array<{ id: string; label: string; score: number; color: string }>;
+  ariaLabel?: string;
+}) {
   const max = 100;
 
+  if (items.length === 0) {
+    return <p className="muted">No data yet.</p>;
+  }
+
   return (
-    <div className="chart-grouped-bars" role="img" aria-label="Performance by difficulty">
+    <div className="chart-grouped-bars" role="img" aria-label={ariaLabel}>
       {items.map((item) => {
-        const color =
-          DIFFICULTY_COLORS[item.difficulty as keyof typeof DIFFICULTY_COLORS] ?? "#64748b";
         const height = Math.min(100, Math.max(0, (item.score / max) * 100));
         return (
-          <div key={item.difficulty} className="chart-grouped-bar-col">
+          <div key={item.id} className="chart-grouped-bar-col">
             <span className="chart-grouped-bar-value">{item.score.toFixed(0)}%</span>
             <div className="chart-grouped-bar-track">
               <span
                 className="chart-grouped-bar-fill"
-                style={{ height: `${height}%`, backgroundColor: color }}
+                style={{ height: `${height}%`, backgroundColor: item.color }}
               />
             </div>
-            <span className="chart-grouped-bar-label">
-              {DIFFICULTY_LABELS[item.difficulty] ?? item.difficulty}
-            </span>
+            <span className="chart-grouped-bar-label">{item.label}</span>
           </div>
         );
       })}
@@ -787,5 +863,241 @@ export function ChartIconScatter() {
       <circle cx="17" cy="14" r="2" />
       <circle cx="19" cy="6" r="2.5" />
     </svg>
+  );
+}
+
+interface MilestonePoint {
+  yearLevel: number;
+  label: string;
+  averageScore: number;
+  passRate: number;
+  studentsAssessed: number;
+}
+
+export function BatchComparisonLineChart({
+  batches,
+}: {
+  batches: Array<{
+    intakeYear: number;
+    milestones: MilestonePoint[];
+  }>;
+}) {
+  const colors = ["#007AFF", "#34C759", "#FF9500", "#AF52DE", "#FF3B30", "#5856D6"];
+  const assessedBatches = batches
+    .map((batch) => ({
+      ...batch,
+      milestones: batch.milestones.filter((milestone) => milestone.studentsAssessed > 0),
+    }))
+    .filter((batch) => batch.milestones.length > 0);
+
+  if (assessedBatches.length === 0) {
+    return <p className="muted">No milestone data yet for these batches.</p>;
+  }
+
+  const width = 420;
+  const height = 220;
+  const pad = { top: 16, right: 16, bottom: 64, left: 40 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const xSlots = [1, 2, 3, 4];
+  const step = plotW / (xSlots.length - 1);
+
+  const xForYear = (yearLevel: number) => pad.left + step * (yearLevel - 1);
+
+  return (
+    <div className="chart-progression-wrap">
+      <svg viewBox={`0 0 ${width} ${height}`} className="chart-progression" role="img">
+        {[0, 25, 50, 75, 100].map((tick) => {
+          const y = pad.top + plotH - (tick / 100) * plotH;
+          return (
+            <g key={tick}>
+              <line x1={pad.left} y1={y} x2={pad.left + plotW} y2={y} className="chart-progression-grid" />
+              <text x={pad.left - 6} y={y + 4} className="chart-progression-axis-label" textAnchor="end">
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+        {assessedBatches.map((batch, batchIndex) => {
+          const color = colors[batchIndex % colors.length];
+          const points = batch.milestones.map((milestone) => ({
+            x: xForYear(milestone.yearLevel),
+            y: pad.top + plotH - (milestone.averageScore / 100) * plotH,
+            milestone,
+          }));
+          const linePath = points
+            .map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`)
+            .join(" ");
+
+          return (
+            <g key={batch.intakeYear}>
+              <path d={linePath} fill="none" stroke={color} strokeWidth={2} />
+              {points.map((point) => (
+                <circle key={point.milestone.yearLevel} cx={point.x} cy={point.y} r={4} fill={color} />
+              ))}
+            </g>
+          );
+        })}
+        {xSlots.map((yearLevel) => (
+          <text
+            key={yearLevel}
+            x={xForYear(yearLevel)}
+            y={height - 28}
+            className="chart-progression-milestone-label"
+            textAnchor="middle"
+          >
+            Y{yearLevel}
+          </text>
+        ))}
+      </svg>
+      <ul className="chart-progression-legend">
+        {assessedBatches.map((batch, batchIndex) => (
+          <li key={batch.intakeYear}>
+            <span
+              className="chart-progression-legend-swatch"
+              style={{ background: colors[batchIndex % colors.length] }}
+            />
+            Batch {batch.intakeYear}
+          </li>
+        ))}
+      </ul>
+      <p className="muted chart-progression-note">
+        Average score at each incoming-year milestone, one line per intake batch.
+      </p>
+    </div>
+  );
+}
+
+export function CohortMilestoneLineChart({ milestones }: { milestones: MilestonePoint[] }) {
+  const assessed = milestones.filter((milestone) => milestone.studentsAssessed > 0);
+  if (assessed.length === 0) {
+    return <p className="muted">No milestone data yet for this cohort.</p>;
+  }
+
+  const width = 360;
+  const height = 200;
+  const pad = { top: 16, right: 16, bottom: 52, left: 40 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const step = assessed.length > 1 ? plotW / (assessed.length - 1) : 0;
+
+  const points = assessed.map((milestone, index) => ({
+    x: pad.left + step * index,
+    y: pad.top + plotH - (milestone.averageScore / 100) * plotH,
+    milestone,
+  }));
+
+  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`).join(" ");
+
+  return (
+    <div className="chart-progression-wrap">
+      <svg viewBox={`0 0 ${width} ${height}`} className="chart-progression" role="img">
+        {[0, 25, 50, 75, 100].map((tick) => {
+          const y = pad.top + plotH - (tick / 100) * plotH;
+          return (
+            <g key={tick}>
+              <line x1={pad.left} y1={y} x2={pad.left + plotW} y2={y} className="chart-progression-grid" />
+              <text x={pad.left - 6} y={y + 4} className="chart-progression-axis-label" textAnchor="end">
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+        <path d={linePath} className="chart-progression-line" fill="none" />
+        {points.map((point) => (
+          <g key={point.milestone.label}>
+            <circle cx={point.x} cy={point.y} r={5} className="chart-progression-dot" />
+            <text
+              x={point.x}
+              y={point.y - 10}
+              className="chart-progression-value"
+              textAnchor="middle"
+            >
+              {point.milestone.averageScore.toFixed(0)}%
+            </text>
+          </g>
+        ))}
+        {points.map((point) => (
+          <text
+            key={`${point.milestone.label}-label`}
+            x={point.x}
+            y={height - 10}
+            className="chart-progression-milestone-label"
+            textAnchor="middle"
+          >
+            Y{point.milestone.yearLevel}
+          </text>
+        ))}
+      </svg>
+      <p className="muted chart-progression-note">Average score at each incoming-year milestone.</p>
+    </div>
+  );
+}
+
+export function ScoreCorrelationScatter({
+  fromLabel,
+  toLabel,
+  points,
+}: {
+  fromLabel: string;
+  toLabel: string;
+  points: Array<{ fromScore: number; toScore: number }>;
+}) {
+  if (points.length === 0) {
+    return <p className="muted">No paired exam history for this transition yet.</p>;
+  }
+
+  const width = 320;
+  const height = 220;
+  const pad = { top: 14, right: 14, bottom: 36, left: 40 };
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+
+  return (
+    <div className="chart-correlation-wrap">
+      <svg viewBox={`0 0 ${width} ${height}`} className="chart-correlation" role="img">
+        <line
+          x1={pad.left}
+          y1={pad.top + plotH}
+          x2={pad.left + plotW}
+          y2={pad.top + plotH}
+          className="chart-correlation-axis"
+        />
+        <line
+          x1={pad.left}
+          y1={pad.top}
+          x2={pad.left}
+          y2={pad.top + plotH}
+          className="chart-correlation-axis"
+        />
+        <line
+          x1={pad.left}
+          y1={pad.top + plotH}
+          x2={pad.left + plotW}
+          y2={pad.top}
+          className="chart-correlation-guide"
+        />
+        <text x={pad.left + plotW / 2} y={height - 8} className="chart-correlation-axis-label" textAnchor="middle">
+          {fromLabel.replace(/^Incoming /, "")}
+        </text>
+        <text
+          x={12}
+          y={pad.top + plotH / 2}
+          className="chart-correlation-axis-label"
+          textAnchor="middle"
+          transform={`rotate(-90 12 ${pad.top + plotH / 2})`}
+        >
+          {toLabel.replace(/^Incoming /, "")}
+        </text>
+        {points.map((point, index) => {
+          const x = pad.left + (point.fromScore / 100) * plotW;
+          const y = pad.top + plotH - (point.toScore / 100) * plotH;
+          return <circle key={index} cx={x} cy={y} r={4} className="chart-correlation-dot" opacity={0.7} />;
+        })}
+      </svg>
+      <p className="muted chart-correlation-note">
+        Each dot is one student. Points on the diagonal held steady; above improved, below declined.
+      </p>
+    </div>
   );
 }

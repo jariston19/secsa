@@ -3,11 +3,19 @@ import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import SwappableChartGrid, { ChartReorderHint } from "./SwappableChartGrid";
-import { HorizontalBarChart, GroupedDifficultyBars, GroupedBloomBars, BloomCognitiveCallout } from "./charts/AnalyticsCharts";
+import ChartCard from "./charts/ChartCard";
+import {
+  ChartIconBars,
+  HorizontalBarChart,
+  GroupedDifficultyBars,
+  GroupedBloomBars,
+  BloomCognitiveCallout,
+} from "./charts/AnalyticsCharts";
 import { DIFFICULTY_LABELS } from "../lib/analyticsChartUtils";
 import { BLOOM_LEVEL_LABELS, type BloomLevelId } from "../lib/bloomLevel";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
+import { resetBodyScrollLock } from "../lib/scrollLock";
 import { usePagination } from "../hooks/usePagination";
 import { useChartOrder } from "../hooks/useChartOrder";
 import { formatFullName } from "../lib/names";
@@ -15,7 +23,7 @@ import {
   formatProgramCourse,
   type ProgramCourseFilter,
 } from "../lib/programCourse";
-import { usePrograms } from "../lib/programs";
+import { useProgramCourseOptions } from "../lib/programs";
 
 type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
 
@@ -221,15 +229,19 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
       );
     case "score-by-difficulty":
       return (
-        <section className="card individual-student-section">
-          <h3>Score by difficulty</h3>
+        <ChartCard
+          className="analytics-chart-card-paired analytics-chart-card-difficulty"
+          title="Performance by difficulty"
+          description="Easy, medium, and hard bars. Color shows how retention drops as difficulty rises."
+          icon={<ChartIconBars direction="vertical" />}
+        >
           <GroupedDifficultyBars
             items={(report.byDifficulty ?? []).map((row) => ({
               difficulty: row.difficulty,
               score: row.score,
             }))}
           />
-        </section>
+        </ChartCard>
       );
     case "score-per-subject":
       return (
@@ -284,7 +296,7 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
 }
 
 export default function IndividualStudentAnalytics({ token }: Props) {
-  const { programs } = usePrograms();
+  const programCourseOptions = useProgramCourseOptions();
   const [query, setQuery] = useState("");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
   const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
@@ -303,12 +315,12 @@ export default function IndividualStudentAnalytics({ token }: Props) {
   const courseOptions = useMemo(
     () => [
       { id: "ALL" as const, label: "All" },
-      ...programs.map((course) => ({
-        id: course.slug as ProgramCourseFilter,
+      ...programCourseOptions.map((course) => ({
+        id: course.id as ProgramCourseFilter,
         label: course.label,
       })),
     ],
-    [programs]
+    [programCourseOptions]
   );
 
   const searchParams = useMemo(() => {
@@ -321,6 +333,16 @@ export default function IndividualStudentAnalytics({ token }: Props) {
   }, [query, yearFilter, courseFilter]);
 
   const canSearch = true;
+
+  useEffect(() => {
+    resetBodyScrollLock();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    resetBodyScrollLock();
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [selectedId]);
 
   useEffect(() => {
     if (!canSearch || selectedId) {

@@ -1,8 +1,15 @@
-import { type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { VerticalHistogram } from "./charts/AnalyticsCharts";
 import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import SwappableChartGrid, { ChartReorderHint } from "./SwappableChartGrid";
 import { useChartOrder } from "../hooks/useChartOrder";
+import { api } from "../lib/api";
+import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
+import {
+  formatProgramCourse,
+  type ProgramCourseFilter,
+} from "../lib/programCourse";
+import { useProgramCourseOptions } from "../lib/programs";
 
 export interface OverviewExamTypeHealth {
   passRate: number;
@@ -62,6 +69,8 @@ const OVERVIEW_CHART_ORDER = [
 
 type OverviewChartId = (typeof OVERVIEW_CHART_ORDER)[number];
 
+type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
+
 function TrendArrow({ delta }: { delta: number }) {
   if (Math.abs(delta) < 0.05) {
     return <span className="overview-trend overview-trend-flat">→ flat</span>;
@@ -93,7 +102,7 @@ function formatRelativeTime(iso: string | null) {
 }
 
 interface Props {
-  data: OverviewDashboardData;
+  token: string | null;
 }
 
 function PassRateCard({
@@ -391,15 +400,113 @@ function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): 
   }
 }
 
-export default function AnalyticsOverview({ data }: Props) {
+export default function AnalyticsOverview({ token }: Props) {
+  const programCourseOptions = useProgramCourseOptions();
+  const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
+  const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
+  const [data, setData] = useState<OverviewDashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+  const hasLoadedRef = useRef(false);
   const [chartOrder, setChartOrder] = useChartOrder(
     "analytics-overview-chart-order",
     OVERVIEW_CHART_ORDER
   );
 
+  const query = useMemo(() => {
+    const params = new URLSearchParams();
+    if (yearFilter !== "ALL") params.set("yearLevel", yearFilter);
+    if (courseFilter !== "ALL") params.set("programCourse", courseFilter);
+    const serialized = params.toString();
+    return serialized ? `?${serialized}` : "";
+  }, [yearFilter, courseFilter]);
+
+  const filterSubtitle = useMemo(() => {
+    const parts = [
+      courseFilter === "ALL" ? "All courses" : formatProgramCourse(courseFilter),
+      yearFilter === "ALL" ? "All years" : `Year ${yearFilter}`,
+    ];
+    return parts.join(" · ");
+  }, [courseFilter, yearFilter]);
+
+  useEffect(() => {
+    setError("");
+    if (hasLoadedRef.current) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    api<OverviewDashboardData>(`/analytics/overview${query}`, {}, token)
+      .then((response) => {
+        setData(response);
+        hasLoadedRef.current = true;
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load overview"))
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
+  }, [token, query]);
+
+  if (loading && !data) {
+    return <p className="muted">Loading analytics...</p>;
+  }
+
+  if (!data) {
+    return error ? <p className="error">{error}</p> : null;
+  }
+
   return (
-    <AnalyticsPrintArea id="analytics-print-overview" title="Analytics — Overview">
-      <div className="analytics-overview">
+    <AnalyticsPrintArea
+      id="analytics-print-overview"
+      title="Analytics — Overview"
+      subtitle={filterSubtitle}
+    >
+      <div className={`analytics-overview${refreshing ? " is-refreshing" : ""}`}>
+        <div className="analytics-reports-filter analytics-no-print">
+          <div className="analytics-reports-filters">
+            <label className="analytics-reports-filter-field">
+              Course
+              <select
+                value={courseFilter}
+                onChange={(event) =>
+                  setCourseFilter(event.target.value as ProgramCourseFilter)
+                }
+              >
+                <option value="ALL">All</option>
+                {programCourseOptions.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="analytics-reports-filter-field">
+              Year
+              <select
+                value={yearFilter}
+                onChange={(event) =>
+                  setYearFilter(event.target.value as YearLevelFilter)
+                }
+              >
+                <option value="ALL">All</option>
+                {Array.from(
+                  { length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 },
+                  (_, i) => MIN_YEAR_LEVEL + i
+                ).map((level) => (
+                  <option key={level} value={String(level)}>
+                    Year {level}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        {error ? <p className="error">{error}</p> : null}
+
         <ChartReorderHint />
         <SwappableChartGrid
           order={chartOrder}

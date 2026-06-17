@@ -58,7 +58,10 @@ export default function SavedTopicsModal({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
+    onClose ?? (() => {}),
+    !inline
+  );
 
   const sortedSubjects = useMemo(
     () => [...subjects].sort((a, b) => a.courseCode.localeCompare(b.courseCode)),

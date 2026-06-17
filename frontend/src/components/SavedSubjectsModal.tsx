@@ -59,7 +59,10 @@ export default function SavedSubjectsModal({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<SubjectEditDraft | null>(null);
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
+    onClose ?? (() => {}),
+    !inline
+  );
 
   const filteredSubjects = useMemo(
     () =>

@@ -6,6 +6,14 @@ import {
   formatProgramCourse,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
+import {
+  GENDER_OPTIONS,
+  SCHOOL_TYPE_OPTIONS,
+  formatGender,
+  formatSchoolType,
+  type GenderId,
+  type SchoolTypeId,
+} from "../lib/studentDemographics";
 
 export interface UserRow {
   id: string;
@@ -15,6 +23,8 @@ export interface UserRow {
   role: "STUDENT" | "TEACHER" | "SUPERADMIN";
   yearLevel: number | null;
   programCourse: string | null;
+  gender: GenderId | null;
+  schoolType: SchoolTypeId | null;
   isActive: boolean;
   qaUnlimited: boolean;
 }
@@ -26,6 +36,8 @@ export interface UserEditDraft {
   role: string;
   yearLevel: string;
   programCourse: string;
+  gender: GenderId;
+  schoolType: SchoolTypeId;
   isActive: boolean;
   qaUnlimited: boolean;
   password: string;
@@ -65,6 +77,7 @@ function UserEditFields({
   showRole,
   showYearFields,
   showCourseFields,
+  showDemographicsFields,
   showQaFields,
 }: {
   editDraft: UserEditDraft;
@@ -72,6 +85,7 @@ function UserEditFields({
   showRole: boolean;
   showYearFields: boolean;
   showCourseFields: boolean;
+  showDemographicsFields: boolean;
   showQaFields: boolean;
 }) {
   const programCourseOptions = useProgramCourseOptions();
@@ -149,6 +163,52 @@ function UserEditFields({
           </span>
         </label>
       )}
+      {showDemographicsFields && editDraft.role === "STUDENT" && (
+        <>
+          <label>
+            <span className="admin-user-edit-label">Gender</span>
+            <span className="admin-user-edit-control">
+              <select
+                className="table-input"
+                value={editDraft.gender}
+                onChange={(e) =>
+                  setEditDraft(
+                    (draft) =>
+                      draft && { ...draft, gender: e.target.value as GenderId }
+                  )
+                }
+              >
+                {GENDER_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </label>
+          <label>
+            <span className="admin-user-edit-label">School</span>
+            <span className="admin-user-edit-control">
+              <select
+                className="table-input"
+                value={editDraft.schoolType}
+                onChange={(e) =>
+                  setEditDraft(
+                    (draft) =>
+                      draft && { ...draft, schoolType: e.target.value as SchoolTypeId }
+                  )
+                }
+              >
+                {SCHOOL_TYPE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </label>
+        </>
+      )}
       {showQaFields && editDraft.role === "STUDENT" && (
         <label>
           <span className="admin-user-edit-label">QA profile</span>
@@ -205,6 +265,7 @@ export default function AdminUserGroupTable({
   const programCourseOptions = useProgramCourseOptions();
   const showYearColumn = group === "student" && !hideYearColumn;
   const showCourseColumn = group === "student";
+  const showDemographicsColumns = group === "student";
   const showQaColumn = group === "student";
   const showRoleColumn = false;
   const showActiveColumn = group !== "admin";
@@ -213,6 +274,7 @@ export default function AdminUserGroupTable({
     (showRoleColumn ? 1 : 0) +
     (showYearColumn ? 1 : 0) +
     (showCourseColumn ? 1 : 0) +
+    (showDemographicsColumns ? 2 : 0) +
     (showActiveColumn ? 1 : 0) +
     (showQaColumn ? 1 : 0) +
     1;
@@ -232,6 +294,8 @@ export default function AdminUserGroupTable({
             {showRoleColumn && <th>Role</th>}
             {showYearColumn && <th className="admin-users-year-cell">Year</th>}
             {showCourseColumn && <th className="admin-users-course-cell">Course</th>}
+            {showDemographicsColumns && <th className="admin-users-gender-cell">Gender</th>}
+            {showDemographicsColumns && <th className="admin-users-school-cell">School</th>}
             {showActiveColumn && <th className="admin-users-active-cell">Active</th>}
             {showQaColumn && <th className="admin-users-qa-cell">QA</th>}
             <th>Actions</th>
@@ -372,6 +436,61 @@ export default function AdminUserGroupTable({
                       )}
                     </td>
                   )}
+                  {showDemographicsColumns && (
+                    <td className="admin-users-gender-cell">
+                      {isEditing && editingAsStudent ? (
+                        <select
+                          className="table-input table-input-narrow"
+                          value={editDraft.gender}
+                          onChange={(e) =>
+                            setEditDraft(
+                              (draft) =>
+                                draft && { ...draft, gender: e.target.value as GenderId }
+                            )
+                          }
+                        >
+                          {GENDER_OPTIONS.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : isStudentRow ? (
+                        formatGender(user.gender)
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  )}
+                  {showDemographicsColumns && (
+                    <td className="admin-users-school-cell">
+                      {isEditing && editingAsStudent ? (
+                        <select
+                          className="table-input table-input-narrow"
+                          value={editDraft.schoolType}
+                          onChange={(e) =>
+                            setEditDraft(
+                              (draft) =>
+                                draft && {
+                                  ...draft,
+                                  schoolType: e.target.value as SchoolTypeId,
+                                }
+                            )
+                          }
+                        >
+                          {SCHOOL_TYPE_OPTIONS.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : isStudentRow ? (
+                        formatSchoolType(user.schoolType)
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  )}
                   {showActiveColumn && (
                     <td className="admin-users-active-cell">
                       {isAdminRow ? (
@@ -490,6 +609,7 @@ export default function AdminUserGroupTable({
                         showRole={!showRoleColumn}
                         showYearFields={editingAsStudent && !showYearColumn}
                         showCourseFields={editingAsStudent && !showCourseColumn}
+                        showDemographicsFields={editingAsStudent && !showDemographicsColumns}
                         showQaFields={!showQaColumn && editingAsStudent}
                       />
                     </td>

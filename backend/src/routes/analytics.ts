@@ -14,6 +14,8 @@ import {
 } from "../services/individualStudentAnalytics.js";
 import { buildAnalyticsReports } from "../services/analyticsReports.js";
 import { buildOverviewDashboard } from "../services/overviewDashboard.js";
+import { buildCohortTrends } from "../services/cohortTrends.js";
+import { buildDemographicAnalytics } from "../services/demographicAnalytics.js";
 export async function analyticsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate);
 
@@ -27,7 +29,38 @@ export async function analyticsRoutes(app: FastifyInstance) {
     requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
 
     const yearLevel = parseYearLevelQuery((request.query as { yearLevel?: string }).yearLevel);
-    return buildOverviewDashboard(yearLevel);
+    const programCourse = await parseProgramCourseQuery(
+      (request.query as { programCourse?: string }).programCourse
+    );
+    return buildOverviewDashboard(yearLevel, programCourse);
+  });
+
+  app.get("/trends", async (request) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
+
+    const query = request.query as { intakeYear?: string; programCourse?: string };
+    const intakeYearRaw = query.intakeYear;
+    const intakeYear =
+      intakeYearRaw && Number.isFinite(Number(intakeYearRaw))
+        ? Number(intakeYearRaw)
+        : undefined;
+
+    return buildCohortTrends({
+      intakeYear,
+      programCourse: await parseProgramCourseQuery(query.programCourse),
+    });
+  });
+
+  app.get("/demographics", async (request) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
+
+    const query = request.query as { yearLevel?: string; programCourse?: string };
+    return buildDemographicAnalytics({
+      yearLevel: parseYearLevelQuery(query.yearLevel),
+      programCourse: await parseProgramCourseQuery(query.programCourse),
+    });
   });
 
   app.get("/questions", async (request) => {

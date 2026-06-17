@@ -36,12 +36,12 @@ function inPeriod(date: Date, start: Date, end: Date) {
   return date >= start && date < end;
 }
 
-export async function buildOverviewDashboard(yearLevel?: number) {
-  const attemptFilter = nonQaExamAttemptWhere(yearLevel);
+export async function buildOverviewDashboard(yearLevel?: number, programCourse?: string) {
+  const attemptFilter = nonQaExamAttemptWhere(yearLevel, programCourse);
 
   const [students, attempts, pendingApprovals, latestSubmission] = await Promise.all([
     prisma.user.findMany({
-      where: nonQaStudentWhere(yearLevel),
+      where: nonQaStudentWhere(yearLevel, programCourse),
       select: { id: true, yearLevel: true },
     }),
     prisma.examAttempt.findMany({
@@ -61,7 +61,7 @@ export async function buildOverviewDashboard(yearLevel?: number) {
     prisma.retakeApproval.count({
       where: {
         status: ApprovalStatus.PENDING,
-        student: nonQaStudentWhere(yearLevel),
+        student: nonQaStudentWhere(yearLevel, programCourse),
       },
     }),
     prisma.examAttempt.findFirst({

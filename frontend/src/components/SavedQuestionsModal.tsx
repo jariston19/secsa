@@ -105,7 +105,10 @@ export default function SavedQuestionsModal({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<QuestionEditDraft | null>(null);
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
+    onClose ?? (() => {}),
+    !inline
+  );
 
   const totalQuestions = useMemo(
     () => subjects.reduce((sum, subject) => sum + (subject._count?.questions ?? 0), 0),

@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import DiagnosticResultProfile, { type DiagnosticProfile } from "../components/DiagnosticResultProfile";
 import ExamInstructionsModal from "../components/ExamInstructionsModal";
 import ExamSession from "../components/ExamSession";
 import QuestionImage from "../components/QuestionImage";
+import StudentPrivacyPolicyModal, {
+  hasAcceptedPrivacyPolicy,
+} from "../components/StudentPrivacyPolicyModal";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { resetBodyScrollLock } from "../lib/scrollLock";
 import {
   MAX_EXAM_FOCUS_VIOLATIONS,
   MAX_YEAR_LEVEL,
@@ -32,10 +37,17 @@ interface ExamStatus {
   diagnosticTimeLimitMinutes?: number | null;
   comprehensiveTimeLimitMinutes?: number | null;
   retakeTimeLimitMinutes?: number | null;
+  diagnosticPassThreshold?: number | null;
+  comprehensivePassThreshold?: number | null;
+  retakePassThreshold?: number | null;
   qaMode?: boolean;
   usingSetYearLevel?: number | null;
   usingSetName?: string | null;
   qaExamOptions?: QaExamOption[];
+  showDiagnosticProfile?: boolean;
+  diagnosticAttemptId?: string | null;
+  showComprehensiveProfile?: boolean;
+  comprehensiveAttemptId?: string | null;
   attempts: Array<{
     id: string;
     score: number | null;
@@ -72,6 +84,11 @@ interface ExamStartResponse {
   timeLimitMinutes: number;
 }
 
+function releaseExamSessionChrome() {
+  resetBodyScrollLock();
+  document.body.classList.remove("exam-session-active");
+}
+
 export default function StudentDashboard() {
   const { token, user } = useAuth();
   const isQa = Boolean(user?.qaUnlimited);
@@ -87,9 +104,25 @@ export default function StudentDashboard() {
     percentage: number;
     passed: boolean;
     totalItems: number;
+    passThreshold?: number;
     timedOut?: boolean;
     focusViolationLimit?: boolean;
   } | null>(null);
+  const [diagnosticProfile, setDiagnosticProfile] = useState<DiagnosticProfile | null>(null);
+  const [diagnosticProfileOpen, setDiagnosticProfileOpen] = useState(true);
+  const [diagnosticNotices, setDiagnosticNotices] = useState<{
+    timedOut?: boolean;
+    focusViolationLimit?: boolean;
+  } | null>(null);
+  const [loadingDiagnosticProfile, setLoadingDiagnosticProfile] = useState(false);
+  const [comprehensiveProfile, setComprehensiveProfile] = useState<DiagnosticProfile | null>(null);
+  const [comprehensiveProfileOpen, setComprehensiveProfileOpen] = useState(true);
+  const [comprehensiveNotices, setComprehensiveNotices] = useState<{
+    timedOut?: boolean;
+    focusViolationLimit?: boolean;
+  } | null>(null);
+  const [loadingComprehensiveProfile, setLoadingComprehensiveProfile] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [error, setError] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
   const [startingExam, setStartingExam] = useState(false);
@@ -113,7 +146,58 @@ export default function StudentDashboard() {
     const path = isQa ? `/exams/status?examYearLevel=${yearLevel}` : "/exams/status";
     const data = await api<ExamStatus>(path, {}, token);
     setStatus(data);
+    if (!data.showDiagnosticProfile) {
+      setDiagnosticProfile(null);
+      setDiagnosticNotices(null);
+      setDiagnosticProfileOpen(false);
+    }
+    if (!data.showComprehensiveProfile) {
+      setComprehensiveProfile(null);
+      setComprehensiveNotices(null);
+      setComprehensiveProfileOpen(false);
+    }
+    return data;
   }
+
+  const loadDiagnosticProfile = useCallback(async () => {
+    if (!token) return;
+
+    setLoadingDiagnosticProfile(true);
+    try {
+      const data = await api<{ profile: DiagnosticProfile }>(
+        "/exams/diagnostic-profile",
+        {},
+        token
+      );
+      setDiagnosticProfile(data.profile);
+    } catch {
+      setDiagnosticProfile(null);
+    } finally {
+      setLoadingDiagnosticProfile(false);
+    }
+  }, [token]);
+
+  const loadComprehensiveProfile = useCallback(async () => {
+    if (!token) return;
+
+    setLoadingComprehensiveProfile(true);
+    try {
+      const data = await api<{ profile: DiagnosticProfile }>(
+        "/exams/comprehensive-profile",
+        {},
+        token
+      );
+      setComprehensiveProfile(data.profile);
+    } catch {
+      setComprehensiveProfile(null);
+    } finally {
+      setLoadingComprehensiveProfile(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    releaseExamSessionChrome();
+  }, []);
 
   useEffect(() => {
     if (user?.yearLevel) {
@@ -124,6 +208,25 @@ export default function StudentDashboard() {
   useEffect(() => {
     loadStatus(qaExamYear).catch((err) => setError(err.message));
   }, [token, isQa, qaExamYear]);
+
+  useEffect(() => {
+    if (!status?.showDiagnosticProfile) return;
+
+    setDiagnosticProfileOpen(true);
+    void loadDiagnosticProfile();
+  }, [status?.showDiagnosticProfile, status?.diagnosticAttemptId, loadDiagnosticProfile]);
+
+  useEffect(() => {
+    if (!status?.showComprehensiveProfile) return;
+
+    setComprehensiveProfileOpen(true);
+    void loadComprehensiveProfile();
+  }, [status?.showComprehensiveProfile, status?.comprehensiveAttemptId, loadComprehensiveProfile]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setShowPrivacyPolicy(!hasAcceptedPrivacyPolicy(user.id));
+  }, [user?.id]);
 
   const canResumeExam = status?.nextAction === "resume_exam";
   const studentYearLevel = status?.yearLevel ?? user?.yearLevel;
@@ -141,6 +244,14 @@ export default function StudentDashboard() {
   const canStartIncomingDiagnostic =
     !canResumeExam && status?.nextAction === "take_incoming_diagnostic";
 
+  const showDiagnosticProfileCard = Boolean(
+    diagnosticProfile && (status?.showDiagnosticProfile || diagnosticNotices)
+  );
+
+  const showComprehensiveProfileCard = Boolean(
+    comprehensiveProfile && (status?.showComprehensiveProfile || comprehensiveNotices)
+  );
+
   const examType: "comprehensive" | "incoming_diagnostic" | "retake" = pendingExamKind;
 
   const currentQuestion = questions[currentIndex];
@@ -157,6 +268,17 @@ export default function StudentDashboard() {
       return status.retakeTimeLimitMinutes ?? status.examTimeLimitMinutes ?? 60;
     }
     return status.comprehensiveTimeLimitMinutes ?? status.examTimeLimitMinutes ?? 60;
+  }
+
+  function instructionsPassThreshold() {
+    if (!status) return 75;
+    if (pendingExamKind === "incoming_diagnostic") {
+      return status.diagnosticPassThreshold ?? 75;
+    }
+    if (pendingExamKind === "retake") {
+      return status.retakePassThreshold ?? 75;
+    }
+    return status.comprehensivePassThreshold ?? 75;
   }
 
   const flushCurrentQuestionTime = useCallback(() => {
@@ -345,14 +467,51 @@ export default function StudentDashboard() {
         };
 
         const data = await api<{
-          result: { score: number; percentage: number; passed: boolean; totalItems: number };
+          result:
+            | {
+                kind: "diagnostic";
+                profile: DiagnosticProfile;
+              }
+            | {
+                kind: "comprehensive";
+                score: number;
+                percentage: number;
+                passed: boolean;
+                totalItems: number;
+                passThreshold: number;
+                profile: DiagnosticProfile;
+              };
         }>(`/exams/${attemptId}/submit`, { method: "POST", body: JSON.stringify(payload) }, token);
 
-        setResult({
-          ...data.result,
-          timedOut: options?.timedOut,
-          focusViolationLimit: options?.focusViolationLimit,
-        });
+        if (data.result.kind === "diagnostic") {
+          setDiagnosticProfile(data.result.profile);
+          setDiagnosticProfileOpen(true);
+          setDiagnosticNotices({
+            timedOut: options?.timedOut,
+            focusViolationLimit: options?.focusViolationLimit,
+          });
+          setResult(null);
+        } else {
+          setResult({
+            score: data.result.score,
+            percentage: data.result.percentage,
+            passed: data.result.passed,
+            totalItems: data.result.totalItems,
+            passThreshold: data.result.passThreshold,
+            timedOut: options?.timedOut,
+            focusViolationLimit: options?.focusViolationLimit,
+          });
+          setComprehensiveProfile(data.result.profile);
+          setComprehensiveProfileOpen(true);
+          setComprehensiveNotices({
+            timedOut: options?.timedOut,
+            focusViolationLimit: options?.focusViolationLimit,
+          });
+          setDiagnosticProfile(null);
+          setDiagnosticNotices(null);
+          setDiagnosticProfileOpen(false);
+        }
+
         setAttemptId(null);
         setQuestions([]);
         setCurrentIndex(0);
@@ -362,11 +521,13 @@ export default function StudentDashboard() {
         examDeadlineMsRef.current = null;
         setSecondsRemaining(null);
         setExamTimeLimitMinutes(null);
+        releaseExamSessionChrome();
         await loadStatus(qaExamYear);
       } catch (err) {
         submittingExamRef.current = false;
         setError(err instanceof Error ? err.message : "Failed to submit exam");
       } finally {
+        releaseExamSessionChrome();
         setSubmittingExam(false);
       }
     },
@@ -458,13 +619,6 @@ export default function StudentDashboard() {
                 </span>
               </label>
             )}
-            <p className="muted">
-              One question at a time.
-              {status.examTimeLimitMinutes != null
-                ? ` Time limit: ${formatExamTimeLimit(status.examTimeLimitMinutes)}.`
-                : ""}{" "}
-              The exam auto-submits when time runs out.
-            </p>
             <ul className="stats">
               <li>Comprehensive available: {status.comprehensiveAvailable ? "Yes" : "No"}</li>
               <li>
@@ -476,11 +630,14 @@ export default function StudentDashboard() {
                   {status.usingSetYearLevel != null ? ` (year ${status.usingSetYearLevel})` : ""}
                 </li>
               )}
-              <li>Retake pool available: {status.retakeAvailable ? "Yes" : "No"}</li>
-              <li>
-                Retakes remaining:{" "}
-                {status.qaMode || user?.qaUnlimited ? "Unlimited" : status.retakesRemaining}
-              </li>
+              {studentYearLevel !== MIN_YEAR_LEVEL ? (
+                <>
+                  <li>Retake pool available: {status.retakeAvailable ? "Yes" : "No"}</li>
+                  {!status.qaMode && !user?.qaUnlimited ? (
+                    <li>Retakes remaining: {status.retakesRemaining}</li>
+                  ) : null}
+                </>
+              ) : null}
             </ul>
             {!attemptId && !result && canResumeExam && (
               <>
@@ -525,12 +682,51 @@ export default function StudentDashboard() {
                       : studentYearLevel === MIN_YEAR_LEVEL
                         ? hasSubmittedIncomingDiagnostic
                           ? "You have completed the incoming diagnostic exam."
-                          : "No deployed incoming diagnostic set is available. Ask your teacher to deploy one from the Build tab."
-                        : "No deployed comprehensive set is available. Deploy one from the teacher Build tab."
+                          : "No incoming diagnostic exam is available yet."
+                        : "No exam is currently available for your year level."
                     : "No exam is currently available for your year level."}
               </p>
             )}
           </section>
+
+          {showDiagnosticProfileCard ? (
+            <section className="card diagnostic-profile-card">
+              <div className="row-between diagnostic-profile-card-header">
+                <div>
+                  <h2>Diagnostic profile</h2>
+                  <p className="muted section-desc">Your learning strengths and areas to develop.</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => setDiagnosticProfileOpen((open) => !open)}
+                >
+                  {diagnosticProfileOpen ? "Hide profile" : "Show profile"}
+                </button>
+              </div>
+
+              {diagnosticNotices?.timedOut ? (
+                <p className="exam-timed-out-notice">
+                  Time expired — your exam was submitted automatically. Unanswered items were not
+                  included in your profile.
+                </p>
+              ) : null}
+              {diagnosticNotices?.focusViolationLimit ? (
+                <p className="exam-timed-out-notice">
+                  You left the exam view {MAX_EXAM_FOCUS_VIOLATIONS} times — your exam was submitted
+                  automatically.
+                </p>
+              ) : null}
+
+              {diagnosticProfileOpen && diagnosticProfile ? (
+                <DiagnosticResultProfile profile={diagnosticProfile} />
+              ) : null}
+
+              {loadingDiagnosticProfile && !diagnosticProfile ? (
+                <p className="muted">Loading diagnostic profile...</p>
+              ) : null}
+            </section>
+          ) : null}
 
           {result && (
             <section className="card">
@@ -551,12 +747,12 @@ export default function StudentDashboard() {
                 Score: {result.score} / {result.totalItems}
               </p>
               <p>Percentage: {result.percentage}%</p>
-              <p className={result.passed ? "success" : "error"}>
-                {result.passed ? "PASSED" : "FAILED"} (passing: 75%)
-              </p>
-              {!result.passed && !status.qaMode && !user?.qaUnlimited && (
-                <p className="muted">
-                  Your teacher or superadmin will review and approve a retake if eligible.
+              {result.passed ? (
+                <p className="success">PASSED (passing: {result.passThreshold ?? 75}%)</p>
+              ) : (
+                <p className="exam-retake-attention">
+                  Attention: Request for retake approval has been sent to your teacher. You will be
+                  notified once a retake is approved.
                 </p>
               )}
               {(status.qaMode || user?.qaUnlimited) && (
@@ -576,6 +772,45 @@ export default function StudentDashboard() {
             </section>
           )}
 
+          {showComprehensiveProfileCard ? (
+            <section className="card diagnostic-profile-card">
+              <div className="row-between diagnostic-profile-card-header">
+                <div>
+                  <h2>Exam evaluation</h2>
+                  <p className="muted section-desc">Your strengths and areas to develop from this exam.</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => setComprehensiveProfileOpen((open) => !open)}
+                >
+                  {comprehensiveProfileOpen ? "Hide evaluation" : "Show evaluation"}
+                </button>
+              </div>
+
+              {comprehensiveNotices?.timedOut ? (
+                <p className="exam-timed-out-notice">
+                  Time expired — your exam was submitted automatically. Unanswered items were marked
+                  incorrect and may affect this evaluation.
+                </p>
+              ) : null}
+              {comprehensiveNotices?.focusViolationLimit ? (
+                <p className="exam-timed-out-notice">
+                  You left the exam view {MAX_EXAM_FOCUS_VIOLATIONS} times — your exam was submitted
+                  automatically.
+                </p>
+              ) : null}
+
+              {comprehensiveProfileOpen && comprehensiveProfile ? (
+                <DiagnosticResultProfile profile={comprehensiveProfile} variant="comprehensive" />
+              ) : null}
+
+              {loadingComprehensiveProfile && !comprehensiveProfile ? (
+                <p className="muted">Loading exam evaluation...</p>
+              ) : null}
+            </section>
+          ) : null}
+
           <section className="card">
             <h2>Attempt History</h2>
             {status.attempts.length === 0 ? (
@@ -593,19 +828,30 @@ export default function StudentDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {status.attempts.map((a) => (
-                      <tr key={a.id}>
-                        <td>
-                          {a.questionSet?.type
-                            ? formatExamType(a.questionSet.type)
-                            : a.attemptType}
-                        </td>
-                        <td>{a.attemptNumber}</td>
-                        <td>{a.score ?? "-"}</td>
-                        <td>{a.percentage ?? "-"}</td>
-                        <td>{a.passed == null ? "In progress" : a.passed ? "Pass" : "Fail"}</td>
-                      </tr>
-                    ))}
+                    {status.attempts.map((a) => {
+                      const isDiagnostic = a.questionSet?.type === "DIAGNOSTIC";
+                      return (
+                        <tr key={a.id}>
+                          <td>
+                            {a.questionSet?.type
+                              ? formatExamType(a.questionSet.type)
+                              : a.attemptType}
+                          </td>
+                          <td>{a.attemptNumber}</td>
+                          <td>{isDiagnostic ? "—" : (a.score ?? "-")}</td>
+                          <td>{isDiagnostic ? "—" : (a.percentage ?? "-")}</td>
+                          <td>
+                            {a.passed == null
+                              ? "In progress"
+                              : isDiagnostic
+                                ? "Profile complete"
+                                : a.passed
+                                  ? "Pass"
+                                  : "Fail"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -740,12 +986,20 @@ export default function StudentDashboard() {
         <ExamInstructionsModal
           examType={examType}
           timeLimitMinutes={instructionsTimeLimitMinutes()}
+          passThreshold={instructionsPassThreshold()}
           onConfirm={beginExam}
           onCancel={() => setShowInstructions(false)}
           loading={startingExam}
           error={startError}
         />
       )}
+
+      {showPrivacyPolicy && user?.id ? (
+        <StudentPrivacyPolicyModal
+          userId={user.id}
+          onAccepted={() => setShowPrivacyPolicy(false)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -24,3 +24,12 @@ export function unlockBodyScroll() {
     window.scrollTo(0, savedScrollY);
   }
 }
+
+export function resetBodyScrollLock() {
+  lockCount = 0;
+  document.body.classList.remove("modal-open");
+  document.body.style.top = "";
+  document.body.style.left = "";
+  document.body.style.right = "";
+  document.body.style.width = "";
+}

@@ -43,7 +43,10 @@ export default function RetakeApprovalsModal({
   const [bulkApproving, setBulkApproving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const selectAllRef = useRef<HTMLInputElement>(null);
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
+    onClose ?? (() => {}),
+    !inline
+  );
 
   async function loadApprovals() {
     setLoading(true);

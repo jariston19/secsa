@@ -7,6 +7,7 @@ import {
   Role,
 } from "@prisma/client";
 import { z } from "zod";
+import { buildDiagnosticStudentProfile, buildStudentExamProfile } from "../lib/diagnosticStudentProfile.js";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import { calculateResult, prepareAttemptExamQuestions } from "../services/examGenerator.js";
@@ -48,6 +49,50 @@ const startExamSchema = z.object({
 });
 
 const MAX_RETAKES = 2;
+
+type StudentAttemptRow = {
+  id: string;
+  submittedAt: Date | null;
+  questionSet: { type: QuestionSetType };
+};
+
+function hasProgressedPastDiagnostic(attempts: StudentAttemptRow[]) {
+  return attempts.some(
+    (attempt) =>
+      attempt.submittedAt &&
+      (attempt.questionSet.type === QuestionSetType.COMPREHENSIVE ||
+        attempt.questionSet.type === QuestionSetType.RETAKE)
+  );
+}
+
+function diagnosticProfileMeta(attempts: StudentAttemptRow[]) {
+  const diagnosticAttempts = attempts.filter(
+    (attempt) => attempt.questionSet.type === QuestionSetType.DIAGNOSTIC && attempt.submittedAt
+  );
+  const latestDiagnostic = diagnosticAttempts.at(-1) ?? null;
+  const showDiagnosticProfile =
+    Boolean(latestDiagnostic) && !hasProgressedPastDiagnostic(attempts);
+
+  return {
+    showDiagnosticProfile,
+    diagnosticAttemptId: showDiagnosticProfile ? latestDiagnostic?.id ?? null : null,
+  };
+}
+
+function comprehensiveProfileMeta(attempts: StudentAttemptRow[]) {
+  const evaluationAttempts = attempts.filter(
+    (attempt) =>
+      attempt.submittedAt &&
+      (attempt.questionSet.type === QuestionSetType.COMPREHENSIVE ||
+        attempt.questionSet.type === QuestionSetType.RETAKE)
+  );
+  const latestEvaluation = evaluationAttempts.at(-1) ?? null;
+
+  return {
+    showComprehensiveProfile: Boolean(latestEvaluation),
+    comprehensiveAttemptId: latestEvaluation?.id ?? null,
+  };
+}
 
 async function getStudentProfile(userId: string) {
   const student = await prisma.user.findUnique({
@@ -230,6 +275,11 @@ export async function examRoutes(app: FastifyInstance) {
         diagnosticTimeLimitMinutes: qaDiagnosticSet?.timeLimitMinutes ?? null,
         comprehensiveTimeLimitMinutes: qaComprehensiveSet?.timeLimitMinutes ?? null,
         retakeTimeLimitMinutes: qaRetakeSet?.timeLimitMinutes ?? null,
+        diagnosticPassThreshold: qaDiagnosticSet?.passThreshold ?? null,
+        comprehensivePassThreshold: qaComprehensiveSet?.passThreshold ?? null,
+        retakePassThreshold: qaRetakeSet?.passThreshold ?? null,
+        ...diagnosticProfileMeta(attempts),
+        ...comprehensiveProfileMeta(attempts),
       };
     }
 
@@ -305,7 +355,50 @@ export async function examRoutes(app: FastifyInstance) {
       diagnosticTimeLimitMinutes: incomingDiagnosticSet?.timeLimitMinutes ?? null,
       comprehensiveTimeLimitMinutes: comprehensiveSet?.timeLimitMinutes ?? null,
       retakeTimeLimitMinutes: retakeSet?.timeLimitMinutes ?? null,
+      diagnosticPassThreshold: incomingDiagnosticSet?.passThreshold ?? null,
+      comprehensivePassThreshold: comprehensiveSet?.passThreshold ?? null,
+      retakePassThreshold: retakeSet?.passThreshold ?? null,
+      ...diagnosticProfileMeta(attempts),
+      ...comprehensiveProfileMeta(attempts),
     };
+  });
+
+  app.get("/diagnostic-profile", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.STUDENT]);
+
+    const attempts = await prisma.examAttempt.findMany({
+      where: { studentId: user.id },
+      include: { questionSet: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const { diagnosticAttemptId } = diagnosticProfileMeta(attempts);
+    if (!diagnosticAttemptId) {
+      return reply.code(404).send({ error: "Diagnostic profile not available." });
+    }
+
+    const profile = await buildDiagnosticStudentProfile(diagnosticAttemptId);
+    return { profile, attemptId: diagnosticAttemptId };
+  });
+
+  app.get("/comprehensive-profile", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.STUDENT]);
+
+    const attempts = await prisma.examAttempt.findMany({
+      where: { studentId: user.id },
+      include: { questionSet: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const { comprehensiveAttemptId } = comprehensiveProfileMeta(attempts);
+    if (!comprehensiveAttemptId) {
+      return reply.code(404).send({ error: "Comprehensive evaluation not available." });
+    }
+
+    const profile = await buildStudentExamProfile(comprehensiveAttemptId, "comprehensive");
+    return { profile, attemptId: comprehensiveAttemptId };
   });
 
   app.post("/start", async (request, reply) => {
@@ -726,7 +819,28 @@ export async function examRoutes(app: FastifyInstance) {
       }
     }
 
-    return { attempt: updated, result };
+    if (attempt.questionSet.type === QuestionSetType.DIAGNOSTIC) {
+      const profile = await buildStudentExamProfile(attemptId, "diagnostic");
+      return {
+        attempt: updated,
+        result: {
+          kind: "diagnostic" as const,
+          profile,
+        },
+      };
+    }
+
+    const profile = await buildStudentExamProfile(attemptId, "comprehensive");
+    return {
+      attempt: updated,
+      result: {
+        kind: "comprehensive" as const,
+        ...result,
+        profile,
+        timedOut: false,
+        focusViolationLimit: false,
+      },
+    };
   });
 
   app.get("/retakes", async (request) => {

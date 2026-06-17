@@ -5,6 +5,7 @@ import { formatExamTimeLimit, MAX_EXAM_FOCUS_VIOLATIONS } from "../lib/constants
 interface Props {
   examType: "comprehensive" | "incoming_diagnostic" | "retake";
   timeLimitMinutes: number;
+  passThreshold: number;
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
@@ -14,6 +15,7 @@ interface Props {
 export default function ExamInstructionsModal({
   examType,
   timeLimitMinutes,
+  passThreshold,
   onConfirm,
   onCancel,
   loading = false,
@@ -62,9 +64,27 @@ export default function ExamInstructionsModal({
 
           <h3>Scoring &amp; passing</h3>
           <ul className="instructions-list">
-            <li>Your score is computed as: correct answers ÷ total items.</li>
-            <li>The passing mark is <strong>75%</strong>.</li>
-            <li>Your result (score, percentage, pass/fail) will be shown immediately after submission.</li>
+            {examType === "incoming_diagnostic" ? (
+              <>
+                <li>
+                  This diagnostic does <strong>not</strong> show a graded score after submission.
+                </li>
+                <li>
+                  You will receive a <strong>learning profile</strong> highlighting strengths and
+                  areas to develop.
+                </li>
+                <li>Your teacher uses this profile to guide early support — not pass/fail decisions.</li>
+              </>
+            ) : (
+              <>
+                <li>Your score is computed as: correct answers ÷ total items.</li>
+                <li>The passing mark is <strong>{passThreshold}%</strong>.</li>
+                <li>
+                  Your result (score, percentage, pass/fail) will be shown immediately after
+                  submission.
+                </li>
+              </>
+            )}
           </ul>
 
           <h3>Academic integrity</h3>

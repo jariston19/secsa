@@ -6,11 +6,12 @@ import TabPanel from "../components/TabPanel";
 import AnalyticsReports from "../components/AnalyticsReports";
 import GroupAnalytics from "../components/GroupAnalytics";
 import IndividualStudentAnalytics from "../components/IndividualStudentAnalytics";
-import AnalyticsOverview, { type OverviewDashboardData } from "../components/AnalyticsOverview";
+import AnalyticsOverview from "../components/AnalyticsOverview";
+import AnalyticsDemographics from "../components/AnalyticsDemographics";
+import AnalyticsTrends from "../components/AnalyticsTrends";
 import QuestionPerformanceModal from "../components/QuestionPerformanceModal";
 import StudentSubmissionDetailModal from "../components/StudentSubmissionDetailModal";
 import StudentSubmissionsSection from "../components/StudentSubmissionsSection";
-import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useSidebar } from "../lib/sidebar";
 import { useToast } from "../lib/toast";
@@ -20,6 +21,8 @@ type Tab =
   | "users-manage"
   | "settings-programs"
   | "analytics-overview"
+  | "analytics-trends"
+  | "analytics-demographics"
   | "analytics-group"
   | "analytics-student"
   | "analytics-question"
@@ -46,6 +49,8 @@ const ADMIN_PAGE_MENUS = [
     label: "Analytics",
     items: [
       { id: "analytics-overview", label: "Overview" },
+      { id: "analytics-trends", label: "Trends" },
+      { id: "analytics-demographics", label: "Demographics" },
       { id: "analytics-group", label: "Group" },
       { id: "analytics-student", label: "Student" },
       { id: "analytics-question", label: "Question" },
@@ -58,32 +63,15 @@ export default function AdminDashboard() {
   const { setPageNav, setPageNavValue } = useSidebar();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("users-add");
-  const [overview, setOverview] = useState<OverviewDashboardData | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [showQuestionPerformance, setShowQuestionPerformance] = useState(false);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
-
-  async function refreshAnalytics() {
-    setAnalyticsLoading(true);
-    try {
-      const o = await api<OverviewDashboardData>("/analytics/overview", {}, token);
-      setOverview(o);
-    } finally {
-      setAnalyticsLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (activeTab !== "analytics-overview") return;
-    if (overview) return;
-    refreshAnalytics().catch((err) => {
-      toast.error(err.message);
-    });
-  }, [token, activeTab, overview]);
 
   useEffect(() => {
     if (activeTab !== "submissions") {
       setSelectedSubmissionId(null);
+    }
+    if (activeTab !== "analytics-question") {
+      setShowQuestionPerformance(false);
     }
   }, [activeTab]);
 
@@ -129,15 +117,11 @@ export default function AdminDashboard() {
         <ProgramCoursesSettings token={token} onCreated={showMessage} />
       )}
 
-      {activeTab === "analytics-overview" && (
-      <div className="grid">
-      {analyticsLoading && !overview ? (
-        <p className="muted">Loading analytics...</p>
-      ) : overview ? (
-        <AnalyticsOverview data={overview} />
-      ) : null}
-      </div>
-      )}
+      {activeTab === "analytics-overview" && <AnalyticsOverview token={token} />}
+
+      {activeTab === "analytics-trends" && <AnalyticsTrends token={token} />}
+
+      {activeTab === "analytics-demographics" && <AnalyticsDemographics token={token} />}
 
       {activeTab === "analytics-group" && <GroupAnalytics token={token} />}
 

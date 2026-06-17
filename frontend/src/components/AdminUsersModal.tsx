@@ -52,7 +52,10 @@ export default function AdminUsersModal({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
+    onClose ?? (() => {}),
+    !inline
+  );
 
   async function loadUsers() {
     setLoading(true);
@@ -146,6 +149,8 @@ export default function AdminUsersModal({
       role: user.role,
       yearLevel: user.yearLevel != null ? String(user.yearLevel) : "2",
       programCourse: user.programCourse ?? DEFAULT_PROGRAM_COURSE,
+      gender: user.gender ?? "MALE",
+      schoolType: user.schoolType ?? "PUBLIC",
       isActive: user.isActive,
       qaUnlimited: user.qaUnlimited,
       password: "",
@@ -174,6 +179,8 @@ export default function AdminUsersModal({
             role: editDraft.role,
             yearLevel: editDraft.role === "STUDENT" ? parseYearLevel(editDraft.yearLevel) : null,
             programCourse: editDraft.role === "STUDENT" ? editDraft.programCourse : null,
+            gender: editDraft.role === "STUDENT" ? editDraft.gender : null,
+            schoolType: editDraft.role === "STUDENT" ? editDraft.schoolType : null,
             ...(editDraft.role !== "SUPERADMIN" ? { isActive: editDraft.isActive } : {}),
             qaUnlimited: editDraft.role === "STUDENT" ? editDraft.qaUnlimited : false,
             ...(editDraft.password.trim() ? { password: editDraft.password } : {}),

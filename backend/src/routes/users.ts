@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import bcrypt from "bcryptjs";
-import { Role } from "@prisma/client";
+import { Role, Gender, SchoolType } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
@@ -15,6 +15,8 @@ const createUserSchema = z.object({
   role: z.nativeEnum(Role),
   yearLevel: yearLevelSchema.optional(),
   programCourse: programCourseSlugSchema.optional(),
+  gender: z.nativeEnum(Gender).optional(),
+  schoolType: z.nativeEnum(SchoolType).optional(),
   qaUnlimited: z.boolean().optional(),
 });
 
@@ -26,6 +28,8 @@ const updateUserSchema = z.object({
   role: z.nativeEnum(Role).optional(),
   yearLevel: yearLevelSchema.optional().nullable(),
   programCourse: programCourseSlugSchema.optional().nullable(),
+  gender: z.nativeEnum(Gender).optional().nullable(),
+  schoolType: z.nativeEnum(SchoolType).optional().nullable(),
   isActive: z.boolean().optional(),
   qaUnlimited: z.boolean().optional(),
 });
@@ -38,6 +42,8 @@ const userSelect = {
   role: true,
   yearLevel: true,
   programCourse: true,
+  gender: true,
+  schoolType: true,
   isActive: true,
   qaUnlimited: true,
   createdAt: true,
@@ -81,6 +87,18 @@ export async function userRoutes(app: FastifyInstance) {
           ? body.programCourse
           : existing.programCourse
         : null;
+    const nextGender =
+      nextRole === Role.STUDENT
+        ? body.gender !== undefined
+          ? body.gender
+          : existing.gender
+        : null;
+    const nextSchoolType =
+      nextRole === Role.STUDENT
+        ? body.schoolType !== undefined
+          ? body.schoolType
+          : existing.schoolType
+        : null;
 
     if (nextRole === Role.STUDENT && !nextYearLevel) {
       return reply.code(400).send({ error: "Students require a year level." });
@@ -110,6 +128,8 @@ export async function userRoutes(app: FastifyInstance) {
           ...(body.qaUnlimited !== undefined ? { qaUnlimited: body.qaUnlimited } : {}),
           yearLevel: nextYearLevel,
           programCourse: nextProgramCourse,
+          gender: nextGender,
+          schoolType: nextSchoolType,
           ...(body.password
             ? { passwordHash: await bcrypt.hash(body.password, 10) }
             : {}),
@@ -136,6 +156,14 @@ export async function userRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "Students require a program course." });
     }
 
+    if (body.role === Role.STUDENT && !body.gender) {
+      return reply.code(400).send({ error: "Students require a gender." });
+    }
+
+    if (body.role === Role.STUDENT && !body.schoolType) {
+      return reply.code(400).send({ error: "Students require a school type." });
+    }
+
     if (body.role === Role.STUDENT && body.programCourse) {
       await assertActiveProgramSlug(body.programCourse);
     }
@@ -150,6 +178,8 @@ export async function userRoutes(app: FastifyInstance) {
         role: body.role,
         yearLevel: body.role === Role.STUDENT ? body.yearLevel : null,
         programCourse: body.role === Role.STUDENT ? body.programCourse : null,
+        gender: body.role === Role.STUDENT ? body.gender : null,
+        schoolType: body.role === Role.STUDENT ? body.schoolType : null,
         qaUnlimited: body.role === Role.STUDENT ? Boolean(body.qaUnlimited) : false,
       },
       select: userSelect,
