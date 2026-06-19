@@ -9,6 +9,7 @@ import StudentPrivacyPolicyModal, {
 } from "../components/StudentPrivacyPolicyModal";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { primeExamFullscreen } from "../lib/examFullscreen";
 import { resetBodyScrollLock } from "../lib/scrollLock";
 import { useSidebar } from "../lib/sidebar";
 import {
@@ -374,6 +375,7 @@ export default function StudentDashboard() {
   }
 
   async function resumeExam() {
+    primeExamFullscreen();
     setStartingExam(true);
     setStartError("");
     setError("");
@@ -401,6 +403,7 @@ export default function StudentDashboard() {
   }
 
   async function beginExam() {
+    primeExamFullscreen();
     setStartingExam(true);
     setStartError("");
     try {

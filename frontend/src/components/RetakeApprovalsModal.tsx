@@ -169,7 +169,7 @@ export default function RetakeApprovalsModal({
     <>
       <div className={inline ? "saved-panel-header" : "modal-header"}>
         <div>
-          <h2>Retake Approvals</h2>
+          <h2>Approvals</h2>
           <p className="muted section-desc">
             Students who failed can retake up to 2 times after approval.
           </p>

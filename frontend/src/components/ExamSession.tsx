@@ -8,35 +8,14 @@ import {
   type RefObject,
 } from "react";
 import { MAX_EXAM_FOCUS_VIOLATIONS } from "../lib/constants";
+import {
+  exitExamFullscreen,
+  isExamFullscreenActive,
+  requestExamFullscreen,
+  supportsFullscreenLockdown,
+} from "../lib/examFullscreen";
 
 type LockReason = "tab" | "fullscreen" | null;
-
-function supportsFullscreenLockdown() {
-  return document.fullscreenEnabled && window.isSecureContext;
-}
-
-async function enterFullscreen(target: HTMLElement | null) {
-  if (!supportsFullscreenLockdown() || !target) return false;
-
-  try {
-    if (document.fullscreenElement !== target) {
-      await target.requestFullscreen();
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function exitFullscreen() {
-  if (document.fullscreenElement) {
-    try {
-      await document.exitFullscreen();
-    } catch {
-      // Ignore if the browser blocks exit.
-    }
-  }
-}
 
 function isAllowedExamOverlayOpen() {
   return Boolean(document.querySelector(".question-image-overlay:not(.is-closing)"));
@@ -51,6 +30,7 @@ function useExamLockdown(
   const [lockReason, setLockReason] = useState<LockReason>(null);
   const [violationCount, setViolationCount] = useState(0);
   const [autoSubmitting, setAutoSubmitting] = useState(false);
+  const [needsFullscreenTap, setNeedsFullscreenTap] = useState(false);
   const violationCooldownRef = useRef(false);
   const examInteractionRef = useRef(false);
   const examInteractionTimerRef = useRef<number | null>(null);
@@ -73,6 +53,15 @@ function useExamLockdown(
       fullscreenViolationTimerRef.current = null;
     }
   }, []);
+
+  const syncFullscreenPrompt = useCallback(() => {
+    if (!supportsFullscreenLockdown()) {
+      setNeedsFullscreenTap(false);
+      return;
+    }
+
+    setNeedsFullscreenTap(!isExamFullscreenActive(containerRef.current));
+  }, [containerRef]);
 
   const markExamInteraction = useCallback((durationMs = 2000) => {
     examInteractionRef.current = true;
@@ -117,11 +106,14 @@ function useExamLockdown(
     fullscreenViolationTimerRef.current = window.setTimeout(() => {
       fullscreenViolationTimerRef.current = null;
       const container = containerRef.current;
-      if (!container || document.fullscreenElement === container) return;
+      if (!container || isExamFullscreenActive(container)) return;
       if (isAllowedExamOverlayOpen() || examInteractionRef.current) return;
 
-      void enterFullscreen(container).then((entered) => {
-        if (entered || document.fullscreenElement === container) return;
+      void requestExamFullscreen(container).then((entered) => {
+        if (entered || isExamFullscreenActive(container)) {
+          setNeedsFullscreenTap(false);
+          return;
+        }
         pauseExam("fullscreen");
       });
     }, 1200);
@@ -131,16 +123,31 @@ function useExamLockdown(
     if (!supportsFullscreenLockdown()) {
       setLockedOut(false);
       setLockReason(null);
+      setNeedsFullscreenTap(false);
       return true;
     }
 
-    const entered = await enterFullscreen(containerRef.current);
-    if (!entered && document.fullscreenEnabled) {
+    const container = containerRef.current;
+    const entered = await requestExamFullscreen(container);
+    if (!entered && !isExamFullscreenActive(container)) {
+      setNeedsFullscreenTap(true);
       return false;
     }
+
+    setNeedsFullscreenTap(false);
     setLockedOut(false);
     setLockReason(null);
     return true;
+  }, [containerRef]);
+
+  const enterFullscreenFromPrompt = useCallback(async () => {
+    const container = containerRef.current;
+    const entered = await requestExamFullscreen(container);
+    if (entered || isExamFullscreenActive(container)) {
+      setNeedsFullscreenTap(false);
+      return true;
+    }
+    return false;
   }, [containerRef]);
 
   useEffect(() => {
@@ -148,32 +155,31 @@ function useExamLockdown(
       setLockedOut(false);
       setLockReason(null);
       setAutoSubmitting(false);
+      setNeedsFullscreenTap(false);
       violationCooldownRef.current = false;
       document.body.classList.remove("exam-session-active");
-      void exitFullscreen();
+      void exitExamFullscreen();
       return;
     }
 
     document.body.classList.add("exam-session-active");
 
     const frame = window.requestAnimationFrame(() => {
-      void enterFullscreen(containerRef.current);
+      void requestExamFullscreen(containerRef.current).finally(syncFullscreenPrompt);
     });
+
+    const promptTimer = window.setTimeout(syncFullscreenPrompt, 900);
 
     return () => {
       window.cancelAnimationFrame(frame);
+      window.clearTimeout(promptTimer);
       document.body.classList.remove("exam-session-active");
-      void exitFullscreen();
+      void exitExamFullscreen();
     };
-  }, [active, containerRef]);
+  }, [active, containerRef, syncFullscreenPrompt]);
 
   useEffect(() => {
     if (!active) return;
-
-    function isExamFullscreen() {
-      const container = containerRef.current;
-      return Boolean(container && document.fullscreenElement === container);
-    }
 
     function handleVisibilityChange() {
       if (!document.hidden) {
@@ -199,14 +205,16 @@ function useExamLockdown(
     function handleFullscreenChange() {
       if (!supportsFullscreenLockdown()) return;
 
-      if (isExamFullscreen()) {
+      if (isExamFullscreenActive(containerRef.current)) {
         clearFullscreenViolationTimer();
+        setNeedsFullscreenTap(false);
         return;
       }
 
       if (isAllowedExamOverlayOpen()) return;
       if (examInteractionRef.current) return;
 
+      setNeedsFullscreenTap(true);
       scheduleFullscreenViolationCheck();
     }
 
@@ -256,7 +264,9 @@ function useExamLockdown(
     lockReason,
     violationCount,
     autoSubmitting,
+    needsFullscreenTap,
     resumeExam,
+    enterFullscreenFromPrompt,
     markExamInteraction,
   };
 }
@@ -291,9 +301,18 @@ export default function ExamSession({
   examTimeLimitSeconds = null,
 }: Props) {
   const examContainerRef = useRef<HTMLDivElement>(null);
-  const { lockedOut, lockReason, violationCount, autoSubmitting, resumeExam, markExamInteraction } =
-    useExamLockdown(active, examContainerRef, onMaxViolationsReached);
+  const {
+    lockedOut,
+    lockReason,
+    violationCount,
+    autoSubmitting,
+    needsFullscreenTap,
+    resumeExam,
+    enterFullscreenFromPrompt,
+    markExamInteraction,
+  } = useExamLockdown(active, examContainerRef, onMaxViolationsReached);
   const [resumeError, setResumeError] = useState("");
+  const [fullscreenPromptError, setFullscreenPromptError] = useState("");
 
   useEffect(() => {
     if (!interactionGuardRef) return;
@@ -314,6 +333,16 @@ export default function ExamSession({
     const resumed = await resumeExam();
     if (!resumed && supportsFullscreenLockdown()) {
       setResumeError("Fullscreen is required to continue. Click the button again and allow fullscreen.");
+    }
+  }
+
+  async function handleEnterFullscreen() {
+    setFullscreenPromptError("");
+    const entered = await enterFullscreenFromPrompt();
+    if (!entered) {
+      setFullscreenPromptError(
+        "Fullscreen was blocked. Click Enter fullscreen again and choose Allow in Chrome."
+      );
     }
   }
 
@@ -367,6 +396,22 @@ export default function ExamSession({
 
       {footer && <footer className="exam-session-footer">{footer}</footer>}
 
+      {needsFullscreenTap && !lockedOut && !autoSubmitting && (
+        <div className="exam-lock-overlay">
+          <div className="exam-lock-card card">
+            <h2>Enter fullscreen</h2>
+            <p>
+              Chrome needs your permission to enter fullscreen before the exam can start. Click the
+              button below, then choose <strong>Allow</strong> if the browser asks.
+            </p>
+            {fullscreenPromptError ? <p className="error">{fullscreenPromptError}</p> : null}
+            <button type="button" className="btn" onClick={() => void handleEnterFullscreen()}>
+              Enter fullscreen
+            </button>
+          </div>
+        </div>
+      )}
+
       {autoSubmitting && (
         <div className="exam-lock-overlay">
           <div className="exam-lock-card card">
@@ -396,7 +441,7 @@ export default function ExamSession({
               Return to fullscreen to continue.
             </p>
             {resumeError && <p className="error">{resumeError}</p>}
-            <button type="button" className="btn" onClick={handleResume}>
+            <button type="button" className="btn" onClick={() => void handleResume()}>
               Return to exam
             </button>
           </div>

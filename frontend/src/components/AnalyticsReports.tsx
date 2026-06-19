@@ -34,6 +34,7 @@ import {
   type ProgramCourseFilter,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
+import PreparednessInterpretationPanel from "./PreparednessInterpretationPanel";
 import { usePagination } from "../hooks/usePagination";
 import { useChartOrder } from "../hooks/useChartOrder";
 
@@ -110,6 +111,14 @@ interface ReportsData {
     tone: "strong" | "moderate" | "weak";
     total: number;
     correct: number;
+    domains?: Array<{
+      bloomLevel: string;
+      score: number;
+      tone: "strong" | "moderate" | "weak";
+      total: number;
+      correct: number;
+      classAverage?: number;
+    }>;
   }>;
   byBloomLevel?: Array<{
     bloomLevel: string;
@@ -207,6 +216,7 @@ interface ReportsData {
     averageScore: number;
     readinessLevel: string;
   }>;
+  preparednessReport?: import("../lib/preparednessFramework").PreparednessReport;
 }
 
 interface Props {
@@ -546,8 +556,8 @@ export function AnalyticsReportBody({
         return (
           <ChartCard
             className="analytics-chart-card-balanced"
-            title="Score distribution"
-            description="Groups students into 10-point score ranges. Shows if class performance is clustered or split."
+            title="Preparedness distribution"
+            description="Students grouped by NIRNDO Readiness Index bands (Very Low through Very High)."
             icon={<ChartIconBars direction="vertical" />}
           >
             <VerticalHistogram
@@ -597,7 +607,7 @@ export function AnalyticsReportBody({
           <ChartCard
             className="analytics-chart-card-paired analytics-chart-card-difficulty"
             title="Performance by difficulty"
-            description="Easy, medium, and hard bars. Color shows how retention drops as difficulty rises."
+            description="Easy, medium, and hard bars with L1–L6 domain scores mapped to each difficulty tier."
             icon={<ChartIconBars direction="vertical" />}
           >
             <GroupedDifficultyBars items={reports.byDifficulty} />
@@ -702,7 +712,7 @@ export function AnalyticsReportBody({
         return (
           <ChartCard
             title="Score per difficulty"
-            description="Three bars for easy, medium, and hard. Shows where retention drops."
+            description="Overall score per difficulty with domain breakdown (L1–L2 easy, L3 medium, L4–L6 hard)."
             icon={<ChartIconBars direction="vertical" />}
           >
             <GroupedDifficultyBars items={reports.byDifficulty} />
@@ -894,6 +904,9 @@ export function AnalyticsReportBody({
 
       {lens === "group" && (
         <>
+          {reports.preparednessReport ? (
+            <PreparednessInterpretationPanel report={reports.preparednessReport} />
+          ) : null}
           <ChartReorderHint />
           <SwappableChartGrid order={groupChartOrder} onOrderChange={setGroupChartOrder}>
             {(id) => renderGroupChart(id as GroupAnalyticsChartId)}

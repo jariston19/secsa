@@ -7,6 +7,7 @@ import { yearLevelSchema, curriculumYearForStudentYear } from "../lib/yearLevel.
 import { programCourseSlugSchema, assertActiveProgramSlug, SHARED_DIAGNOSTIC_PROGRAM } from "../lib/programCourse.js";
 import { isSharedDiagnosticProgram } from "../lib/incomingDiagnostic.js";
 import { subjectIncludesProgram } from "../lib/subjectPrograms.js";
+import { expandConfigsWithSubjectDifficulty } from "../lib/examDifficultyDistribution.js";
 import {
   generateCanonicalExamQuestions,
   getConfigPoolQuestions,
@@ -16,10 +17,23 @@ import {
 const configSchema = z.object({
   subjectId: z.string().min(1),
   topicId: z.string().optional().nullable(),
-  easyCount: z.number().int().min(0),
-  mediumCount: z.number().int().min(0),
-  hardCount: z.number().int().min(0),
+  itemCount: z.number().int().min(0),
 });
+
+function expandConfigs(configs: z.infer<typeof configSchema>[]) {
+  return expandConfigsWithSubjectDifficulty(
+    configs.filter((config) => config.itemCount > 0)
+  ).map((config, index) => ({
+    id: `draft-${index}`,
+    questionSetId: "draft",
+    subjectId: config.subjectId,
+    topicId: config.topicId ?? null,
+    itemCount: config.itemCount,
+    easyCount: config.easyCount,
+    mediumCount: config.mediumCount,
+    hardCount: config.hardCount,
+  }));
+}
 
 const createSetSchema = z.object({
   name: z.string().min(1),
@@ -45,7 +59,8 @@ async function validateSetConfigsForYear(
   programCourse: string,
   configs: z.infer<typeof configSchema>[]
 ) {
-  const configTotal = configs.reduce(
+  const expanded = expandConfigs(configs);
+  const configTotal = expanded.reduce(
     (sum, c) => sum + c.easyCount + c.mediumCount + c.hardCount,
     0
   );
@@ -84,17 +99,7 @@ async function validateSetConfigsForYear(
     };
   }
 
-  const errors = await validateQuestionSetConfigs(
-    configs.map((c, i) => ({
-      id: `draft-${i}`,
-      questionSetId: "draft",
-      subjectId: c.subjectId,
-      topicId: c.topicId ?? null,
-      easyCount: c.easyCount,
-      mediumCount: c.mediumCount,
-      hardCount: c.hardCount,
-    }))
-  );
+  const errors = await validateQuestionSetConfigs(expanded);
 
   if (errors.length > 0) {
     return { error: "Insufficient questions in pools.", details: errors, configTotal };
@@ -178,9 +183,9 @@ export async function questionSetRoutes(app: FastifyInstance) {
         timeLimitMinutes: body.timeLimitMinutes,
         createdById: user.id,
         configs: {
-          create: body.configs.map((c) => ({
+          create: expandConfigs(body.configs).map((c) => ({
             subjectId: c.subjectId,
-            topicId: c.topicId ?? null,
+            topicId: c.topicId,
             easyCount: c.easyCount,
             mediumCount: c.mediumCount,
             hardCount: c.hardCount,
@@ -240,9 +245,9 @@ export async function questionSetRoutes(app: FastifyInstance) {
           examQuestionIds:
             existing.status === QuestionSetStatus.DEPLOYED ? undefined : null,
           configs: {
-            create: body.configs.map((c) => ({
+            create: expandConfigs(body.configs).map((c) => ({
               subjectId: c.subjectId,
-              topicId: c.topicId ?? null,
+              topicId: c.topicId,
               easyCount: c.easyCount,
               mediumCount: c.mediumCount,
               hardCount: c.hardCount,

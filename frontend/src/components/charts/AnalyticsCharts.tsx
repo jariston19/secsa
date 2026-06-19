@@ -146,21 +146,74 @@ export function PairedHorizontalBarChart({
   );
 }
 
+export type DifficultyDomainItem = {
+  bloomLevel: string;
+  score: number;
+  total?: number;
+  classAverage?: number;
+};
+
 export function GroupedDifficultyBars({
   items,
 }: {
-  items: Array<{ difficulty: string; score: number }>;
+  items: Array<{
+    difficulty: string;
+    score: number;
+    domains?: DifficultyDomainItem[];
+  }>;
 }) {
   return (
-    <GroupedPercentBars
-      ariaLabel="Performance by difficulty"
-      items={items.map((item) => ({
-        id: item.difficulty,
-        label: DIFFICULTY_LABELS[item.difficulty] ?? item.difficulty,
-        score: item.score,
-        color: DIFFICULTY_COLORS[item.difficulty as keyof typeof DIFFICULTY_COLORS] ?? "#64748b",
-      }))}
-    />
+    <div className="chart-difficulty-with-domains" role="img" aria-label="Performance by difficulty">
+      <GroupedPercentBars
+        ariaLabel="Performance by difficulty"
+        items={items.map((item) => ({
+          id: item.difficulty,
+          label: DIFFICULTY_LABELS[item.difficulty] ?? item.difficulty,
+          score: item.score,
+          color: DIFFICULTY_COLORS[item.difficulty as keyof typeof DIFFICULTY_COLORS] ?? "#64748b",
+        }))}
+      />
+      {items.some((item) => item.domains && item.domains.length > 0) ? (
+        <div className="chart-difficulty-domain-grid">
+          {items.map((item) => (
+            <div key={item.difficulty} className="chart-difficulty-domain-col">
+              {(item.domains ?? []).map((domain) => {
+                const color =
+                  BLOOM_LEVEL_COLORS[domain.bloomLevel as keyof typeof BLOOM_LEVEL_COLORS] ??
+                  "#64748b";
+                const width = Math.min(100, Math.max(0, domain.score));
+                const hasData = (domain.total ?? 1) > 0;
+                return (
+                  <div key={domain.bloomLevel} className="chart-difficulty-domain-row">
+                    <span className="chart-difficulty-domain-label">
+                      {BLOOM_LEVEL_SHORT_LABELS[
+                        domain.bloomLevel as keyof typeof BLOOM_LEVEL_SHORT_LABELS
+                      ] ?? domain.bloomLevel}
+                    </span>
+                    <div className="chart-difficulty-domain-bar-track">
+                      <span
+                        className="chart-difficulty-domain-bar-fill"
+                        style={{
+                          width: `${width}%`,
+                          backgroundColor: color,
+                          opacity: hasData ? 1 : 0.25,
+                        }}
+                      />
+                    </div>
+                    <span className="chart-difficulty-domain-score">
+                      {hasData ? `${domain.score.toFixed(0)}%` : "—"}
+                      {domain.classAverage != null && domain.classAverage > 0
+                        ? ` · ${domain.classAverage.toFixed(0)}% class`
+                        : ""}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

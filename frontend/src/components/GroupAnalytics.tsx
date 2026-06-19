@@ -7,6 +7,7 @@ import {
   formatProgramCourse,
   type ProgramCourseFilter,
 } from "../lib/programCourse";
+import { preparednessToneFromLabel } from "../lib/preparednessFramework";
 import { useProgramCourseOptions } from "../lib/programs";
 
 type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
@@ -46,6 +47,13 @@ interface GroupReportsData {
     tone: "strong" | "moderate" | "weak";
     total: number;
     correct: number;
+    domains?: Array<{
+      bloomLevel: string;
+      score: number;
+      tone: "strong" | "moderate" | "weak";
+      total: number;
+      correct: number;
+    }>;
   }>;
   byBloomLevel?: Array<{
     bloomLevel: string;
@@ -135,6 +143,7 @@ interface GroupReportsData {
   passFail: { passed: number; failed: number };
   scorePercentiles: { min: number; max: number; avg: number };
   cohortSummaries: CohortSummary[];
+  preparednessReport?: import("../lib/preparednessFramework").PreparednessReport;
 }
 
 interface SelectedCohort {
@@ -147,9 +156,7 @@ interface Props {
 }
 
 function readinessTone(level: string) {
-  if (level === "Ready") return "ready";
-  if (level === "Needs Improvement") return "watch";
-  return "risk";
+  return preparednessToneFromLabel(level);
 }
 
 export default function GroupAnalytics({ token }: Props) {

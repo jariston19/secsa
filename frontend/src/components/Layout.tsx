@@ -56,7 +56,10 @@ function LayoutShell() {
     if (!pageNav?.value || !pageNav.menus?.length) return;
     const menuIds = pageNav.menus
       .filter(
-        (menu) => pageNav.value === menu.id || pageNav.value.startsWith(`${menu.id}-`)
+        (menu) =>
+          pageNav.value === menu.id ||
+          pageNav.value.startsWith(`${menu.id}-`) ||
+          menu.items.some((item) => item.id === pageNav.value)
       )
       .map((menu) => menu.id);
     if (menuIds.length === 0) return;
@@ -162,19 +165,34 @@ function LayoutShell() {
     });
   }
 
-  function renderPageSegments() {
+  function renderNavItems(items: NonNullable<typeof pageNav>["segments"]) {
     if (!pageNav) return null;
 
-    return pageNav.segments.map((segment) => (
+    return items.map((segment) => (
       <button
         key={segment.id}
         type="button"
-        className={`sidebar-link${pageNav.value === segment.id ? " active" : ""}`}
+        className={`sidebar-link sidebar-link-row${
+          pageNav.value === segment.id ? " active" : ""
+        }${segment.badge != null && segment.badge > 0 ? " sidebar-link-has-badge" : ""}`}
         onClick={() => handlePageNavChange(segment.id)}
       >
-        {segment.label}
+        <span>{segment.label}</span>
+        {segment.badge != null && segment.badge > 0 ? (
+          <span className="sidebar-nav-badge sidebar-nav-badge-alert">{segment.badge}</span>
+        ) : null}
       </button>
     ));
+  }
+
+  function renderPageSegments() {
+    if (!pageNav) return null;
+    return renderNavItems(pageNav.segments);
+  }
+
+  function renderTrailingSegments() {
+    if (!pageNav?.trailingSegments?.length) return null;
+    return renderNavItems(pageNav.trailingSegments);
   }
 
   return (
@@ -231,6 +249,7 @@ function LayoutShell() {
               {pageNav.menusFirst && renderPageMenus()}
               {renderPageSegments()}
               {!pageNav.menusFirst && renderPageMenus()}
+              {renderTrailingSegments()}
               {pageNav.actions?.map((action) => (
                 <button
                   key={action.id}

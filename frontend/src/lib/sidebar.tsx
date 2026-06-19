@@ -26,7 +26,8 @@ export type SidebarPageMenu = {
 };
 
 export type SidebarPageNav = {
-  segments: Array<{ id: string; label: string }>;
+  segments: SidebarPageNavItem[];
+  trailingSegments?: SidebarPageNavItem[];
   value: string;
   onChange: (id: string) => void;
   actions?: SidebarPageAction[];

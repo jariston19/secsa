@@ -43,7 +43,9 @@ import { useProgramCourseOptions, usePrograms } from "../lib/programs";
 type Tab =
   | "setup"
   | "encode"
-  | "sets"
+  | "sets-build"
+  | "sets-deploy"
+  | "sets-archive"
   | "saved-subjects"
   | "saved-topics"
   | "saved-questions"
@@ -60,7 +62,6 @@ interface TopicDraftRow {
 const TAB_SEGMENTS = [
   { id: "setup", label: "Setup" },
   { id: "encode", label: "Encode" },
-  { id: "sets", label: "Build" },
 ];
 
 interface Subject {
@@ -103,8 +104,6 @@ export default function TeacherDashboard() {
   const [sets, setSets] = useState<QuestionSet[]>([]);
   const [previewSetId, setPreviewSetId] = useState<string | null>(null);
   const [pendingRetakes, setPendingRetakes] = useState(0);
-  const [showBuildSet, setShowBuildSet] = useState(false);
-  const [showArchivedSets, setShowArchivedSets] = useState(false);
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const refreshGeneration = useRef(0);
@@ -211,7 +210,42 @@ export default function TeacherDashboard() {
 
   const handlePageNavChange = useCallback((id: string) => {
     setActiveTab(id as Tab);
+    if (id === "sets-build") {
+      setEditingSetId(null);
+    }
   }, []);
+
+  const tabSegments = useMemo(
+    () => [
+      { id: "setup", label: "Setup" },
+      { id: "encode", label: "Encode" },
+    ],
+    []
+  );
+
+  const trailingSegments = useMemo(
+    () => [
+      {
+        id: "retake-approvals",
+        label: "Approvals",
+        badge: pendingRetakes,
+      },
+    ],
+    [pendingRetakes]
+  );
+
+  const createMenu = useMemo(
+    () => ({
+      id: "create",
+      label: "Create",
+      items: [
+        { id: "sets-build", label: "Build" },
+        { id: "sets-deploy", label: "Deploy" },
+        { id: "sets-archive", label: "Archive" },
+      ],
+    }),
+    []
+  );
 
   const savedMenu = useMemo(
     () => ({
@@ -237,31 +271,22 @@ export default function TeacherDashboard() {
     [subjects.length, topics.length]
   );
 
-  const retakeAction = useMemo(
-    () => ({
-      id: "retake-approvals",
-      label: `Retake Approvals${pendingRetakes > 0 ? ` (${pendingRetakes})` : ""}`,
-      onClick: () => setActiveTab("retake-approvals"),
-      alert: pendingRetakes > 0,
-    }),
-    [pendingRetakes]
-  );
 
   useEffect(() => {
     setPageNav({
-      segments: TAB_SEGMENTS,
+      segments: tabSegments,
+      trailingSegments,
       value: activeTab,
       onChange: handlePageNavChange,
-      menus: [savedMenu],
-      actions: [retakeAction],
+      menus: [createMenu, savedMenu],
     });
 
     return () => setPageNav(null);
-  }, [handlePageNavChange, setPageNav]);
+  }, [createMenu, handlePageNavChange, setPageNav, tabSegments, trailingSegments]);
 
   useEffect(() => {
-    patchPageNav({ menus: [savedMenu], actions: [retakeAction] });
-  }, [savedMenu, retakeAction, patchPageNav]);
+    patchPageNav({ segments: tabSegments, trailingSegments, menus: [createMenu, savedMenu] });
+  }, [createMenu, savedMenu, tabSegments, trailingSegments, patchPageNav]);
 
   useEffect(() => {
     setPageNavValue(activeTab);
@@ -744,13 +769,37 @@ export default function TeacherDashboard() {
         />
       )}
 
-      {activeTab === "sets" && (
+      {activeTab === "sets-build" && (
+        <BuildQuestionSetModal
+          inline
+          subjects={subjects}
+          topics={topics}
+          programCourse={activeProgramCourse}
+          token={token}
+          setId={editingSetId}
+          onClose={() => {
+            setEditingSetId(null);
+            if (editingSetId) {
+              setActiveTab("sets-deploy");
+            }
+          }}
+          onCreated={async (msg) => {
+            toast.success(msg);
+            await refresh();
+            setEditingSetId(null);
+            setActiveTab("sets-deploy");
+          }}
+        />
+      )}
+
+      {activeTab === "sets-deploy" && (
         <section className="card build-sets-panel">
           <div className="sets-header">
             <div>
-              <h2>Build &amp; Deploy Question Sets</h2>
+              <h2>Deploy</h2>
               <p className="muted section-desc">
-                Create a set with per-topic difficulty assignments, then deploy when ready.
+                Review draft sets, deploy when ready, or edit allocations before students take the
+                exam.
               </p>
               <div className="sets-filters">
                 <label className="sets-program-filter">
@@ -795,25 +844,6 @@ export default function TeacherDashboard() {
                   </select>
                 </label>
               </div>
-            </div>
-            <div className="sets-header-actions">
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() => setShowArchivedSets(true)}
-              >
-                Archive
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  setEditingSetId(null);
-                  setShowBuildSet(true);
-                }}
-              >
-                Build question set
-              </button>
             </div>
           </div>
 
@@ -867,8 +897,8 @@ export default function TeacherDashboard() {
                               type="button"
                               className="btn secondary"
                               onClick={() => {
+                                setActiveTab("sets-build");
                                 setEditingSetId(set.id);
-                                setShowBuildSet(true);
                               }}
                             >
                               Edit
@@ -922,6 +952,20 @@ export default function TeacherDashboard() {
         </section>
       )}
 
+      {activeTab === "sets-archive" && (
+        <ArchivedQuestionSetsModal
+          embedded
+          programCourse={setsProgramFilter}
+          token={token}
+          onUpdated={(message, isError) => {
+            if (isError) toast.error(message);
+            else toast.success(message);
+            refresh().catch(() => {});
+          }}
+          onPreview={(setId) => setPreviewSetId(setId)}
+        />
+      )}
+
       {activeTab === "saved-subjects" && (
         <SavedSubjectsModal
           inline
@@ -956,41 +1000,6 @@ export default function TeacherDashboard() {
       )}
       </TabPanel>
       </div>
-
-      {showBuildSet && (
-        <BuildQuestionSetModal
-          subjects={subjects}
-          topics={topics}
-          programCourse={activeProgramCourse}
-          token={token}
-          setId={editingSetId}
-          onClose={() => {
-            setShowBuildSet(false);
-            setEditingSetId(null);
-          }}
-          onCreated={async (msg) => {
-            toast.success(msg);
-            await refresh();
-          }}
-        />
-      )}
-
-      {showArchivedSets && (
-        <ArchivedQuestionSetsModal
-          programCourse={setsProgramFilter}
-          token={token}
-          onClose={() => setShowArchivedSets(false)}
-          onUpdated={async (msg, isError) => {
-            if (isError) toast.error(msg);
-            else toast.success(msg);
-            if (!isError) await refresh();
-          }}
-          onPreview={(setId) => {
-            setShowArchivedSets(false);
-            setPreviewSetId(setId);
-          }}
-        />
-      )}
 
       {previewSetId && (
         <QuestionSetPreviewModal

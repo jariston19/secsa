@@ -111,6 +111,14 @@ interface IndividualReport {
     tone: "strong" | "moderate" | "weak";
     avgTimeSeconds: number | null;
     classAvgTimeSeconds: number | null;
+    domains?: Array<{
+      bloomLevel: string;
+      score: number;
+      classAverage: number;
+      tone: "strong" | "moderate" | "weak";
+      total: number;
+      correct: number;
+    }>;
   }>;
   byBloomLevel?: Array<{
     bloomLevel: string;
@@ -232,15 +240,10 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
         <ChartCard
           className="analytics-chart-card-paired analytics-chart-card-difficulty"
           title="Performance by difficulty"
-          description="Easy, medium, and hard bars. Color shows how retention drops as difficulty rises."
+          description="Easy, medium, and hard bars with L1–L6 domain scores mapped to each difficulty tier."
           icon={<ChartIconBars direction="vertical" />}
         >
-          <GroupedDifficultyBars
-            items={(report.byDifficulty ?? []).map((row) => ({
-              difficulty: row.difficulty,
-              score: row.score,
-            }))}
-          />
+          <GroupedDifficultyBars items={report.byDifficulty ?? []} />
         </ChartCard>
       );
     case "score-per-subject":

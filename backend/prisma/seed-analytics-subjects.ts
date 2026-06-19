@@ -13,6 +13,7 @@ import {
   SHARED_INCOMING_DIAGNOSTIC_NAME,
 } from "../src/lib/incomingDiagnostic.js";
 import { ensureDemoImage } from "./seed-demo-images.js";
+import { ITC_DEMO_SUBJECTS } from "./seed-itc-programming.js";
 
 const prisma = new PrismaClient();
 
@@ -48,6 +49,8 @@ export const ANALYTICS_DEMO_SUBJECT_CODES = [
   "VAL 101",
   "PHYS 201",
   "CAP 301",
+  "ITC 12",
+  "ITC 13",
 ] as const;
 
 export const GEN_ED_SUBJECT_CODES = [
@@ -107,28 +110,10 @@ async function archiveLegacyProgramDiagnostics() {
 export const DEMO_DIAGNOSTIC_TOTAL_ITEMS = 20;
 export const DEMO_COMPREHENSIVE_TOTAL_ITEMS = 10;
 
-type ExamDifficultyCounts = {
-  easyCount: number;
-  mediumCount: number;
-  hardCount: number;
-};
-
-function difficultyCountsForTotal(totalItems: number): ExamDifficultyCounts {
-  if (totalItems <= 0) {
-    return { easyCount: 0, mediumCount: 0, hardCount: 0 };
-  }
-  if (totalItems === 1) {
-    return { easyCount: 1, mediumCount: 0, hardCount: 0 };
-  }
-  if (totalItems === 2) {
-    return { easyCount: 1, mediumCount: 1, hardCount: 0 };
-  }
-
-  const hardCount = Math.max(1, Math.round(totalItems * 0.3));
-  const mediumCount = Math.max(1, Math.round(totalItems * 0.3));
-  const easyCount = Math.max(1, totalItems - hardCount - mediumCount);
-  return { easyCount, mediumCount, hardCount };
-}
+import {
+  difficultyCountsForTotal,
+  type ExamDifficultyCounts,
+} from "../src/lib/examDifficultyDistribution.js";
 
 function distributeItemsAcrossSubjects(subjectCount: number, totalItems: number) {
   const counts: number[] = [];
@@ -1497,7 +1482,7 @@ export async function ensureAnalyticsSubjects(teacher: Pick<User, "id">) {
   let questionsCreated = 0;
   const subjectIds: string[] = [];
 
-  for (const plan of DEMO_SUBJECTS) {
+  for (const plan of [...DEMO_SUBJECTS, ...ITC_DEMO_SUBJECTS]) {
     const result = await seedSubjectContent(teacher.id, plan);
     subjectIds.push(result.subjectId);
     questionsCreated += result.questionsCreated;

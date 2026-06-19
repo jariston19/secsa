@@ -24,7 +24,8 @@ interface QuestionSet {
 interface Props {
   programCourse: ProgramCourseFilter;
   token: string | null;
-  onClose: () => void;
+  onClose?: () => void;
+  embedded?: boolean;
   onUpdated: (message: string, isError?: boolean) => void;
   onPreview: (setId: string) => void;
 }
@@ -33,6 +34,7 @@ export default function ArchivedQuestionSetsModal({
   programCourse,
   token,
   onClose,
+  embedded = false,
   onUpdated,
   onPreview,
 }: Props) {
@@ -40,7 +42,7 @@ export default function ArchivedQuestionSetsModal({
   const [sets, setSets] = useState<QuestionSet[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
-  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose);
+  const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
 
   async function loadArchived() {
     setLoading(true);
@@ -97,99 +99,112 @@ export default function ArchivedQuestionSetsModal({
     }
   }
 
+  const content = (
+    <>
+      <div className={embedded ? "sets-header" : "modal-header"}>
+        <div>
+          <h2>{embedded ? "Archive" : "Archived Question Sets"}</h2>
+          <p className="muted">
+            {programCourse === "ALL"
+              ? "All program courses"
+              : formatProgramCourse(programCourse)}{" "}
+            · restore sets to edit or deploy again
+          </p>
+        </div>
+        {!embedded ? (
+          <button type="button" className="btn secondary" onClick={requestClose}>
+            Close
+          </button>
+        ) : null}
+      </div>
+
+      {loading && <p className="muted">Loading archived sets...</p>}
+
+      {!loading && sets.length === 0 && (
+        <p className="muted">
+          No archived question sets
+          {programCourse === "ALL" ? "" : " for this program course"}.
+        </p>
+      )}
+
+      {!loading && sets.length > 0 && (
+        <>
+          <ListPanel
+            footer={
+              <ModalPagination
+                page={page}
+                totalPages={totalPages}
+                pageStart={pageStart}
+                pageEnd={pageEnd}
+                totalItems={totalItems}
+                onPageChange={setPage}
+              />
+            }
+          >
+            <div className="modal-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Year</th>
+                    <th>Type</th>
+                    <th>Items</th>
+                    <th>Attempts</th>
+                    <th>Archived</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedSets.map((set) => (
+                    <tr key={set.id}>
+                      <td>{set.name}</td>
+                      <td>{set.yearLevel}</td>
+                      <td>{formatExamType(set.type)}</td>
+                      <td>{set.totalItems}</td>
+                      <td>{set._count?.examAttempts ?? 0}</td>
+                      <td>{new Date(set.updatedAt).toLocaleDateString()}</td>
+                      <td>
+                        <div className="action-buttons">
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            onClick={() => onPreview(set.id)}
+                          >
+                            Preview
+                          </button>
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={restoringId === set.id}
+                            onClick={() => restoreSet(set.id, set.name)}
+                          >
+                            {restoringId === set.id ? "Restoring..." : "Restore"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </ListPanel>
+        </>
+      )}
+    </>
+  );
+
+  if (embedded) {
+    return <section className="card build-sets-panel archived-sets-panel">{content}</section>;
+  }
+
   return portal(
     <div className={overlayClass} onClick={requestClose}>
       <div
         className={panelClass("saved-subjects-modal archived-sets-modal")}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-header">
-          <div>
-            <h2>Archived Question Sets</h2>
-            <p className="muted">
-              {programCourse === "ALL"
-                ? "All program courses"
-                : formatProgramCourse(programCourse)}{" "}
-              · restore sets to edit or deploy again
-            </p>
-          </div>
-          <button type="button" className="btn secondary" onClick={requestClose}>
-            Close
-          </button>
-        </div>
-
-        {loading && <p className="muted">Loading archived sets...</p>}
-
-        {!loading && sets.length === 0 && (
-          <p className="muted">
-            No archived question sets
-            {programCourse === "ALL" ? "" : " for this program course"}.
-          </p>
-        )}
-
-        {!loading && sets.length > 0 && (
-          <>
-            <ListPanel
-              footer={
-                <ModalPagination
-                  page={page}
-                  totalPages={totalPages}
-                  pageStart={pageStart}
-                  pageEnd={pageEnd}
-                  totalItems={totalItems}
-                  onPageChange={setPage}
-                />
-              }
-            >
-            <div className="modal-table-wrap">
-              <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Year</th>
-                  <th>Type</th>
-                  <th>Items</th>
-                  <th>Attempts</th>
-                  <th>Archived</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedSets.map((set) => (
-                  <tr key={set.id}>
-                    <td>{set.name}</td>
-                    <td>{set.yearLevel}</td>
-                    <td>{formatExamType(set.type)}</td>
-                    <td>{set.totalItems}</td>
-                    <td>{set._count?.examAttempts ?? 0}</td>
-                    <td>{new Date(set.updatedAt).toLocaleDateString()}</td>
-                    <td>
-                      <div className="action-buttons">
-                        <button
-                          type="button"
-                          className="btn secondary"
-                          onClick={() => onPreview(set.id)}
-                        >
-                          Preview
-                        </button>
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={restoringId === set.id}
-                          onClick={() => restoreSet(set.id, set.name)}
-                        >
-                          {restoringId === set.id ? "Restoring..." : "Restore"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-            </ListPanel>
-          </>
-        )}
+        {content}
       </div>
     </div>
-  );}
+  );
+}

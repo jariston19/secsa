@@ -61,6 +61,26 @@ export type BloomScoreRow = {
   total: number;
 };
 
+export type DifficultyDomainScoreRow = BloomScoreRow & {
+  correct: number;
+};
+
+export function buildDifficultyDomainScores(
+  difficulty: string,
+  stats: Map<string, { correct: number; total: number }>
+): DifficultyDomainScoreRow[] {
+  const levels = BLOOM_LEVELS_BY_DIFFICULTY[difficulty as Difficulty] ?? [];
+  return levels.map((bloomLevel) => {
+    const row = stats.get(`${difficulty}::${bloomLevel}`) ?? { correct: 0, total: 0 };
+    return {
+      bloomLevel,
+      total: row.total,
+      correct: row.correct,
+      score: row.total > 0 ? (row.correct / row.total) * 100 : 0,
+    };
+  });
+}
+
 export type BloomCognitiveProfile = {
   type: "surface" | "deep" | "mixed";
   message: string;

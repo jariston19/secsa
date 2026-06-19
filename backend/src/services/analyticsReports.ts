@@ -1,9 +1,13 @@
-import { BloomLevel, Role } from "@prisma/client";
-import { BLOOM_LEVEL_ORDER } from "../lib/bloomLevel.js";
+import { BloomLevel, QuestionSetType, Role } from "@prisma/client";
+import { BLOOM_LEVEL_ORDER, buildDifficultyDomainScores } from "../lib/bloomLevel.js";
 import { formatFullName } from "../lib/names.js";
+import {
+  buildPreparednessReport,
+  countPreparednessBuckets,
+  preparednessLevelLabel,
+} from "../lib/preparednessFramework.js";
 import { nonQaStudentWhere, nonQaSubmittedExamWhere } from "../lib/studentFilters.js";
 import { prisma } from "../lib/prisma.js";
-import { countStudentsInScoreBuckets } from "../lib/scoreBuckets.js";
 
 const PASS_THRESHOLD = 75;
 const STRONG_THRESHOLD = 80;
@@ -131,10 +135,26 @@ function median(values: number[]) {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
-function readinessLevel(score: number, threshold = PASS_THRESHOLD) {
-  if (score >= threshold) return "Ready";
-  if (score >= threshold - 15) return "Needs Improvement";
-  return "At Risk";
+function readinessLevel(score: number) {
+  return preparednessLevelLabel(score);
+}
+
+function formatProgramCourseLabel(slug: string) {
+  return slug
+    .split("_")
+    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function buildCohortLabel(filters: AnalyticsReportFilters) {
+  const parts: string[] = [];
+  if (filters.programCourse) {
+    parts.push(formatProgramCourseLabel(filters.programCourse));
+  }
+  if (Number.isFinite(filters.yearLevel)) {
+    parts.push(`Year ${filters.yearLevel}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : "All cohorts";
 }
 
 function scoreTone(score: number) {
@@ -184,7 +204,7 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
       },
       include: {
         student: { select: { id: true, firstName: true, lastName: true, yearLevel: true } },
-        questionSet: { select: { passThreshold: true, yearLevel: true } },
+        questionSet: { select: { passThreshold: true, yearLevel: true, type: true } },
       },
       orderBy: [{ studentId: "asc" }, { submittedAt: "desc" }],
     }),
@@ -253,6 +273,7 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
   const bloomStats = new Map<BloomLevel, { total: number; correct: number }>(
     BLOOM_LEVEL_ORDER.map((bloomLevel) => [bloomLevel, { total: 0, correct: 0 }])
   );
+  const difficultyBloomStats = new Map<string, { total: number; correct: number }>();
   const topicDifficultyStats = new Map<
     string,
     {
@@ -331,6 +352,14 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     const bloomRow = bloomStats.get(bloomLevel)!;
     bloomRow.total += 1;
     if (answer.isCorrect) bloomRow.correct += 1;
+
+    const difficultyBloomKey = `${difficulty}::${bloomLevel}`;
+    if (!difficultyBloomStats.has(difficultyBloomKey)) {
+      difficultyBloomStats.set(difficultyBloomKey, { total: 0, correct: 0 });
+    }
+    const difficultyBloomRow = difficultyBloomStats.get(difficultyBloomKey)!;
+    difficultyBloomRow.total += 1;
+    if (answer.isCorrect) difficultyBloomRow.correct += 1;
 
     const topicDifficultyKey = `${topicId}-${difficulty}`;
     if (!topicDifficultyStats.has(topicDifficultyKey)) {
@@ -471,6 +500,13 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     correct: row.correct,
     score: pct(row.correct, row.total),
     tone: scoreTone(pct(row.correct, row.total)),
+    domains: buildDifficultyDomainScores(difficulty, difficultyBloomStats).map((domain) => ({
+      bloomLevel: domain.bloomLevel,
+      total: domain.total,
+      correct: domain.correct,
+      score: domain.score,
+      tone: scoreTone(domain.score),
+    })),
   }));
 
   const byBloomLevel = BLOOM_LEVEL_ORDER.map((bloomLevel) => {
@@ -579,9 +615,28 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     }
   }
 
-  const readinessBuckets = countStudentsInScoreBuckets(
-    [...latestAttemptByStudent.values()].map((attempt) => attempt.percentage ?? 0)
+  const latestDiagnosticByStudent = new Map<string, (typeof attempts)[number]>();
+  for (const attempt of attempts) {
+    if (attempt.questionSet.type !== QuestionSetType.DIAGNOSTIC) continue;
+    if (!latestDiagnosticByStudent.has(attempt.studentId)) {
+      latestDiagnosticByStudent.set(attempt.studentId, attempt);
+    }
+  }
+
+  const diagnosticScores = [...latestDiagnosticByStudent.values()].map(
+    (attempt) => attempt.percentage ?? 0
   );
+  const latestStudentScores = [...latestAttemptByStudent.values()].map(
+    (attempt) => attempt.percentage ?? 0
+  );
+  const preparednessScores =
+    diagnosticScores.length > 0 ? diagnosticScores : latestStudentScores;
+  const readinessIndex =
+    preparednessScores.length > 0
+      ? preparednessScores.reduce((sum, value) => sum + value, 0) / preparednessScores.length
+      : overallScore;
+
+  const readinessBuckets = countPreparednessBuckets(preparednessScores);
 
   const atRiskStudents = students
     .map((student) => {
@@ -765,16 +820,24 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
         }
       : { min: 0, max: 0, avg: 0 };
 
+  const preparednessReport = buildPreparednessReport({
+    cohortLabel: buildCohortLabel(filters),
+    readinessIndex,
+    topics: byTopic.map((row) => ({ label: row.topic, score: row.score })),
+    basedOnDiagnostic: diagnosticScores.length > 0,
+  });
+
   return {
     readiness: {
       overallScore,
       passingThreshold: avgThreshold,
-      readinessLevel: readinessLevel(overallScore, avgThreshold),
+      readinessLevel: readinessLevel(readinessIndex),
       studentsAssessed: latestAttemptByStudent.size,
       examsTaken: attempts.length,
       passRate,
       completionRate,
     },
+    preparednessReport,
     bySubject,
     byTopic,
     byDifficulty,
@@ -843,7 +906,7 @@ export async function buildStudentAnalyticsReport(studentId: string) {
     readiness: {
       overallScore,
       passingThreshold: threshold,
-      readinessLevel: readinessLevel(overallScore, threshold),
+      readinessLevel: readinessLevel(overallScore),
     },
     bySubject: fullReport.bySubject,
     byTopic: fullReport.byTopic,

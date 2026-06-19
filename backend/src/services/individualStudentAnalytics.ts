@@ -1,5 +1,5 @@
 import { BloomLevel, Role } from "@prisma/client";
-import { BLOOM_LEVEL_ORDER, buildBloomCognitiveProfile } from "../lib/bloomLevel.js";
+import { BLOOM_LEVEL_ORDER, buildBloomCognitiveProfile, buildDifficultyDomainScores } from "../lib/bloomLevel.js";
 import { formatFullName } from "../lib/names.js";
 import { prisma } from "../lib/prisma.js";
 import { nonQaStudentWhere, nonQaSubmittedExamWhere } from "../lib/studentFilters.js";
@@ -181,6 +181,7 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
   const classSubjectStats = new Map<BucketKey, { correct: number; total: number; label: string }>();
   const classDifficultyStats = new Map<string, { correct: number; total: number; timeTotal: number; timeCount: number }>();
   const classBloomStats = new Map<BloomLevel, { correct: number; total: number }>();
+  const classDifficultyBloomStats = new Map<string, { correct: number; total: number }>();
   const classTimeTotal = { seconds: 0, count: 0 };
 
   for (const answer of cohortAnswers) {
@@ -219,11 +220,20 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
     subjectRow.total += 1;
     difficultyRow.total += 1;
     bloomRow.total += 1;
+
+    const difficultyBloomKey = `${answer.question.difficulty}::${answer.question.bloomLevel}`;
+    if (!classDifficultyBloomStats.has(difficultyBloomKey)) {
+      classDifficultyBloomStats.set(difficultyBloomKey, { correct: 0, total: 0 });
+    }
+    const difficultyBloomRow = classDifficultyBloomStats.get(difficultyBloomKey)!;
+    difficultyBloomRow.total += 1;
+
     if (answer.isCorrect) {
       topicRow.correct += 1;
       subjectRow.correct += 1;
       difficultyRow.correct += 1;
       bloomRow.correct += 1;
+      difficultyBloomRow.correct += 1;
     }
     if (answer.timeSpentSeconds != null) {
       difficultyRow.timeTotal += answer.timeSpentSeconds;
@@ -246,6 +256,7 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
     { correct: number; total: number; timeTotal: number; timeCount: number }
   >();
   const studentBloomStats = new Map<BloomLevel, { correct: number; total: number }>();
+  const studentDifficultyBloomStats = new Map<string, { correct: number; total: number }>();
 
   let studentTimeTotal = 0;
   let studentTimeCount = 0;
@@ -297,11 +308,20 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
     subjectRow.total += 1;
     difficultyRow.total += 1;
     bloomRow.total += 1;
+
+    const studentDifficultyBloomKey = `${answer.question.difficulty}::${answer.question.bloomLevel}`;
+    if (!studentDifficultyBloomStats.has(studentDifficultyBloomKey)) {
+      studentDifficultyBloomStats.set(studentDifficultyBloomKey, { correct: 0, total: 0 });
+    }
+    const studentDifficultyBloomRow = studentDifficultyBloomStats.get(studentDifficultyBloomKey)!;
+    studentDifficultyBloomRow.total += 1;
+
     if (answer.isCorrect) {
       topicRow.correct += 1;
       subjectRow.correct += 1;
       difficultyRow.correct += 1;
       bloomRow.correct += 1;
+      studentDifficultyBloomRow.correct += 1;
     }
     if (answer.timeSpentSeconds != null) {
       difficultyRow.timeTotal += answer.timeSpentSeconds;
@@ -375,6 +395,19 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
       classAvgTimeSeconds,
       total: row.total,
       correct: row.correct,
+      domains: buildDifficultyDomainScores(difficulty, studentDifficultyBloomStats).map((domain) => {
+        const classDomain = buildDifficultyDomainScores(difficulty, classDifficultyBloomStats).find(
+          (row) => row.bloomLevel === domain.bloomLevel
+        );
+        return {
+          bloomLevel: domain.bloomLevel,
+          score: domain.score,
+          classAverage: classDomain?.score ?? 0,
+          tone: scoreTone(domain.score),
+          total: domain.total,
+          correct: domain.correct,
+        };
+      }),
     };
   });
 

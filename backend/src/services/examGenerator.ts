@@ -1,5 +1,5 @@
 import { BloomLevel, Difficulty, type Question, type QuestionSetConfig } from "@prisma/client";
-import { BLOOM_LEVEL_ORDER } from "../lib/bloomLevel.js";
+import { BLOOM_LEVELS_BY_DIFFICULTY } from "../lib/bloomLevel.js";
 import { prisma } from "../lib/prisma.js";
 
 export function shuffle<T>(items: T[]): T[] {
@@ -25,19 +25,22 @@ function distributeCountAcrossSlots(slotCount: number, total: number) {
   return counts;
 }
 
-function pickBalancedByDomain(pool: Question[], count: number): Question[] {
+function pickBalancedByDomain(
+  pool: Question[],
+  count: number,
+  difficulty: Difficulty
+): Question[] {
   if (count <= 0) return [];
   if (pool.length <= count) return shuffle(pool);
 
-  const domainsPresent = BLOOM_LEVEL_ORDER.filter((domain) =>
-    pool.some((question) => question.bloomLevel === domain)
-  );
-  const domainTargets = distributeCountAcrossSlots(domainsPresent.length, count);
+  const requiredDomains = BLOOM_LEVELS_BY_DIFFICULTY[difficulty];
+  const domainTargets = distributeCountAcrossSlots(requiredDomains.length, count);
   const selected: Question[] = [];
   const usedIds = new Set<string>();
 
-  for (const [index, domain] of domainsPresent.entries()) {
+  for (const [index, domain] of requiredDomains.entries()) {
     const need = domainTargets[index] ?? 0;
+    if (need <= 0) continue;
     const domainPool = pool.filter(
       (question) => question.bloomLevel === domain && !usedIds.has(question.id)
     );
@@ -138,12 +141,11 @@ export async function validateQuestionSetConfigs(configs: QuestionSetConfig[]) {
         continue;
       }
 
-      const domainsPresent = BLOOM_LEVEL_ORDER.filter((domain) =>
-        pool.some((question) => question.bloomLevel === domain)
-      );
-      const domainTargets = distributeCountAcrossSlots(domainsPresent.length, count);
-      for (const [index, domain] of domainsPresent.entries()) {
+      const requiredDomains = BLOOM_LEVELS_BY_DIFFICULTY[difficulty];
+      const domainTargets = distributeCountAcrossSlots(requiredDomains.length, count);
+      for (const [index, domain] of requiredDomains.entries()) {
         const need = domainTargets[index] ?? 0;
+        if (need <= 0) continue;
         const available = pool.filter((question) => question.bloomLevel === domain).length;
         if (available < need) {
           errors.push(
@@ -172,7 +174,7 @@ export async function generateCanonicalExamQuestions(
     for (const [difficulty, count] of buckets) {
       if (count <= 0) continue;
       const pool = await getPool(config.subjectId, config.topicId, difficulty);
-      selected.push(...pickBalancedByDomain(pool, count));
+      selected.push(...pickBalancedByDomain(pool, count, difficulty));
     }
   }
 
