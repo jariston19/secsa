@@ -1,0 +1,3 @@
+course_code,curriculum_year,topic,difficulty,bloom_level,question_text,option_a,option_b,option_c,option_d,correct_option
+ACEE 106,1,Electrostatics,EASY,KNOWLEDGE,"What is the SI unit of electric charge?",Coulomb,Ampere,Volt,Ohm,A
+ACEE 106,1,Electrostatics,MEDIUM,APPLICATION,"A 2 μC charge experiences 4 N force. Find field strength.",2 N/C,4 N/C,8 N/C,16 N/C,B

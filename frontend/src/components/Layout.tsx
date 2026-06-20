@@ -208,7 +208,7 @@ function LayoutShell() {
 
       <aside className="app-sidebar" aria-label="Main navigation">
         <div className="sidebar-header">
-          <img className="sidebar-logo" src="/secsa.png" alt="SECSA" />
+          <img className="sidebar-logo" src="/logo.png" alt="SECSA" />
           <div className="sidebar-brand-text">
             <h1>SECSA AQAP</h1>
             <p className="muted">
@@ -285,7 +285,6 @@ function LayoutShell() {
           >
             <SidebarToggleIcon />
           </button>
-          <span className="app-topbar-title">SECSA AQAP</span>
         </header>
 
         <main className="content">

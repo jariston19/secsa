@@ -93,6 +93,8 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
   const [topicId, setTopicId] = useState("");
   const [questions, setQuestions] = useState<QuestionDraft[]>([emptyQuestion()]);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [error, setError] = useState("");
 
   function updateQuestion(id: string, patch: Partial<QuestionDraft>) {
@@ -197,6 +199,49 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
       setError(failures.join(" "));
     } else if (saved === 0) {
       setError("No questions were saved.");
+    }
+  }
+
+  async function importCsv() {
+    if (!importFile) {
+      setError("Choose a CSV file to import.");
+      return;
+    }
+
+    setImporting(true);
+    setError("");
+
+    const formData = new FormData();
+    formData.append("csv", importFile);
+
+    try {
+      const res = await fetch("/api/questions/import/csv", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail =
+          Array.isArray(data.errors) && data.errors.length > 0
+            ? data.errors
+                .slice(0, 3)
+                .map((entry: { row: number; message: string }) => `Row ${entry.row}: ${entry.message}`)
+                .join(" ")
+            : "";
+        throw new Error(
+          [data.error || "Import failed", detail].filter(Boolean).join(" ")
+        );
+      }
+
+      setImportFile(null);
+      const skipped =
+        data.failed > 0 ? `${data.failed} row${data.failed === 1 ? "" : "s"} skipped.` : "";
+      onSaved(toastBatchCreated("questions", data.created, "CSV import", skipped));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -315,6 +360,43 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
               ))}
             </select>
           </label>
+        </div>
+
+        <div className="encoder-csv-import">
+          <div>
+            <h3>Import from CSV</h3>
+            <p className="muted">
+              Upload a spreadsheet with one question per row. Subjects and topics must already
+              exist in Setup.
+            </p>
+          </div>
+          <div className="encoder-csv-import-actions">
+            <a className="btn secondary btn-sm" href="/questions-import-template.csv" download>
+              Download template
+            </a>
+            <label className="encoder-csv-file">
+              <span className="btn secondary btn-sm">Choose CSV</span>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  setImportFile(e.target.files?.[0] ?? null);
+                  setError("");
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn secondary btn-sm"
+              onClick={importCsv}
+              disabled={importing || !importFile}
+            >
+              {importing ? "Importing..." : "Import CSV"}
+            </button>
+          </div>
+          {importFile && (
+            <p className="muted encoder-csv-filename">{importFile.name}</p>
+          )}
         </div>
       </div>
 

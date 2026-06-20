@@ -7,6 +7,7 @@ import { buildExamAllocations, type TopicAllocation } from "../lib/examItemDistr
 import { toastCreated, toastUpdated } from "../lib/toastMessages";
 import {
   abbreviateProgramCourse,
+  DEFAULT_PROGRAM_COURSE,
   formatProgramCourse,
   SHARED_DIAGNOSTIC_PROGRAM,
   subjectHasProgram,
@@ -108,7 +109,6 @@ export default function BuildQuestionSetModal({
   onClose,
   onCreated,
 }: Props) {
-  const programCourseOptions = useProgramCourseOptions({ includeSharedDiagnostic: true });
   const isEditing = Boolean(setId);
   const [name, setName] = useState("");
   const [yearLevel, setYearLevel] = useState("2");
@@ -226,6 +226,9 @@ export default function BuildQuestionSetModal({
   const curriculumYear = curriculumYearForStudentYear(parsedStudentYear);
   const isIncomingDiagnosticYear = parsedStudentYear === 1;
   const isSharedDiagnostic = type === "DIAGNOSTIC";
+  const programCourseOptions = useProgramCourseOptions({
+    includeSharedDiagnostic: isIncomingDiagnosticYear,
+  });
 
   useEffect(() => {
     if (isEditing) return;
@@ -240,6 +243,15 @@ export default function BuildQuestionSetModal({
     if (isEditing || !isSharedDiagnostic) return;
     setSetProgramCourse(SHARED_DIAGNOSTIC_PROGRAM);
   }, [isSharedDiagnostic, isEditing]);
+
+  useEffect(() => {
+    if (isEditing || isIncomingDiagnosticYear) return;
+    setSetProgramCourse((current) => {
+      if (current !== SHARED_DIAGNOSTIC_PROGRAM) return current;
+      if (programCourse !== SHARED_DIAGNOSTIC_PROGRAM) return programCourse;
+      return programCourseOptions[0]?.id ?? DEFAULT_PROGRAM_COURSE;
+    });
+  }, [isIncomingDiagnosticYear, isEditing, programCourse, programCourseOptions]);
 
   function updateYearLevel(value: string) {
     setYearLevel(value);
