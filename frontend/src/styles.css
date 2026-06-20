@@ -6690,6 +6690,16 @@ body.modal-open {
   margin-top: 0.5rem;
 }
 
+.exam-fullscreen-prompt-actions {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.exam-fullscreen-prompt-actions .btn {
+  margin-top: 0;
+}
+
 .question-block {
   border-top: 0.5px solid var(--ios-separator-opaque);
   padding-top: 1rem;

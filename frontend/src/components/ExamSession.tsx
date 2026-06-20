@@ -7,6 +7,12 @@ import {
   type MutableRefObject,
 } from "react";
 import { MAX_EXAM_FOCUS_VIOLATIONS } from "../lib/constants";
+import {
+  canRequestExamFullscreen,
+  exitExamContainerFullscreen,
+  isExamContainerFullscreen,
+  requestExamContainerFullscreen,
+} from "../lib/examFullscreen";
 
 function isAllowedExamOverlayOpen() {
   return Boolean(document.querySelector(".question-image-overlay:not(.is-closing)"));
@@ -15,7 +21,8 @@ function isAllowedExamOverlayOpen() {
 function useExamLockdown(
   active: boolean,
   onMaxViolationsReached?: () => void,
-  initialFocusWarningCount = 0
+  initialFocusWarningCount = 0,
+  suppressFocusChecksRef?: MutableRefObject<boolean>
 ) {
   const [lockedOut, setLockedOut] = useState(false);
   const [violationCount, setViolationCount] = useState(0);
@@ -50,6 +57,7 @@ function useExamLockdown(
   }, []);
 
   const pauseExam = useCallback(() => {
+    if (suppressFocusChecksRef?.current) return;
     if (violationCooldownRef.current || autoSubmittingRef.current) return;
     if (isInStartupGrace()) return;
     if (examInteractionRef.current) return;
@@ -73,7 +81,7 @@ function useExamLockdown(
       setLockedOut(true);
       return next;
     });
-  }, [isInStartupGrace]);
+  }, [isInStartupGrace, suppressFocusChecksRef]);
 
   const resumeFromPause = useCallback(() => {
     setLockedOut(false);
@@ -87,6 +95,7 @@ function useExamLockdown(
       violationCooldownRef.current = false;
       sessionGraceUntilRef.current = 0;
       document.body.classList.remove("exam-session-active");
+      void exitExamContainerFullscreen();
       return;
     }
 
@@ -96,6 +105,7 @@ function useExamLockdown(
 
     return () => {
       document.body.classList.remove("exam-session-active");
+      void exitExamContainerFullscreen();
     };
   }, [active, initialFocusWarningCount]);
 
@@ -202,8 +212,70 @@ export default function ExamSession({
   examTimeLimitSeconds = null,
   initialFocusWarningCount = 0,
 }: Props) {
+  const examContainerRef = useRef<HTMLDivElement>(null);
+  const suppressFocusChecksRef = useRef(false);
+  const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
+  const [fullscreenPromptError, setFullscreenPromptError] = useState("");
   const { lockedOut, violationCount, autoSubmitting, resumeFromPause, markExamInteraction } =
-    useExamLockdown(active, onMaxViolationsReached, initialFocusWarningCount);
+    useExamLockdown(
+      active,
+      onMaxViolationsReached,
+      initialFocusWarningCount,
+      suppressFocusChecksRef
+    );
+
+  const dismissFullscreenPrompt = useCallback(() => {
+    setShowFullscreenPrompt(false);
+    setFullscreenPromptError("");
+    suppressFocusChecksRef.current = false;
+  }, []);
+
+  const continueToExam = useCallback(() => {
+    dismissFullscreenPrompt();
+  }, [dismissFullscreenPrompt]);
+
+  useEffect(() => {
+    if (!active) {
+      setShowFullscreenPrompt(false);
+      setFullscreenPromptError("");
+      suppressFocusChecksRef.current = false;
+      return;
+    }
+
+    setShowFullscreenPrompt(true);
+    suppressFocusChecksRef.current = true;
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || !showFullscreenPrompt) return;
+
+    function handleFullscreenChange() {
+      if (isExamContainerFullscreen(examContainerRef.current)) {
+        dismissFullscreenPrompt();
+      }
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+    };
+  }, [active, dismissFullscreenPrompt, showFullscreenPrompt]);
+
+  async function handleEnterFullscreen() {
+    setFullscreenPromptError("");
+    const entered = await requestExamContainerFullscreen(examContainerRef.current);
+    if (entered || isExamContainerFullscreen(examContainerRef.current)) {
+      dismissFullscreenPrompt();
+      return;
+    }
+    setFullscreenPromptError(
+      canRequestExamFullscreen()
+        ? "Fullscreen was blocked. Press F11 or click Continue to exam."
+        : "Use F11 (Windows) or the browser View menu for fullscreen, then click Continue to exam."
+    );
+  }
 
   useEffect(() => {
     if (!interactionGuardRef) return;
@@ -220,9 +292,12 @@ export default function ExamSession({
   if (!active) return null;
 
   const warningsRemaining = Math.max(0, MAX_EXAM_FOCUS_VIOLATIONS - violationCount);
+  const showFullscreenGate = showFullscreenPrompt && !autoSubmitting && !lockedOut;
+  const fullscreenApiAvailable = canRequestExamFullscreen();
 
   return (
     <div
+      ref={examContainerRef}
       className="exam-session"
       role="dialog"
       aria-modal="true"
@@ -234,9 +309,8 @@ export default function ExamSession({
         <div>
           <h2>{title}</h2>
           <p className="muted exam-session-subtitle">
-            Stay on this exam screen. Use your browser&apos;s fullscreen (e.g. F11) if you want.
-            Up to {MAX_EXAM_FOCUS_VIOLATIONS} tab or window switches are allowed — the exam
-            auto-submits on the {MAX_EXAM_FOCUS_VIOLATIONS}rd.
+            Stay on this exam screen. Up to {MAX_EXAM_FOCUS_VIOLATIONS} tab or window switches are
+            allowed — the exam auto-submits on the {MAX_EXAM_FOCUS_VIOLATIONS}rd.
           </p>
         </div>
         <div className="exam-session-header-meta">
@@ -269,6 +343,41 @@ export default function ExamSession({
 
       {footer && <footer className="exam-session-footer">{footer}</footer>}
 
+      {showFullscreenGate && (
+        <div className="exam-lock-overlay">
+          <div className="exam-lock-card card">
+            <h2>Enter fullscreen</h2>
+            {fullscreenApiAvailable ? (
+              <p>
+                For the best exam experience, enter fullscreen now. You can also press{" "}
+                <strong>F11</strong> (Windows) or use your browser&apos;s fullscreen control.
+              </p>
+            ) : (
+              <p>
+                This connection cannot use one-click fullscreen. Press <strong>F11</strong> on
+                Windows (or use the browser <strong>View → Full screen</strong> menu), then continue
+                below.
+              </p>
+            )}
+            {fullscreenPromptError ? <p className="error">{fullscreenPromptError}</p> : null}
+            <div className="exam-fullscreen-prompt-actions">
+              {fullscreenApiAvailable ? (
+                <button type="button" className="btn" onClick={() => void handleEnterFullscreen()}>
+                  Enter fullscreen
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={fullscreenApiAvailable ? "btn secondary" : "btn"}
+                onClick={continueToExam}
+              >
+                Continue to exam
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {autoSubmitting && (
         <div className="exam-lock-overlay">
           <div className="exam-lock-card card">
@@ -281,7 +390,7 @@ export default function ExamSession({
         </div>
       )}
 
-      {lockedOut && !autoSubmitting && (
+      {lockedOut && !autoSubmitting && !showFullscreenGate && (
         <div className="exam-lock-overlay">
           <div className="exam-lock-card card">
             <h2>Exam paused</h2>

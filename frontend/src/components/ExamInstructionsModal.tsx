@@ -126,8 +126,9 @@ export default function ExamInstructionsModal({
           <h3>Exam lockdown</h3>
           <ul className="instructions-list">
             <li>
-              Use your browser&apos;s fullscreen (e.g. <strong>F11</strong> on Windows) if you want
-              a distraction-free view — this is optional and you control it yourself.
+              After you begin, a <strong>fullscreen prompt</strong> appears. Use{" "}
+              <strong>Enter fullscreen</strong> when available, or press <strong>F11</strong> (Windows)
+              and then <strong>Continue to exam</strong>.
             </li>
             <li>Do <strong>not</strong> switch tabs, minimize the window, or open other applications during the exam.</li>
             <li>
