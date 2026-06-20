@@ -140,6 +140,7 @@ export default function StudentSubmissionsSection({ token, onViewSubmission }: P
         <p className="muted">No submissions match your filters.</p>
       ) : (
         <ListPanel
+          rowHeight="tall"
           footer={
             <ModalPagination
               page={page}

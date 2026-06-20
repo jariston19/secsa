@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { usePrograms } from "../lib/programs";
 import { previewProgramSlug, type ProgramRecord } from "../lib/programCourse";
 import ModalPagination from "./ModalPagination";
+import ListPanel from "./ListPanel";
 import { useConfirm } from "../lib/confirm";
 
 interface Props {
@@ -185,7 +186,20 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
           ) : programs.length === 0 ? (
             <p className="muted">No program courses yet.</p>
           ) : (
-            <div className="program-courses-list-panel">
+            <ListPanel
+              className="program-courses-list-panel"
+              footer={
+                <ModalPagination
+                  itemNoun="program course"
+                  page={page}
+                  totalPages={totalPages}
+                  pageStart={pageStart}
+                  pageEnd={pageEnd}
+                  totalItems={totalItems}
+                  onPageChange={setPage}
+                />
+              }
+            >
               <div className="program-courses-table-wrap table-wrap">
                 <table className="data-table program-courses-table">
                   <thead>
@@ -293,16 +307,7 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
                   </tbody>
                 </table>
               </div>
-              <ModalPagination
-                itemNoun="program course"
-                page={page}
-                totalPages={totalPages}
-                pageStart={pageStart}
-                pageEnd={pageEnd}
-                totalItems={totalItems}
-                onPageChange={setPage}
-              />
-            </div>
+            </ListPanel>
           )}
         </section>
       </div>

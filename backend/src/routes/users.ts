@@ -5,7 +5,15 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import { programCourseSlugSchema, assertActiveProgramSlug } from "../lib/programCourse.js";
-import { yearLevelSchema } from "../lib/yearLevel.js";
+import { MIN_YEAR_LEVEL, assertYearLevelForProgram, maxYearLevelForProgram, yearLevelSchema } from "../lib/yearLevel.js";
+import {
+  executeBulkGraduate,
+  executeBulkPromote,
+  executeSchoolYearRollover,
+  previewBulkGraduate,
+  previewBulkPromote,
+  previewSchoolYearRollover,
+} from "../services/bulkStudentYearOps.js";
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -32,6 +40,23 @@ const updateUserSchema = z.object({
   schoolType: z.nativeEnum(SchoolType).optional().nullable(),
   isActive: z.boolean().optional(),
   qaUnlimited: z.boolean().optional(),
+});
+
+const bulkProgramSchema = z.object({
+  programCourse: programCourseSlugSchema,
+});
+
+const bulkPromoteSchema = bulkProgramSchema.extend({
+  fromYearLevel: yearLevelSchema,
+}).superRefine((body, ctx) => {
+  const maxYearLevel = maxYearLevelForProgram(body.programCourse);
+  if (body.fromYearLevel < MIN_YEAR_LEVEL || body.fromYearLevel >= maxYearLevel) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["fromYearLevel"],
+      message: `Promote only applies to incoming years ${MIN_YEAR_LEVEL}–${maxYearLevel - 1}. Use graduate for incoming year ${maxYearLevel}.`,
+    });
+  }
 });
 
 const userSelect = {
@@ -112,6 +137,15 @@ export async function userRoutes(app: FastifyInstance) {
       await assertActiveProgramSlug(nextProgramCourse);
     }
 
+    if (nextRole === Role.STUDENT && nextYearLevel && nextProgramCourse) {
+      try {
+        assertYearLevelForProgram(nextProgramCourse, nextYearLevel);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Invalid year level.";
+        return reply.code(400).send({ error: message });
+      }
+    }
+
     if (body.isActive === false && id === user.id) {
       return reply.code(400).send({ error: "You cannot deactivate your own account." });
     }
@@ -168,6 +202,15 @@ export async function userRoutes(app: FastifyInstance) {
       await assertActiveProgramSlug(body.programCourse);
     }
 
+    if (body.role === Role.STUDENT && body.yearLevel && body.programCourse) {
+      try {
+        assertYearLevelForProgram(body.programCourse, body.yearLevel);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Invalid year level.";
+        return reply.code(400).send({ error: message });
+      }
+    }
+
     const passwordHash = await bcrypt.hash(body.password, 10);
     const created = await prisma.user.create({
       data: {
@@ -186,6 +229,84 @@ export async function userRoutes(app: FastifyInstance) {
     });
 
     return reply.code(201).send({ user: created });
+  });
+
+  app.post("/bulk/promote/preview", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    const body = bulkPromoteSchema.parse(request.body);
+    try {
+      return await previewBulkPromote(body.programCourse, body.fromYearLevel);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to preview promote.";
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  app.post("/bulk/promote", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    const body = bulkPromoteSchema.parse(request.body);
+    try {
+      return await executeBulkPromote(body.programCourse, body.fromYearLevel);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to promote students.";
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  app.post("/bulk/graduate/preview", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    const body = bulkProgramSchema.parse(request.body);
+    try {
+      return await previewBulkGraduate(body.programCourse);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to preview graduate.";
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  app.post("/bulk/graduate", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    const body = bulkProgramSchema.parse(request.body);
+    try {
+      return await executeBulkGraduate(body.programCourse);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to graduate students.";
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  app.post("/bulk/rollover/preview", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    const body = bulkProgramSchema.parse(request.body);
+    try {
+      return await previewSchoolYearRollover(body.programCourse);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to preview rollover.";
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  app.post("/bulk/rollover", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    const body = bulkProgramSchema.parse(request.body);
+    try {
+      return await executeSchoolYearRollover(body.programCourse);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to rollover students.";
+      return reply.code(400).send({ error: message });
+    }
   });
 
   app.delete("/:id", async (request, reply) => {

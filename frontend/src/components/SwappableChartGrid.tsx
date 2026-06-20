@@ -1,16 +1,11 @@
 import { type ReactNode, useState } from "react";
-
-export function ChartReorderHint() {
-  return (
-    <p className="muted analytics-chart-reorder-hint analytics-no-print">
-      Drag the handle on any chart to reorder.
-    </p>
-  );
-}
+import { slotClassForChart, type AnalyticsSlotSize } from "../lib/analyticsLayout";
 
 interface Props {
   order: string[];
   onOrderChange: (order: string[]) => void;
+  slotLayout?: Partial<Record<string, AnalyticsSlotSize>>;
+  /** @deprecated Use slotLayout with wide entries instead */
   wideIds?: readonly string[];
   children: (id: string) => ReactNode;
 }
@@ -29,6 +24,7 @@ function reorder(order: string[], fromId: string, toId: string) {
 export default function SwappableChartGrid({
   order,
   onOrderChange,
+  slotLayout = {},
   wideIds = [],
   children,
 }: Props) {
@@ -42,7 +38,7 @@ export default function SwappableChartGrid({
           key={id}
           className={[
             "analytics-chart-grid-slot",
-            wideIds.includes(id) ? "analytics-chart-grid-slot-wide" : "",
+            slotClassForChart(id, slotLayout, wideIds),
             draggingId === id ? "is-dragging" : "",
             overId === id && draggingId !== id ? "is-drop-target" : "",
           ]

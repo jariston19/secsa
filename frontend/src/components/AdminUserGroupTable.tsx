@@ -49,11 +49,13 @@ interface Props {
   users: UserRow[];
   group: UserGroup;
   hideYearColumn?: boolean;
+  archiveMode?: boolean;
   editingId: string | null;
   editDraft: UserEditDraft | null;
   savingId: string | null;
   deletingId: string | null;
   togglingId: string | null;
+  restoringId?: string | null;
   currentUserId: string | null;
   emptyMessage?: string;
   onStartEdit: (user: UserRow) => void;
@@ -61,6 +63,7 @@ interface Props {
   onSaveEdit: (id: string) => void;
   onDelete: (user: UserRow) => void;
   onToggleActive: (user: UserRow, isActive: boolean) => void;
+  onRestore?: (user: UserRow) => void;
   setEditDraft: React.Dispatch<React.SetStateAction<UserEditDraft | null>>;
 }
 
@@ -133,7 +136,7 @@ function UserEditFields({
                   (draft) =>
                     draft && {
                       ...draft,
-                      yearLevel: String(parseYearLevel(draft.yearLevel)),
+                      yearLevel: String(parseYearLevel(draft.yearLevel, draft.programCourse)),
                     }
                 )
               }
@@ -149,9 +152,15 @@ function UserEditFields({
               className="table-input"
               value={editDraft.programCourse}
               onChange={(e) =>
-                setEditDraft(
-                  (draft) => draft && { ...draft, programCourse: e.target.value }
-                )
+                setEditDraft((draft) => {
+                  if (!draft) return draft;
+                  const programCourse = e.target.value;
+                  return {
+                    ...draft,
+                    programCourse,
+                    yearLevel: String(parseYearLevel(draft.yearLevel, programCourse)),
+                  };
+                })
               }
             >
               {programCourseOptions.map((course) => (
@@ -248,11 +257,13 @@ export default function AdminUserGroupTable({
   users,
   group,
   hideYearColumn = false,
+  archiveMode = false,
   editingId,
   editDraft,
   savingId,
   deletingId,
   togglingId,
+  restoringId = null,
   currentUserId,
   emptyMessage = "No accounts found.",
   onStartEdit,
@@ -260,6 +271,7 @@ export default function AdminUserGroupTable({
   onSaveEdit,
   onDelete,
   onToggleActive,
+  onRestore,
   setEditDraft,
 }: Props) {
   const programCourseOptions = useProgramCourseOptions();
@@ -396,7 +408,7 @@ export default function AdminUserGroupTable({
                               (draft) =>
                                 draft && {
                                   ...draft,
-                                  yearLevel: String(parseYearLevel(draft.yearLevel)),
+                                  yearLevel: String(parseYearLevel(draft.yearLevel, draft.programCourse)),
                                 }
                             )
                           }
@@ -553,14 +565,25 @@ export default function AdminUserGroupTable({
                         </>
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            className="btn secondary btn-sm"
-                            onClick={() => onStartEdit(user)}
-                          >
-                            Edit
-                          </button>
-                          {isAdminRow ? (
+                          {!archiveMode ? (
+                            <button
+                              type="button"
+                              className="btn secondary btn-sm"
+                              onClick={() => onStartEdit(user)}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                          {archiveMode && onRestore ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              disabled={restoringId === user.id}
+                              onClick={() => onRestore(user)}
+                            >
+                              {restoringId === user.id ? "Restoring…" : "Restore"}
+                            </button>
+                          ) : isAdminRow ? (
                             <label
                               className="ios-toggle ios-toggle-inline"
                               title={

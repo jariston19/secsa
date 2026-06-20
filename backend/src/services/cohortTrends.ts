@@ -1,34 +1,18 @@
-import { QuestionSetType } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { nonQaStudentWhere } from "../lib/studentFilters.js";
+import {
+  STUDENT_MILESTONES,
+  buildMilestoneMap,
+  inferIntakeYear,
+  type MilestoneAttemptRow,
+} from "../lib/studentMilestones.js";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/yearLevel.js";
 
-type MilestoneKind = "diagnostic" | "comprehensive";
-
-interface MilestoneDef {
-  yearLevel: number;
-  kind: MilestoneKind;
-  label: string;
-}
-
-const MILESTONES: MilestoneDef[] = [
-  { yearLevel: 1, kind: "diagnostic", label: "Incoming Y1 — Diagnostic" },
-  { yearLevel: 2, kind: "comprehensive", label: "Incoming Y2 — Comprehensive" },
-  { yearLevel: 3, kind: "comprehensive", label: "Incoming Y3 — Comprehensive" },
-  { yearLevel: 4, kind: "comprehensive", label: "Incoming Y4 — Comprehensive" },
-];
-
-type AttemptRow = {
-  percentage: number | null;
-  passed: boolean | null;
-  submittedAt: Date;
-  attemptType: string;
-  questionSet: { yearLevel: number; type: QuestionSetType };
-};
+type AttemptRow = MilestoneAttemptRow;
 
 type MilestoneSummary = {
   yearLevel: number;
-  kind: MilestoneKind;
+  kind: string;
   label: string;
   studentsAssessed: number;
   averageScore: number;
@@ -66,41 +50,6 @@ type BatchJourney = {
   }>;
 };
 
-function matchesMilestone(attempt: AttemptRow, milestone: MilestoneDef) {
-  if (attempt.questionSet.yearLevel !== milestone.yearLevel) return false;
-  if (milestone.kind === "diagnostic") {
-    return attempt.questionSet.type === QuestionSetType.DIAGNOSTIC;
-  }
-  return (
-    attempt.questionSet.type === QuestionSetType.COMPREHENSIVE ||
-    attempt.questionSet.type === QuestionSetType.RETAKE
-  );
-}
-
-function pickMilestoneAttempt(attempts: AttemptRow[], milestone: MilestoneDef) {
-  const candidates = attempts.filter((attempt) => matchesMilestone(attempt, milestone));
-  if (candidates.length === 0) return null;
-
-  if (milestone.kind === "diagnostic") {
-    return [...candidates].sort(
-      (a, b) => b.submittedAt.getTime() - a.submittedAt.getTime()
-    )[0];
-  }
-
-  const comprehensive = candidates.filter(
-    (attempt) => attempt.questionSet.type === QuestionSetType.COMPREHENSIVE
-  );
-  if (comprehensive.length > 0) {
-    return [...comprehensive].sort(
-      (a, b) => a.submittedAt.getTime() - b.submittedAt.getTime()
-    )[0];
-  }
-
-  return [...candidates].sort(
-    (a, b) => a.submittedAt.getTime() - b.submittedAt.getTime()
-  )[0];
-}
-
 function average(values: number[]) {
   return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }
@@ -108,34 +57,6 @@ function average(values: number[]) {
 function passRate(attempts: Array<{ passed: boolean | null }>) {
   if (attempts.length === 0) return 0;
   return (attempts.filter((attempt) => attempt.passed).length / attempts.length) * 100;
-}
-
-function inferIntakeYear(
-  attempts: AttemptRow[],
-  student: { createdAt: Date; yearLevel: number | null }
-) {
-  const diagnostic = attempts
-    .filter(
-      (attempt) =>
-        attempt.questionSet.type === QuestionSetType.DIAGNOSTIC &&
-        attempt.questionSet.yearLevel === 1
-    )
-    .sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime())[0];
-
-  if (diagnostic) return diagnostic.submittedAt.getFullYear();
-
-  const earliest = [...attempts].sort(
-    (a, b) => a.submittedAt.getTime() - b.submittedAt.getTime()
-  )[0];
-  if (earliest) {
-    return earliest.submittedAt.getFullYear() - (earliest.questionSet.yearLevel - 1);
-  }
-
-  if (student.yearLevel) {
-    return student.createdAt.getFullYear() - (student.yearLevel - 1);
-  }
-
-  return null;
 }
 
 function buildBatchJourney(
@@ -150,7 +71,7 @@ function buildBatchJourney(
     points: Array<{ studentId: string; fromScore: number; toScore: number }>;
   }>;
 } {
-  const milestones = MILESTONES.map((milestone) => {
+  const milestones = STUDENT_MILESTONES.map((milestone) => {
     const rows = [...studentMilestones.values()]
       .map((map) => map.get(milestone.yearLevel))
       .filter((row): row is AttemptRow => Boolean(row));
@@ -175,9 +96,9 @@ function buildBatchJourney(
     points: Array<{ studentId: string; fromScore: number; toScore: number }>;
   }> = [];
 
-  for (let index = 0; index < MILESTONES.length - 1; index += 1) {
-    const from = MILESTONES[index];
-    const to = MILESTONES[index + 1];
+  for (let index = 0; index < STUDENT_MILESTONES.length - 1; index += 1) {
+    const from = STUDENT_MILESTONES[index];
+    const to = STUDENT_MILESTONES[index + 1];
     const pairs: Array<{
       studentId: string;
       fromScore: number;
@@ -252,7 +173,6 @@ export async function buildCohortTrends(filters: {
   }
 
   const studentIds = students.map((student) => student.id);
-  const studentById = new Map(students.map((student) => [student.id, student]));
 
   const attempts = await prisma.examAttempt.findMany({
     where: {
@@ -304,11 +224,7 @@ export async function buildCohortTrends(filters: {
 
     for (const studentId of batchStudentIds) {
       const studentAttempts = attemptsByStudent.get(studentId) ?? [];
-      const milestoneMap = new Map<number, AttemptRow>();
-      for (const milestone of MILESTONES) {
-        const picked = pickMilestoneAttempt(studentAttempts, milestone);
-        if (picked) milestoneMap.set(milestone.yearLevel, picked);
-      }
+      const milestoneMap = buildMilestoneMap(studentAttempts);
       if (milestoneMap.size > 0) {
         studentMilestones.set(studentId, milestoneMap);
       }

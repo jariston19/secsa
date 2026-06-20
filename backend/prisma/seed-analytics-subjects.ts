@@ -1,4 +1,5 @@
 import {
+  BloomLevel,
   Difficulty,
   PrismaClient,
   QuestionSetStatus,
@@ -7,7 +8,7 @@ import {
   type User,
 } from "@prisma/client";
 import { generateCanonicalExamQuestions, validateQuestionSetConfigs } from "../src/services/examGenerator.js";
-import { bloomLevelForSeed } from "../src/lib/bloomLevel.js";
+import { bloomLevelForSeed, difficultyForBloomLevel } from "../src/lib/bloomLevel.js";
 import {
   SHARED_DIAGNOSTIC_PROGRAM,
   SHARED_INCOMING_DIAGNOSTIC_NAME,
@@ -25,6 +26,7 @@ type DemoQuestion = {
   optionD: string;
   correctOption: string;
   difficulty: Difficulty;
+  bloomLevel?: BloomLevel;
   imageKey?: string;
 };
 
@@ -1251,9 +1253,14 @@ async function seedSubjectContent(teacherId: string, plan: DemoSubject) {
     topicsCreated += 1;
 
     for (const [questionIndex, question] of topicPlan.questions.entries()) {
-      const { imageKey, ...questionData } = question;
+      const { imageKey, bloomLevel: explicitBloomLevel, ...questionData } = question;
       const imagePath = imageKey ? await ensureDemoImage(imageKey) : undefined;
-      const bloomLevel = bloomLevelForSeed(questionData.difficulty, questionsCreated + questionIndex);
+      const bloomLevel =
+        explicitBloomLevel ??
+        bloomLevelForSeed(questionData.difficulty, questionsCreated + questionIndex);
+      const difficulty = explicitBloomLevel
+        ? difficultyForBloomLevel(explicitBloomLevel)
+        : questionData.difficulty;
 
       const existing = await prisma.question.findFirst({
         where: { subjectId: subject.id, text: question.text },
@@ -1262,6 +1269,7 @@ async function seedSubjectContent(teacherId: string, plan: DemoSubject) {
         await prisma.question.create({
           data: {
             ...questionData,
+            difficulty,
             bloomLevel,
             imagePath,
             subjectId: subject.id,
@@ -1273,12 +1281,12 @@ async function seedSubjectContent(teacherId: string, plan: DemoSubject) {
       } else if (imagePath && existing.imagePath !== imagePath) {
         await prisma.question.update({
           where: { id: existing.id },
-          data: { imagePath, bloomLevel },
+          data: { imagePath, bloomLevel, difficulty },
         });
-      } else if (existing.bloomLevel !== bloomLevel) {
+      } else if (existing.bloomLevel !== bloomLevel || existing.difficulty !== difficulty) {
         await prisma.question.update({
           where: { id: existing.id },
-          data: { bloomLevel },
+          data: { bloomLevel, difficulty },
         });
       }
     }

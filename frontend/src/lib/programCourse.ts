@@ -21,6 +21,16 @@ export const DEFAULT_PROGRAM_COURSE = "INFORMATION_TECHNOLOGY";
 
 export const SHARED_DIAGNOSTIC_PROGRAM = "ALL_PROGRAMS";
 
+/** Programs with a longer curriculum than the default four-year track. */
+export const PROGRAM_MAX_YEAR_LEVELS: Partial<Record<string, number>> = {
+  ARCHITECTURE: 5,
+};
+
+export function maxYearLevelForProgram(programCourse?: string | null) {
+  if (!programCourse) return 4;
+  return PROGRAM_MAX_YEAR_LEVELS[programCourse] ?? 4;
+}
+
 export function toProgramSlug(label: string) {
   const slug = label
     .trim()

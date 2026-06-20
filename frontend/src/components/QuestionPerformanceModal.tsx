@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
-import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 
@@ -18,6 +17,8 @@ interface Props {
   token: string | null;
   onClose: () => void;
 }
+
+const QUESTION_PERFORMANCE_PAGE_ROWS = 10;
 
 export default function QuestionPerformanceModal({ token, onClose }: Props) {
   const [questions, setQuestions] = useState<QuestionRow[]>([]);
@@ -43,7 +44,15 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
     pageStart,
     pageEnd,
     totalItems,
-  } = usePagination(questions, { resetKey: questions.length });
+  } = usePagination(questions, {
+    pageSize: QUESTION_PERFORMANCE_PAGE_ROWS,
+    resetKey: questions.length,
+  });
+
+  const questionTablePlaceholderCount = Math.max(
+    0,
+    QUESTION_PERFORMANCE_PAGE_ROWS - paginatedQuestions.length
+  );
 
   return portal(
     <div className={overlayClass} onClick={requestClose}>
@@ -69,8 +78,41 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
             <p className="muted">No question data yet.</p>
           ) : (
             <>
-              <ListPanel
-                footer={
+              <div className="question-performance-table-panel">
+                <div className="modal-table-wrap question-performance-table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Subject</th>
+                        <th>Topic</th>
+                        <th>Difficulty</th>
+                        <th>Correct %</th>
+                        <th>Attempts</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedQuestions.map((question) => (
+                        <tr key={question.questionId}>
+                          <td>{question.subject}</td>
+                          <td>{question.topic ?? "—"}</td>
+                          <td>{question.difficulty}</td>
+                          <td>{question.correctRate.toFixed(1)}%</td>
+                          <td>{question.total}</td>
+                        </tr>
+                      ))}
+                      {Array.from({ length: questionTablePlaceholderCount }, (_, index) => (
+                        <tr
+                          key={`question-row-placeholder-${index}`}
+                          className="question-performance-table-row-placeholder"
+                          aria-hidden="true"
+                        >
+                          <td colSpan={5} />
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="question-performance-pagination">
                   <ModalPagination
                     page={page}
                     totalPages={totalPages}
@@ -79,33 +121,8 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
                     totalItems={totalItems}
                     onPageChange={setPage}
                   />
-                }
-              >
-              <div className="modal-table-wrap">
-                <table>
-                <thead>
-                  <tr>
-                    <th>Subject</th>
-                    <th>Topic</th>
-                    <th>Difficulty</th>
-                    <th>Correct %</th>
-                    <th>Attempts</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedQuestions.map((question) => (
-                    <tr key={question.questionId}>
-                      <td>{question.subject}</td>
-                      <td>{question.topic ?? "—"}</td>
-                      <td>{question.difficulty}</td>
-                      <td>{question.correctRate.toFixed(1)}%</td>
-                      <td>{question.total}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                </div>
               </div>
-              </ListPanel>
             </>
           )}
         </div>

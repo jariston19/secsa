@@ -1,14 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import AnalyticsPrintArea from "./AnalyticsPrintArea";
-import ModalPagination from "./ModalPagination";
-import SwappableChartGrid, { ChartReorderHint } from "./SwappableChartGrid";
+import SwappableChartGrid from "./SwappableChartGrid";
 import ChartCard from "./charts/ChartCard";
 import {
-  ChartIconBars,
-  ChartIconDonut,
-  ChartIconHeatmap,
-  ChartIconRadar,
-  ChartIconScatter,
   CoverageHeatmap,
   DifficultyAlignmentChart,
   DiscriminationScatter,
@@ -25,6 +19,7 @@ import {
   VerticalHistogram,
 } from "./charts/AnalyticsCharts";
 import DistractorAnalysisCarousel from "./charts/DistractorAnalysisCarousel";
+import { GROUP_CHART_LAYOUT, QUESTION_CHART_LAYOUT } from "../lib/analyticsLayout";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import { formatFullName } from "../lib/names";
@@ -35,10 +30,9 @@ import {
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
 import PreparednessInterpretationPanel from "./PreparednessInterpretationPanel";
-import { usePagination } from "../hooks/usePagination";
+import ModalPagination from "./ModalPagination";
+import { usePagination, CHART_PAGE_SIZE } from "../hooks/usePagination";
 import { useChartOrder } from "../hooks/useChartOrder";
-
-const TOPIC_CHART_PAGE_SIZE = 5;
 
 type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
 
@@ -304,7 +298,7 @@ export default function AnalyticsReports({ token, lens, onOpenQuestionPerformanc
       ? "Charts teachers and admins see about the whole batch."
       : lens === "student"
         ? "Charts each student sees about themselves. Cohort-level view below — open Submissions for individual detail."
-        : "Item analysis for question writers and teachers.";
+        : null;
 
   const printAreaId = `analytics-print-${lens}`;
   const printTitle = LENS_PRINT_TITLES[lens];
@@ -381,7 +375,7 @@ export default function AnalyticsReports({ token, lens, onOpenQuestionPerformanc
         ) : null}
         </div>
 
-      <p className="muted analytics-lens-intro">{lensIntro}</p>
+      {lensIntro ? <p className="muted analytics-lens-intro">{lensIntro}</p> : null}
 
       {error && !reports ? <p className="error">{error}</p> : null}
       {loading && !reports ? <p className="muted">Loading analytics reports...</p> : null}
@@ -495,12 +489,12 @@ export function AnalyticsReportBody({
   );
 
   const topicBarPagination = usePagination(topicBars, {
-    pageSize: TOPIC_CHART_PAGE_SIZE,
+    pageSize: CHART_PAGE_SIZE,
     resetKey: topicBars.map((bar) => bar.label).join("|"),
   });
 
   const topicHeatmapPagination = usePagination(topicHeatmapRows, {
-    pageSize: TOPIC_CHART_PAGE_SIZE,
+    pageSize: CHART_PAGE_SIZE,
     resetKey: topicHeatmapRows.map((row) => row.id).join("|"),
   });
 
@@ -516,7 +510,7 @@ export function AnalyticsReportBody({
   );
 
   const topicCoveragePagination = usePagination(topicCoverageRows, {
-    pageSize: TOPIC_CHART_PAGE_SIZE,
+    pageSize: CHART_PAGE_SIZE,
     resetKey: topicCoverageRows.map((row) => row.id).join("|"),
   });
 
@@ -542,7 +536,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Pass rate"
             description="Pass vs fail split with a headline % for quick reporting."
-            icon={<ChartIconDonut />}
           >
             <DonutChart
               value={reports.readiness.passRate}
@@ -558,11 +551,10 @@ export function AnalyticsReportBody({
             className="analytics-chart-card-balanced"
             title="Preparedness distribution"
             description="Students grouped by NIRNDO Readiness Index bands (Very Low through Very High)."
-            icon={<ChartIconBars direction="vertical" />}
           >
             <VerticalHistogram
               buckets={reports.readinessDistribution.map((bucket) => ({
-                label: bucket.label,
+                label: bucket.label.replace(" Preparedness", ""),
                 value: bucket.students,
               }))}
             />
@@ -574,7 +566,6 @@ export function AnalyticsReportBody({
             className="analytics-chart-card-balanced"
             title="Average score per topic"
             description="Topics on the Y-axis, average % correct on the X-axis. Ranks best vs worst retention."
-            icon={<ChartIconBars direction="horizontal" />}
           >
             {topicBars.length === 0 ? (
               <p className="muted">No topic data yet.</p>
@@ -608,7 +599,6 @@ export function AnalyticsReportBody({
             className="analytics-chart-card-paired analytics-chart-card-difficulty"
             title="Performance by difficulty"
             description="Easy, medium, and hard bars with L1–L6 domain scores mapped to each difficulty tier."
-            icon={<ChartIconBars direction="vertical" />}
           >
             <GroupedDifficultyBars items={reports.byDifficulty} />
           </ChartCard>
@@ -616,10 +606,9 @@ export function AnalyticsReportBody({
       case "performance-bloom":
         return (
           <ChartCard
-            className="analytics-chart-card-paired analytics-chart-card-bloom"
+            className="analytics-chart-card-balanced analytics-chart-card-bloom"
             title="Performance by domain"
             description="L1–L6 cognitive domains. Spot surface recall vs deeper analysis and evaluation gaps."
-            icon={<ChartIconBars direction="vertical" />}
           >
             <GroupedBloomBars items={reports.byBloomLevel ?? []} />
           </ChartCard>
@@ -627,10 +616,9 @@ export function AnalyticsReportBody({
       case "topic-difficulty-heatmap":
         return (
           <ChartCard
-            className="analytics-chart-card-paired analytics-chart-card-heatmap"
+            className="analytics-chart-card-balanced analytics-chart-card-heatmap"
             title="Topic × difficulty heatmap"
             description="Each cell is % correct on a red-to-green scale. The richest single batch view."
-            icon={<ChartIconHeatmap />}
           >
             {topicHeatmapRows.length === 0 ? (
               <p className="muted">No topic and difficulty data yet.</p>
@@ -669,7 +657,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="At-risk count per topic"
             description="Students below threshold per topic. Red bars sorted by urgency."
-            icon={<ChartIconBars direction="horizontal" />}
           >
             {atRiskBars.length === 0 ? (
               <p className="muted">No at-risk topic clusters yet.</p>
@@ -695,7 +682,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Score per topic"
             description="Radar chart: each axis is a topic. Overlay student shape against class average."
-            icon={<ChartIconRadar />}
           >
             {radarTopics.length < 3 ? (
               <p className="muted">Need at least 3 topics for a radar chart.</p>
@@ -713,7 +699,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Score per difficulty"
             description="Overall score per difficulty with domain breakdown (L1–L2 easy, L3 medium, L4–L6 hard)."
-            icon={<ChartIconBars direction="vertical" />}
           >
             <GroupedDifficultyBars items={reports.byDifficulty} />
           </ChartCard>
@@ -723,7 +708,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Score per domain"
             description="L1 Knowledge through L6 Evaluation — reveals which domains need re-teaching."
-            icon={<ChartIconBars direction="vertical" />}
           >
             <GroupedBloomBars items={reports.byBloomLevel ?? []} />
           </ChartCard>
@@ -733,7 +717,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Time vs. correctness"
             description="X = time spent, Y = correct/wrong, bubble size = difficulty. Spots guessing vs confusion."
-            icon={<ChartIconScatter />}
           >
             <TimeCorrectnessScatter points={reports.timeCorrectnessSamples} />
           </ChartCard>
@@ -743,7 +726,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Rank within batch"
             description="Percentile band showing score relative to class min, average, and max."
-            icon={<ChartIconBars direction="horizontal" />}
           >
             <PercentileBand
               studentScore={reports.readiness.overallScore}
@@ -758,7 +740,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Weak topics flagged"
             description="Traffic-light topic tiles for instant scan of what needs review."
-            icon={<ChartIconHeatmap />}
           >
             {topicFlagItems.length === 0 ? (
               <p className="muted">No topic flags yet.</p>
@@ -772,7 +753,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Retake improvement"
             description="Attempt trend by topic. Rising lines show successful remediation."
-            icon={<ChartIconBars direction="horizontal" />}
           >
             <p className="muted">
               Retake trend lines appear once students complete multiple attempts on the same topics.
@@ -791,7 +771,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Distractor analysis"
             description="Four bars per question (A–D). Tall wrong bars signal common misconceptions."
-            icon={<ChartIconBars direction="vertical" />}
             className="analytics-chart-card-wide analytics-chart-card-distractor"
           >
             {reports.distractorAnalysis.length === 0 ? (
@@ -812,7 +791,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Correct rate vs. expected difficulty"
             description="Bar shows actual correct rate; dashed band is the expected range for that difficulty."
-            icon={<ChartIconBars direction="horizontal" />}
           >
             {alignmentItems.length === 0 ? (
               <p className="muted">No question analysis data yet.</p>
@@ -826,7 +804,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Discrimination index"
             description="Scatter plot: correct rate vs discrimination. Low discrimination flags items for review."
-            icon={<ChartIconScatter />}
           >
             <DiscriminationScatter points={discriminationPoints} />
           </ChartCard>
@@ -836,7 +813,6 @@ export function AnalyticsReportBody({
           <ChartCard
             title="Average time per question"
             description="Horizontal bars sorted by time. Long outliers may indicate confusing wording."
-            icon={<ChartIconBars direction="horizontal" />}
           >
             {reports.questionTimeBars.length === 0 ? (
               <p className="muted">
@@ -859,7 +835,6 @@ export function AnalyticsReportBody({
             className="analytics-chart-card-heatmap"
             title="Topic coverage check"
             description="Question count per topic × difficulty. Empty cells reveal gaps in the bank."
-            icon={<ChartIconHeatmap />}
           >
             {reports.topicCoverageMatrix.length === 0 ? (
               <p className="muted">No question inventory yet.</p>
@@ -907,8 +882,11 @@ export function AnalyticsReportBody({
           {reports.preparednessReport ? (
             <PreparednessInterpretationPanel report={reports.preparednessReport} />
           ) : null}
-          <ChartReorderHint />
-          <SwappableChartGrid order={groupChartOrder} onOrderChange={setGroupChartOrder}>
+          <SwappableChartGrid
+            order={groupChartOrder}
+            onOrderChange={setGroupChartOrder}
+            slotLayout={GROUP_CHART_LAYOUT}
+          >
             {(id) => renderGroupChart(id as GroupAnalyticsChartId)}
           </SwappableChartGrid>
         </>
@@ -916,7 +894,6 @@ export function AnalyticsReportBody({
 
       {lens === "student" && (
         <>
-          <ChartReorderHint />
           <SwappableChartGrid order={studentChartOrder} onOrderChange={setStudentChartOrder}>
             {(id) => renderStudentChart(id as StudentAnalyticsChartId)}
           </SwappableChartGrid>
@@ -955,11 +932,10 @@ export function AnalyticsReportBody({
 
       {lens === "question" && (
         <>
-          <ChartReorderHint />
           <SwappableChartGrid
             order={questionChartOrder}
             onOrderChange={setQuestionChartOrder}
-            wideIds={["distractor-analysis"]}
+            slotLayout={QUESTION_CHART_LAYOUT}
           >
             {(id) => renderQuestionChart(id as QuestionAnalyticsChartId)}
           </SwappableChartGrid>

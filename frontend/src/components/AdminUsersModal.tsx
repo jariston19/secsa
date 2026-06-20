@@ -9,9 +9,10 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { parseYearLevel } from "../lib/constants";
 import { compareByName, formatFullName } from "../lib/names";
-import { DEFAULT_PROGRAM_COURSE } from "../lib/programCourse";
-import { toastDeleted, toastUpdated } from "../lib/toastMessages";
+import { DEFAULT_PROGRAM_COURSE, formatProgramCourse, maxYearLevelForProgram } from "../lib/programCourse";
+import { toastDeleted, toastRestored, toastUpdated } from "../lib/toastMessages";
 import { useConfirm } from "../lib/confirm";
+import { useProgramCourseOptions } from "../lib/programs";
 
 type RoleTab = "students" | "teachers" | "admins";
 
@@ -26,6 +27,8 @@ const STUDENT_YEAR_SEGMENTS = [
   { id: "2", label: "Second Year" },
   { id: "3", label: "Third Year" },
   { id: "4", label: "Fourth Year" },
+  { id: "5", label: "Fifth Year" },
+  { id: "archive", label: "Archive" },
 ] as const;
 
 interface Props {
@@ -52,6 +55,10 @@ export default function AdminUsersModal({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [bulkProgramCourse, setBulkProgramCourse] = useState(DEFAULT_PROGRAM_COURSE);
+  const [bulkBusy, setBulkBusy] = useState<string | null>(null);
+  const courseOptions = useProgramCourseOptions();
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
     onClose ?? (() => {}),
     !inline
@@ -86,14 +93,38 @@ export default function AdminUsersModal({
     () => users.filter((u) => u.role === "SUPERADMIN").sort(compareByName),
     [users]
   );
+
+  function studentsForView(year: number, programCourse = bulkProgramCourse) {
+    return students.filter((user) => {
+      if (!user.isActive) return false;
+      if (user.yearLevel !== year) return false;
+      if (currentUser?.role === "SUPERADMIN") {
+        return user.programCourse === programCourse;
+      }
+      return true;
+    });
+  }
+
+  function archivedStudentsForView(programCourse = bulkProgramCourse) {
+    return students.filter((user) => {
+      if (user.isActive) return false;
+      if (currentUser?.role === "SUPERADMIN") {
+        return user.programCourse === programCourse;
+      }
+      return true;
+    });
+  }
+
+  const isArchiveView = roleTab === "students" && studentYearTab === "archive";
+
   const visibleUsers = useMemo(() => {
     if (roleTab === "teachers") return teachers;
     if (roleTab === "admins") return admins;
-    const year = Number(studentYearTab);
-    return students.filter((user) => user.yearLevel === year);
-  }, [roleTab, studentYearTab, teachers, admins, students]);
+    if (isArchiveView) return archivedStudentsForView();
+    return studentsForView(Number(studentYearTab));
+  }, [roleTab, studentYearTab, teachers, admins, students, bulkProgramCourse, currentUser?.role, isArchiveView]);
 
-  const usersResetKey = `${roleTab}-${studentYearTab}-${visibleUsers.length}`;
+  const usersResetKey = `${roleTab}-${studentYearTab}-${bulkProgramCourse}-${visibleUsers.length}`;
   const {
     paginatedItems: paginatedUsers,
     page,
@@ -109,6 +140,16 @@ export default function AdminUsersModal({
     if (roleTab === "teachers") return "teacher" as const;
     return "admin" as const;
   }, [roleTab]);
+
+  const bulkMaxYear = maxYearLevelForProgram(bulkProgramCourse);
+
+  const rolloverPromoteChain = useMemo(() => {
+    const parts = [];
+    for (let year = bulkMaxYear - 1; year >= 1; year -= 1) {
+      parts.push(`Y${year}→Y${year + 1}`);
+    }
+    return parts.join(", ");
+  }, [bulkMaxYear]);
 
   const activeYearLabel =
     STUDENT_YEAR_SEGMENTS.find((segment) => segment.id === studentYearTab)?.label ?? "year";
@@ -129,15 +170,54 @@ export default function AdminUsersModal({
     if (tab === "teachers") cancelEditIfHidden(teachers);
     else if (tab === "admins") cancelEditIfHidden(admins);
     else {
-      const year = Number(studentYearTab);
-      cancelEditIfHidden(students.filter((user) => user.yearLevel === year));
+      if (studentYearTab === "archive") {
+        cancelEditIfHidden(archivedStudentsForView());
+      } else {
+        cancelEditIfHidden(studentsForView(Number(studentYearTab)));
+      }
     }
   }
 
   function handleStudentYearChange(next: string) {
     setStudentYearTab(next);
-    const year = Number(next);
-    cancelEditIfHidden(students.filter((user) => user.yearLevel === year));
+    if (next === "archive") {
+      cancelEditIfHidden(archivedStudentsForView());
+      return;
+    }
+    cancelEditIfHidden(studentsForView(Number(next)));
+  }
+
+  function handleBulkProgramCourseChange(next: string) {
+    setBulkProgramCourse(next);
+    if (isArchiveView) {
+      cancelEditIfHidden(archivedStudentsForView(next));
+      return;
+    }
+    cancelEditIfHidden(studentsForView(Number(studentYearTab), next));
+  }
+
+  async function restoreStudent(user: UserRow) {
+    const label = formatFullName(user.firstName, user.lastName);
+    const confirmed = await confirm({
+      title: "Restore student?",
+      message: `Restore "${label}" (${user.email})?\n\nThey will be able to sign in again at incoming year ${user.yearLevel ?? "—"}.`,
+      confirmLabel: "Restore",
+    });
+    if (!confirmed) return;
+
+    setRestoringId(user.id);
+    if (editingId === user.id) cancelEdit();
+
+    try {
+      await api(`/users/${user.id}`, { method: "PATCH", body: JSON.stringify({ isActive: true }) }, token);
+      onUpdated(toastRestored("student", label), false);
+      await loadUsers();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to restore student";
+      onUpdated(message, true);
+    } finally {
+      setRestoringId(null);
+    }
   }
 
   function startEdit(user: UserRow) {
@@ -177,7 +257,10 @@ export default function AdminUsersModal({
             firstName: editDraft.firstName.trim(),
             lastName: editDraft.lastName.trim(),
             role: editDraft.role,
-            yearLevel: editDraft.role === "STUDENT" ? parseYearLevel(editDraft.yearLevel) : null,
+            yearLevel:
+              editDraft.role === "STUDENT"
+                ? parseYearLevel(editDraft.yearLevel, editDraft.programCourse)
+                : null,
             programCourse: editDraft.role === "STUDENT" ? editDraft.programCourse : null,
             gender: editDraft.role === "STUDENT" ? editDraft.gender : null,
             schoolType: editDraft.role === "STUDENT" ? editDraft.schoolType : null,
@@ -232,6 +315,116 @@ export default function AdminUsersModal({
     }
   }
 
+  async function runBulkAction(
+    actionKey: string,
+    previewPath: string,
+    executePath: string,
+    body: Record<string, unknown>,
+    confirmTitle: string
+  ) {
+    setBulkBusy(actionKey);
+    try {
+      const preview = await api<{ message: string; matchCount?: number }>(
+        previewPath,
+        { method: "POST", body: JSON.stringify(body) },
+        token
+      );
+      const confirmed = await confirm({
+        title: confirmTitle,
+        message: preview.message,
+        confirmLabel: "Continue",
+      });
+      if (!confirmed) return;
+
+      const result = await api<{
+        updatedCount?: number;
+        graduatedCount?: number;
+        promotedCount?: number;
+      }>(executePath, { method: "POST", body: JSON.stringify(body) }, token);
+      const count =
+        result.updatedCount ?? result.graduatedCount ?? result.promotedCount ?? preview.matchCount ?? 0;
+      onUpdated(
+        count > 0 ? `Updated ${count} student account${count === 1 ? "" : "s"}.` : "No matching active students.",
+        false
+      );
+      await loadUsers();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Bulk action failed";
+      onUpdated(message, true);
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  async function promoteCurrentYear() {
+    const fromYearLevel = Number(studentYearTab);
+    if (fromYearLevel >= bulkMaxYear) {
+      onUpdated(
+        `Incoming year ${bulkMaxYear} students should be graduated, not promoted.`,
+        true
+      );
+      return;
+    }
+    await runBulkAction(
+      "promote",
+      "/users/bulk/promote/preview",
+      "/users/bulk/promote",
+      { programCourse: bulkProgramCourse, fromYearLevel },
+      `Promote incoming year ${fromYearLevel}?`
+    );
+  }
+
+  async function graduateFinishedYear() {
+    await runBulkAction(
+      "graduate",
+      "/users/bulk/graduate/preview",
+      "/users/bulk/graduate",
+      { programCourse: bulkProgramCourse },
+      `Archive finished incoming year ${bulkMaxYear}?`
+    );
+  }
+
+  async function rolloverSchoolYear() {
+    setBulkBusy("rollover");
+    try {
+      const preview = await api<{
+        message: string;
+        graduate: { matchCount: number };
+        promoteSteps: Array<{ fromYearLevel: number; toYearLevel: number; matchCount: number }>;
+      }>(
+        "/users/bulk/rollover/preview",
+        { method: "POST", body: JSON.stringify({ programCourse: bulkProgramCourse }) },
+        token
+      );
+      const stepSummary = preview.promoteSteps
+        .filter((step) => step.matchCount > 0)
+        .map((step) => `Y${step.fromYearLevel}→Y${step.toYearLevel}: ${step.matchCount}`)
+        .join("\n");
+      const confirmed = await confirm({
+        title: "Run school-year rollover?",
+        message: `${preview.message}${stepSummary ? `\n\n${stepSummary}` : ""}\n\nRuns in order: archive Y${bulkMaxYear}, then ${rolloverPromoteChain} — avoids mixed year levels.`,
+        confirmLabel: "Run rollover",
+      });
+      if (!confirmed) return;
+
+      const result = await api<{ graduatedCount: number; promotedCount: number }>(
+        "/users/bulk/rollover",
+        { method: "POST", body: JSON.stringify({ programCourse: bulkProgramCourse }) },
+        token
+      );
+      onUpdated(
+        `Rollover complete: archived ${result.graduatedCount}, promoted ${result.promotedCount}.`,
+        false
+      );
+      await loadUsers();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Rollover failed";
+      onUpdated(message, true);
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
   async function deleteUser(user: UserRow) {
     if (currentUser?.id === user.id || user.role === "SUPERADMIN") return;
 
@@ -262,7 +455,13 @@ export default function AdminUsersModal({
 
   const emptyMessage =
     roleTab === "students"
-      ? `No students in ${activeYearLabel.toLowerCase()}.`
+      ? isArchiveView
+        ? currentUser?.role === "SUPERADMIN"
+          ? `No archived ${formatProgramCourse(bulkProgramCourse)} students.`
+          : "No archived students."
+        : currentUser?.role === "SUPERADMIN"
+          ? `No ${formatProgramCourse(bulkProgramCourse)} students in ${activeYearLabel.toLowerCase()}.`
+          : `No students in ${activeYearLabel.toLowerCase()}.`
       : roleTab === "teachers"
         ? "No teacher accounts."
         : roleTab === "admins"
@@ -302,6 +501,91 @@ export default function AdminUsersModal({
         )}
       </div>
 
+      {roleTab === "students" && currentUser?.role === "SUPERADMIN" && !isArchiveView ? (
+        <div className="admin-users-bulk-panel card">
+          <div className="admin-users-bulk-copy">
+            <h3>School year actions</h3>
+            <p className="muted section-desc">
+              Promote one incoming year at a time, or run a full rollover that archives finished Y
+              {bulkMaxYear} then moves {rolloverPromoteChain} in one step so year levels stay
+              aligned.
+            </p>
+          </div>
+          <div className="admin-users-bulk-controls">
+            <label className="admin-users-bulk-field">
+              Program
+              <select
+                value={bulkProgramCourse}
+                onChange={(event) => handleBulkProgramCourseChange(event.target.value)}
+              >
+                {courseOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="admin-users-bulk-buttons">
+              {Number(studentYearTab) < bulkMaxYear ? (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={bulkBusy != null}
+                  onClick={() => promoteCurrentYear().catch(() => {})}
+                >
+                  {bulkBusy === "promote"
+                    ? "Promoting…"
+                    : `Promote Y${studentYearTab} → Y${Number(studentYearTab) + 1}`}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={bulkBusy != null}
+                onClick={() => graduateFinishedYear().catch(() => {})}
+              >
+                {bulkBusy === "graduate" ? "Archiving…" : `Archive finished Y${bulkMaxYear}`}
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={bulkBusy != null}
+                onClick={() => rolloverSchoolYear().catch(() => {})}
+              >
+                {bulkBusy === "rollover" ? "Running…" : `Rollover ${formatProgramCourse(bulkProgramCourse)}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isArchiveView ? (
+        <div className="admin-users-archive-panel card">
+          <div className="admin-users-archive-copy">
+            <h3>Finished students</h3>
+            <p className="muted section-desc">
+              Students archived after graduating or school-year rollover. Restore an account to
+              re-enable login while keeping exam history.
+            </p>
+          </div>
+          {currentUser?.role === "SUPERADMIN" ? (
+            <label className="admin-users-bulk-field">
+              Program
+              <select
+                value={bulkProgramCourse}
+                onChange={(event) => handleBulkProgramCourseChange(event.target.value)}
+              >
+                {courseOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="admin-users-modal-body">
         {loading ? (
           <p className="muted">Loading users...</p>
@@ -322,19 +606,22 @@ export default function AdminUsersModal({
               <AdminUserGroupTable
                 users={paginatedUsers}
                 group={tableGroup}
-                hideYearColumn={roleTab === "students"}
+                hideYearColumn={roleTab === "students" && !isArchiveView}
+                archiveMode={isArchiveView}
                 emptyMessage={emptyMessage}
                 editingId={editingId}
                 editDraft={editDraft}
                 savingId={savingId}
                 deletingId={deletingId}
                 togglingId={togglingId}
+                restoringId={restoringId}
                 currentUserId={currentUser?.id ?? null}
                 onStartEdit={startEdit}
                 onCancelEdit={cancelEdit}
                 onSaveEdit={saveEdit}
                 onDelete={deleteUser}
                 onToggleActive={toggleActive}
+                onRestore={restoreStudent}
                 setEditDraft={setEditDraft}
               />
             </ListPanel>

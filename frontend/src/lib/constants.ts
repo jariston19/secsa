@@ -1,5 +1,8 @@
+import { maxYearLevelForProgram } from "./programCourse";
+
 export const MIN_YEAR_LEVEL = 1;
 export const MAX_YEAR_LEVEL = 4;
+export const ABSOLUTE_MAX_YEAR_LEVEL = 5;
 export const MAX_EXAM_FOCUS_VIOLATIONS = 3;
 
 export function formatExamTimeLimit(totalMinutes: number) {
@@ -14,11 +17,12 @@ export function sanitizeYearInput(value: string): string {
   return value.replace(/\D/g, "");
 }
 
-export function parseYearLevel(value: string): number {
+export function parseYearLevel(value: string, programCourse?: string | null): number {
   if (!value.trim()) return MIN_YEAR_LEVEL;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return MIN_YEAR_LEVEL;
-  return Math.min(MAX_YEAR_LEVEL, Math.max(MIN_YEAR_LEVEL, Math.floor(parsed)));
+  const max = maxYearLevelForProgram(programCourse);
+  return Math.min(max, Math.max(MIN_YEAR_LEVEL, Math.floor(parsed)));
 }
 
 export function curriculumYearForStudentYear(studentYear: number): number {

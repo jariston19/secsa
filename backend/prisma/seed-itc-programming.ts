@@ -1,6 +1,8 @@
-import { Difficulty } from "@prisma/client";
+import { BloomLevel, Difficulty } from "@prisma/client";
+import { ITC_12_TOPICS } from "./seed-itc-12-questions.js";
+import { BLOOM_LEVEL_ORDER, difficultyForBloomLevel } from "../src/lib/bloomLevel.js";
 
-type DemoQuestion = {
+export type DemoQuestion = {
   text: string;
   optionA: string;
   optionB: string;
@@ -8,9 +10,12 @@ type DemoQuestion = {
   optionD: string;
   correctOption: string;
   difficulty: Difficulty;
+  bloomLevel?: BloomLevel;
 };
 
-type DemoTopic = {
+export type DemoQuestionDraft = Omit<DemoQuestion, "difficulty" | "bloomLevel">;
+
+export type DemoTopic = {
   name: string;
   questions: DemoQuestion[];
 };
@@ -22,8 +27,46 @@ export type ItcDemoSubject = {
   topics: DemoTopic[];
 };
 
+export type DomainQuestionSet = Record<
+  BloomLevel,
+  [DemoQuestionDraft, DemoQuestionDraft, DemoQuestionDraft]
+>;
+
 function topicQuestions(questions: DemoQuestion[]): DemoTopic["questions"] {
   return questions;
+}
+
+/** Three demo questions per Bloom domain (L1–L6) for exam pool validation. */
+export function threePerDomainQuestions(byDomain: DomainQuestionSet): DemoQuestion[] {
+  return BLOOM_LEVEL_ORDER.flatMap((bloomLevel) =>
+    byDomain[bloomLevel].map((question) => ({
+      ...question,
+      bloomLevel,
+      difficulty: difficultyForBloomLevel(bloomLevel),
+    }))
+  );
+}
+
+export function demoTopic(name: string, byDomain: DomainQuestionSet): DemoTopic {
+  return { name, questions: threePerDomainQuestions(byDomain) };
+}
+
+export function q(
+  text: string,
+  optionA: string,
+  optionB: string,
+  optionC: string,
+  optionD: string,
+  correctOption: string
+): DemoQuestionDraft {
+  return {
+    text: `[Demo] ${text}`,
+    optionA,
+    optionB,
+    optionC,
+    optionD,
+    correctOption,
+  };
 }
 
 /** IT Year 2 programming subjects — C++ (ITC 12) and Python (ITC 13). */
@@ -32,421 +75,7 @@ export const ITC_DEMO_SUBJECTS: ItcDemoSubject[] = [
     courseCode: "ITC 12",
     courseTitle: "Computer Programming 1",
     curriculumYear: 1,
-    topics: [
-      {
-        name: "Variables",
-        questions: topicQuestions([
-          {
-            text: "[Demo] Which C++ statement correctly declares an integer variable named count?",
-            optionA: "integer count;",
-            optionB: "int count;",
-            optionC: "var count = int;",
-            optionD: "count: int;",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] Which operator assigns a value to a variable in C++?",
-            optionA: "==",
-            optionB: "=",
-            optionC: ":=",
-            optionD: "->",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] After `int x = 5; x += 3;`, what is the value of x?",
-            optionA: "3",
-            optionB: "5",
-            optionC: "8",
-            optionD: "53",
-            correctOption: "C",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] Which C++ type is best for storing a single character?",
-            optionA: "string",
-            optionB: "char",
-            optionC: "bool",
-            optionD: "double",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] A variable declared inside a function block is visible:",
-            optionA: "Throughout the entire program",
-            optionB: "Only inside that block",
-            optionC: "Only in main()",
-            optionD: "In every function in the file",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-          {
-            text: "[Demo] Why use `const int MAX = 100;` instead of a plain int?",
-            optionA: "const makes the variable global",
-            optionB: "const prevents reassignment after initialization",
-            optionC: "const converts the value to a string",
-            optionD: "const is required for all integers",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-        ]),
-      },
-      {
-        name: "Conditions",
-        questions: topicQuestions([
-          {
-            text: "[Demo] Which C++ keyword starts a conditional branch?",
-            optionA: "loop",
-            optionB: "if",
-            optionC: "switch",
-            optionD: "case",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] Which expression evaluates to true when a equals b in C++?",
-            optionA: "a = b",
-            optionB: "a == b",
-            optionC: "a === b",
-            optionD: "a := b",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] What does `else if` allow in a decision structure?",
-            optionA: "Only one branch total",
-            optionB: "Testing additional conditions after the first if",
-            optionC: "Repeating code forever",
-            optionD: "Declaring variables",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] In C++, which operator combines conditions so both must be true?",
-            optionA: "||",
-            optionB: "&&",
-            optionC: "!",
-            optionD: "|",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] Given `int score = 75;`, which condition correctly checks for a passing score of at least 60?",
-            optionA: "if (score > 60)",
-            optionB: "if (score >= 60)",
-            optionC: "if (score = 60)",
-            optionD: "if (score == 60)",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-          {
-            text: "[Demo] A nested if inside another if is most useful when:",
-            optionA: "You need unrelated loops",
-            optionB: "A second decision depends on the first being true",
-            optionC: "You want to skip semicolons",
-            optionD: "Variables must be global",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-        ]),
-      },
-      {
-        name: "Loops",
-        questions: topicQuestions([
-          {
-            text: "[Demo] Which C++ loop repeats while a condition is true and checks the condition first?",
-            optionA: "for",
-            optionB: "while",
-            optionC: "do-while",
-            optionD: "foreach",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] In `for (int i = 0; i < 5; i++)`, how many times does the body run?",
-            optionA: "4",
-            optionB: "5",
-            optionC: "6",
-            optionD: "0",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] What does `i++` do inside a for loop?",
-            optionA: "Decreases i by 1",
-            optionB: "Increases i by 1",
-            optionC: "Multiplies i by 2",
-            optionD: "Resets i to 0",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] A do-while loop differs from while because:",
-            optionA: "It never runs the body",
-            optionB: "It runs the body at least once",
-            optionC: "It requires three expressions",
-            optionD: "It cannot use a counter",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] Which loop header prints values 1 through 10 inclusive?",
-            optionA: "for (int i = 1; i < 10; i++)",
-            optionB: "for (int i = 1; i <= 10; i++)",
-            optionC: "for (int i = 0; i > 10; i++)",
-            optionD: "for (int i = 10; i < 1; i++)",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-          {
-            text: "[Demo] An infinite loop is most likely caused by:",
-            optionA: "Updating the loop variable inside the body",
-            optionB: "Never changing the condition toward false",
-            optionC: "Using int instead of double",
-            optionD: "Including iostream",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-        ]),
-      },
-      {
-        name: "Arrays",
-        questions: topicQuestions([
-          {
-            text: "[Demo] Which declares an integer array of size 5 in C++?",
-            optionA: "int arr(5);",
-            optionB: "int arr[5];",
-            optionC: "array int[5] arr;",
-            optionD: "int[] arr = 5;",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] What is the index of the first element in a C++ array?",
-            optionA: "1",
-            optionB: "0",
-            optionC: "-1",
-            optionD: "Depends on size",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] If `int nums[4] = {10, 20, 30, 40};`, what is nums[2]?",
-            optionA: "20",
-            optionB: "30",
-            optionC: "40",
-            optionD: "2",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] Accessing `arr[10]` when the array size is 5 causes:",
-            optionA: "Automatic resizing",
-            optionB: "Undefined behavior / out-of-bounds access",
-            optionC: "A compile-time error always",
-            optionD: "The value 0 always",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] To store a list of student scores that may grow, which is more flexible than a fixed array?",
-            optionA: "A single char variable",
-            optionB: "std::vector",
-            optionC: "A bool flag",
-            optionD: "A macro",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-          {
-            text: "[Demo] Iterating through every element of `int data[5]` safely requires indices:",
-            optionA: "1 through 5",
-            optionB: "0 through 4",
-            optionC: "0 through 5",
-            optionD: "5 through 0 only",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-        ]),
-      },
-      {
-        name: "Functions",
-        questions: topicQuestions([
-          {
-            text: "[Demo] Which keyword specifies the return type of a C++ function?",
-            optionA: "return type appears before the function name",
-            optionB: "function keyword only",
-            optionC: "def",
-            optionD: "proc",
-            correctOption: "A",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] What does `return 0;` typically mean in main()?",
-            optionA: "Program failed",
-            optionB: "Successful program termination",
-            optionC: "Skip all loops",
-            optionD: "Print zero only",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] A function parameter is:",
-            optionA: "A value the function returns",
-            optionB: "An input variable listed in the function definition",
-            optionC: "A global constant",
-            optionD: "A header file",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] Which function signature returns nothing?",
-            optionA: "int add(int a, int b)",
-            optionB: "void greet(string name)",
-            optionC: "double average(int x, int y)",
-            optionD: "char grade(int score)",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] Pass-by-value means the function receives:",
-            optionA: "A copy of the argument",
-            optionB: "The memory address only",
-            optionC: "A reference alias always",
-            optionD: "No data",
-            correctOption: "A",
-            difficulty: Difficulty.HARD,
-          },
-          {
-            text: "[Demo] A helper function that computes factorial is best designed to:",
-            optionA: "Use global variables only",
-            optionB: "Take input, compute, and return a result",
-            optionC: "Never use return",
-            optionD: "Print instead of returning for all callers",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-        ]),
-      },
-      {
-        name: "OOP",
-        questions: topicQuestions([
-          {
-            text: "[Demo] In C++, a class groups:",
-            optionA: "Only global variables",
-            optionB: "Data members and member functions",
-            optionC: "Preprocessor directives only",
-            optionD: "Comments only",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] An object is:",
-            optionA: "A blueprint for a class",
-            optionB: "An instance of a class",
-            optionC: "A header guard",
-            optionD: "A loop counter",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] Which access specifier hides members from outside the class by default in a struct?",
-            optionA: "private in struct",
-            optionB: "public in struct",
-            optionC: "protected only",
-            optionD: "static only",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] A constructor in C++ is called when:",
-            optionA: "The program exits",
-            optionB: "An object is created",
-            optionC: "A file is included",
-            optionD: "main returns",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] Encapsulation means:",
-            optionA: "Hiding implementation details behind a class interface",
-            optionB: "Using only global functions",
-            optionC: "Removing all private members",
-            optionD: "Avoiding objects",
-            correctOption: "A",
-            difficulty: Difficulty.HARD,
-          },
-          {
-            text: "[Demo] If class `Student` has private `int id` and public `getId()`, this design:",
-            optionA: "Breaks encapsulation",
-            optionB: "Controls access to id through a method",
-            optionC: "Makes id global",
-            optionD: "Prevents object creation",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-        ]),
-      },
-      {
-        name: "Algorithm",
-        questions: topicQuestions([
-          {
-            text: "[Demo] An algorithm is best defined as:",
-            optionA: "A programming language",
-            optionB: "A step-by-step procedure to solve a problem",
-            optionC: "A computer brand",
-            optionD: "A syntax error",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] Pseudocode is used to:",
-            optionA: "Compile C++ directly",
-            optionB: "Describe logic in plain structured steps",
-            optionC: "Replace all testing",
-            optionD: "Store binary files",
-            correctOption: "B",
-            difficulty: Difficulty.EASY,
-          },
-          {
-            text: "[Demo] To find the largest of three numbers, the first step is usually:",
-            optionA: "Print hello world",
-            optionB: "Read or receive the three values",
-            optionC: "Delete the array",
-            optionD: "Close the program",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] Linear search checks elements:",
-            optionA: "In random order only",
-            optionB: "One by one until found or end",
-            optionC: "Only the middle element",
-            optionD: "Never compares values",
-            correctOption: "B",
-            difficulty: Difficulty.MEDIUM,
-          },
-          {
-            text: "[Demo] Bubble sort repeatedly:",
-            optionA: "Deletes the smallest item",
-            optionB: "Swaps adjacent out-of-order elements",
-            optionC: "Uses recursion only",
-            optionD: "Sorts without comparisons",
-            correctOption: "B",
-            difficulty: Difficulty.HARD,
-          },
-          {
-            text: "[Demo] An algorithm with O(n) time complexity means runtime grows:",
-            optionA: "Linearly with input size",
-            optionB: "Not at all with input size",
-            optionC: "Exponentially always",
-            optionD: "Only with compiler version",
-            correctOption: "A",
-            difficulty: Difficulty.HARD,
-          },
-        ]),
-      },
-    ],
+    topics: ITC_12_TOPICS,
   },
   {
     courseCode: "ITC 13",

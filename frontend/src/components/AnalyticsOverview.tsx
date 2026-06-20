@@ -1,24 +1,39 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { VerticalHistogram } from "./charts/AnalyticsCharts";
+import { VerticalHistogram, DonutChart } from "./charts/AnalyticsCharts";
 import AnalyticsPrintArea from "./AnalyticsPrintArea";
-import SwappableChartGrid, { ChartReorderHint } from "./SwappableChartGrid";
+import SwappableChartGrid from "./SwappableChartGrid";
 import { useChartOrder } from "../hooks/useChartOrder";
-import { api } from "../lib/api";
+import { OVERVIEW_CHART_LAYOUT } from "../lib/analyticsLayout";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import {
   formatProgramCourse,
   type ProgramCourseFilter,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
+import { api } from "../lib/api";
+
+export interface OverviewCohortPassStats {
+  count: number;
+  passRate: number;
+  passed: number;
+  failed: number;
+}
 
 export interface OverviewExamTypeHealth {
   passRate: number;
   examsTaken: number;
+  averageScore: number;
+  passed: number;
+  failed: number;
   trend: {
     week: { current: number; previous: number; delta: number; exams: number };
     month: { current: number; previous: number; delta: number; exams: number };
   };
   scoreDistribution: Array<{ label: string; students: number }>;
+  cohorts?: {
+    firstTakers: OverviewCohortPassStats;
+    retakers: OverviewCohortPassStats;
+  };
 }
 
 export interface OverviewDashboardData {
@@ -56,7 +71,7 @@ export interface OverviewDashboardData {
 }
 
 const OVERVIEW_CHART_ORDER = [
-  "first-takers-retakers",
+  "average-score-breakdown",
   "pass-rate-comprehensive",
   "pass-rate-diagnostic",
   "score-distribution-comprehensive",
@@ -70,24 +85,6 @@ const OVERVIEW_CHART_ORDER = [
 type OverviewChartId = (typeof OVERVIEW_CHART_ORDER)[number];
 
 type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
-
-function TrendArrow({ delta }: { delta: number }) {
-  if (Math.abs(delta) < 0.05) {
-    return <span className="overview-trend overview-trend-flat">→ flat</span>;
-  }
-  if (delta > 0) {
-    return (
-      <span className="overview-trend overview-trend-up">
-        ↑ {delta.toFixed(1)} pts vs last week
-      </span>
-    );
-  }
-  return (
-    <span className="overview-trend overview-trend-down">
-      ↓ {Math.abs(delta).toFixed(1)} pts vs last week
-    </span>
-  );
-}
 
 function formatRelativeTime(iso: string | null) {
   if (!iso) return "No submissions yet";
@@ -105,37 +102,118 @@ interface Props {
   token: string | null;
 }
 
-function PassRateCard({
-  title,
-  description,
-  health,
-  icon,
-  className,
-}: {
-  title: string;
-  description: string;
-  health: OverviewExamTypeHealth;
-  icon: string;
-  className: string;
-}) {
+function DiagnosticPassRateCard({ health }: { health: OverviewExamTypeHealth }) {
   return (
-    <article className={`overview-hero-card ${className}`}>
+    <article className="overview-hero-card overview-hero-pass overview-hero-pass-diagnostic overview-hero-pass-donut">
       <div className="overview-hero-card-top">
-        <span className="overview-hero-icon" aria-hidden>
-          {icon}
-        </span>
         <div>
-          <h3>{title}</h3>
-          <p className="muted">{description}</p>
+          <h3>Pass Rate — Diagnostic</h3>
+          <p className="muted">Pass vs fail on incoming diagnostic exams</p>
         </div>
       </div>
-      <div className="overview-hero-metric">{health.passRate.toFixed(1)}%</div>
-      <TrendArrow delta={health.trend.week.delta} />
-      <p className="muted overview-hero-sub">
-        {health.trend.month.delta >= 0 ? "↑" : "↓"}{" "}
-        {Math.abs(health.trend.month.delta).toFixed(1)} pts vs last month · {health.examsTaken}{" "}
-        exam{health.examsTaken === 1 ? "" : "s"} total
-      </p>
+      <DonutChart
+        value={health.passRate}
+        label="passed"
+        passed={health.passed}
+        failed={health.failed}
+      />
+    </article>
+  );
+}
+
+function ComprehensivePassRateCard({
+  health,
+}: {
+  health: OverviewExamTypeHealth;
+}) {
+  const cohorts = health.cohorts ?? {
+    firstTakers: { count: 0, passRate: 0, passed: 0, failed: 0 },
+    retakers: { count: 0, passRate: 0, passed: 0, failed: 0 },
+  };
+
+  return (
+    <article className="overview-hero-card overview-hero-pass overview-hero-pass-comprehensive">
+      <div className="overview-hero-card-top">
+        <div>
+          <h3>Pass Rate — Comprehensive</h3>
+          <p className="muted">First-time vs retake attempts on comprehensive exams</p>
+        </div>
+      </div>
+      <div className="overview-pass-donut-grid">
+        <div className="overview-pass-donut-item">
+          <span className="overview-pass-donut-title">First takers</span>
+          <DonutChart
+            value={cohorts.firstTakers.passRate}
+            label="passed"
+            passed={cohorts.firstTakers.passed}
+            failed={cohorts.firstTakers.failed}
+          />
+        </div>
+        <div className="overview-pass-donut-item">
+          <span className="overview-pass-donut-title">Retakers</span>
+          <DonutChart
+            value={cohorts.retakers.passRate}
+            label="passed"
+            passed={cohorts.retakers.passed}
+            failed={cohorts.retakers.failed}
+          />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function AverageScoreColumn({
+  title,
+  value,
+  exams,
+}: {
+  title: string;
+  value: number;
+  exams: number;
+}) {
+  return (
+    <div className="overview-pass-donut-item">
+      <span className="overview-pass-donut-title">{title}</span>
+      <DonutChart
+        metric="averageScore"
+        value={value}
+        exams={exams}
+      />
+    </div>
+  );
+}
+
+function AverageScoreBreakdownCard({ data }: { data: OverviewDashboardData }) {
+  const comprehensive = data.performanceHealth.comprehensive;
+  const diagnostic = data.performanceHealth.diagnostic;
+  const repeaters = data.retakeEffectiveness.retakers;
+
+  return (
+    <article className="overview-hero-card overview-hero-pass overview-hero-pass-average-score">
+      <div className="overview-hero-card-top">
+        <div>
+          <h3>Average Score</h3>
+          <p className="muted">Mean exam score by comprehensive, diagnostic, and retake attempts.</p>
+        </div>
+      </div>
+      <div className="overview-pass-donut-grid overview-pass-donut-grid-three">
+        <AverageScoreColumn
+          title="Comprehensive"
+          value={comprehensive.averageScore ?? 0}
+          exams={comprehensive.examsTaken}
+        />
+        <AverageScoreColumn
+          title="Diagnostic"
+          value={diagnostic.averageScore ?? 0}
+          exams={diagnostic.examsTaken}
+        />
+        <AverageScoreColumn
+          title="Repeaters"
+          value={repeaters.averageScore}
+          exams={repeaters.count}
+        />
+      </div>
     </article>
   );
 }
@@ -144,21 +222,16 @@ function ScoreDistributionCard({
   title,
   description,
   health,
-  icon,
   className,
 }: {
   title: string;
   description: string;
   health: OverviewExamTypeHealth;
-  icon: string;
   className: string;
 }) {
   return (
     <article className={`overview-hero-card ${className}`}>
       <div className="overview-hero-card-top">
-        <span className="overview-hero-icon" aria-hidden>
-          {icon}
-        </span>
         <div>
           <h3>{title}</h3>
           <p className="muted">{description}</p>
@@ -178,78 +251,18 @@ function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): 
   const maxYearPass = Math.max(...data.passRateByYear.map((row) => row.passRate), 1);
 
   switch (id) {
-    case "first-takers-retakers":
-      return (
-        <section className="card overview-panel">
-          <h2>First Takers vs Retakers</h2>
-          <p className="muted section-desc">
-            Compare pass rate and average score between first-time and retake attempts.
-          </p>
-          <div className="overview-cohort-compare">
-            <article className="overview-cohort-card">
-              <h3>First Takers</h3>
-              <div className="overview-cohort-metric">
-                {data.retakeEffectiveness.firstTakers.passRate.toFixed(1)}%
-              </div>
-              <span className="muted">Pass rate</span>
-              <dl className="overview-mini-stats">
-                <div>
-                  <dt>Average score</dt>
-                  <dd>{data.retakeEffectiveness.firstTakers.averageScore.toFixed(1)}%</dd>
-                </div>
-                <div>
-                  <dt>Exams</dt>
-                  <dd>{data.retakeEffectiveness.firstTakers.count}</dd>
-                </div>
-              </dl>
-            </article>
-            <article className="overview-cohort-card">
-              <h3>Retakers</h3>
-              <div className="overview-cohort-metric">
-                {data.retakeEffectiveness.retakers.passRate.toFixed(1)}%
-              </div>
-              <span className="muted">Pass rate</span>
-              <dl className="overview-mini-stats">
-                <div>
-                  <dt>Average score</dt>
-                  <dd>{data.retakeEffectiveness.retakers.averageScore.toFixed(1)}%</dd>
-                </div>
-                <div>
-                  <dt>Exams</dt>
-                  <dd>{data.retakeEffectiveness.retakers.count}</dd>
-                </div>
-              </dl>
-            </article>
-          </div>
-        </section>
-      );
+    case "average-score-breakdown":
+      return <AverageScoreBreakdownCard data={data} />;
     case "pass-rate-comprehensive":
-      return (
-        <PassRateCard
-          title="Pass Rate — Comprehensive"
-          description="Performance on comprehensive and retake exams"
-          health={data.performanceHealth.comprehensive}
-          icon="🟢"
-          className="overview-hero-pass"
-        />
-      );
+      return <ComprehensivePassRateCard health={data.performanceHealth.comprehensive} />;
     case "pass-rate-diagnostic":
-      return (
-        <PassRateCard
-          title="Pass Rate — Diagnostic"
-          description="Performance on incoming diagnostic exams"
-          health={data.performanceHealth.diagnostic}
-          icon="🔵"
-          className="overview-hero-pass overview-hero-pass-diagnostic"
-        />
-      );
+      return <DiagnosticPassRateCard health={data.performanceHealth.diagnostic} />;
     case "score-distribution-comprehensive":
       return (
         <ScoreDistributionCard
           title="Score Distribution — Comprehensive"
           description="Latest comprehensive or retake attempt per student"
           health={data.performanceHealth.comprehensive}
-          icon="📊"
           className="overview-hero-distribution"
         />
       );
@@ -259,29 +272,27 @@ function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): 
           title="Score Distribution — Diagnostic"
           description="Latest diagnostic attempt per student"
           health={data.performanceHealth.diagnostic}
-          icon="📈"
           className="overview-hero-distribution overview-hero-distribution-diagnostic"
         />
       );
     case "retake-success":
       return (
-        <article className="overview-hero-card overview-hero-retake">
+        <article className="overview-hero-card overview-hero-retake overview-hero-retake-donut">
           <div className="overview-hero-card-top">
-            <span className="overview-hero-icon" aria-hidden>
-              🔄
-            </span>
             <div>
               <h3>Retake Success Rate</h3>
               <p className="muted">Share of retakers who eventually passed</p>
             </div>
           </div>
-          <div className="overview-hero-metric">
-            {data.retakeEffectiveness.eventualPassRate.toFixed(0)}%
-          </div>
-          <p className="overview-hero-highlight">
-            {data.retakeEffectiveness.retakersWhoEventuallyPassed} of{" "}
-            {data.retakeEffectiveness.totalRetakerStudents} retakers passed
-          </p>
+          <DonutChart
+            value={data.retakeEffectiveness.eventualPassRate}
+            label="passed"
+            passed={data.retakeEffectiveness.retakersWhoEventuallyPassed}
+            failed={
+              data.retakeEffectiveness.totalRetakerStudents -
+              data.retakeEffectiveness.retakersWhoEventuallyPassed
+            }
+          />
           <dl className="overview-mini-stats">
             <div>
               <dt>Avg attempts to pass</dt>
@@ -300,52 +311,56 @@ function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): 
       );
     case "at-risk":
       return (
-        <article className="overview-hero-card overview-hero-risk">
+        <article className="overview-hero-card overview-hero-risk overview-at-risk-panel">
           <div className="overview-hero-card-top">
-            <span className="overview-hero-icon" aria-hidden>
-              ⚠️
-            </span>
             <div>
               <h3>At-Risk Students</h3>
               <p className="muted">Failed and need intervention</p>
             </div>
           </div>
-          <div className="overview-hero-metric overview-hero-metric-risk">
-            {data.atRisk.failedNotRetaken}
+          <div className="overview-activity-grid overview-at-risk-grid">
+            <article className="overview-activity-tile overview-activity-tile-risk">
+              <span className="overview-activity-value overview-activity-alert">
+                {data.atRisk.failedNotRetaken}
+              </span>
+              <span className="overview-activity-label">Failed, not retaken</span>
+              <span className="muted overview-activity-compare">Haven&apos;t retaken yet</span>
+            </article>
+            <article className="overview-activity-tile">
+              <span className="overview-activity-value">{data.atRisk.failingStudents}</span>
+              <span className="overview-activity-label">Failing (latest attempt)</span>
+            </article>
+            <article className="overview-activity-tile overview-at-risk-tile-wide">
+              <span className="overview-activity-value">{data.students}</span>
+              <span className="overview-activity-label">Students assessed</span>
+            </article>
           </div>
-          <p className="overview-hero-highlight">Failed and haven&apos;t retaken yet</p>
-          <dl className="overview-mini-stats">
-            <div>
-              <dt>Failing (latest attempt)</dt>
-              <dd>{data.atRisk.failingStudents}</dd>
-            </div>
-            <div>
-              <dt>Students assessed</dt>
-              <dd>{data.students}</dd>
-            </div>
-          </dl>
         </article>
       );
     case "exam-activity":
       return (
-        <section className="card overview-panel">
+        <section className="card overview-panel overview-activity-panel">
           <h2>Exam Activity</h2>
           <div className="overview-activity-grid">
-            <div className="overview-activity-stat">
+            <article className="overview-activity-tile">
               <span className="overview-activity-value">{data.examActivity.examsThisWeek}</span>
               <span className="overview-activity-label">This week</span>
               <span className="muted overview-activity-compare">
                 vs {data.examActivity.examsLastWeek} last week
               </span>
-            </div>
-            <div className="overview-activity-stat">
+            </article>
+            <article className="overview-activity-tile">
               <span className="overview-activity-value">{data.examActivity.examsThisMonth}</span>
               <span className="overview-activity-label">This month</span>
               <span className="muted overview-activity-compare">
                 vs {data.examActivity.examsLastMonth} last month
               </span>
-            </div>
-            <div className="overview-activity-stat">
+            </article>
+            <article
+              className={`overview-activity-tile${
+                data.examActivity.pendingRetakeApprovals > 0 ? " overview-activity-tile-alert" : ""
+              }`}
+            >
               <span
                 className={`overview-activity-value ${
                   data.examActivity.pendingRetakeApprovals > 0 ? "overview-activity-alert" : ""
@@ -354,13 +369,13 @@ function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): 
                 {data.examActivity.pendingRetakeApprovals}
               </span>
               <span className="overview-activity-label">Pending approvals</span>
-            </div>
-            <div className="overview-activity-stat">
+            </article>
+            <article className="overview-activity-tile">
               <span className="overview-activity-value overview-activity-time">
                 {formatRelativeTime(data.examActivity.lastSubmissionAt)}
               </span>
               <span className="overview-activity-label">Last submission</span>
-            </div>
+            </article>
           </div>
         </section>
       );
@@ -410,9 +425,15 @@ export default function AnalyticsOverview({ token }: Props) {
   const [error, setError] = useState("");
   const hasLoadedRef = useRef(false);
   const [chartOrder, setChartOrder] = useChartOrder(
-    "analytics-overview-chart-order",
+    "analytics-overview-chart-order-v2",
     OVERVIEW_CHART_ORDER
   );
+
+  const displayChartOrder = useMemo(() => {
+    const pinned: OverviewChartId = "average-score-breakdown";
+    if (chartOrder[0] === pinned) return chartOrder;
+    return [pinned, ...chartOrder.filter((id) => id !== pinned)];
+  }, [chartOrder]);
 
   const query = useMemo(() => {
     const params = new URLSearchParams();
@@ -507,11 +528,10 @@ export default function AnalyticsOverview({ token }: Props) {
 
         {error ? <p className="error">{error}</p> : null}
 
-        <ChartReorderHint />
         <SwappableChartGrid
-          order={chartOrder}
+          order={displayChartOrder}
           onOrderChange={setChartOrder}
-          wideIds={["first-takers-retakers"]}
+          slotLayout={OVERVIEW_CHART_LAYOUT}
         >
           {(id) => renderOverviewChart(id as OverviewChartId, data)}
         </SwappableChartGrid>

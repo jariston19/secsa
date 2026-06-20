@@ -46,6 +46,19 @@ export function defaultBloomLevelForDifficulty(difficulty: Difficulty): BloomLev
   return BLOOM_LEVELS_BY_DIFFICULTY[difficulty][0];
 }
 
+export function difficultyForBloomLevel(bloomLevel: BloomLevel): Difficulty {
+  if (
+    bloomLevel === BloomLevel.KNOWLEDGE ||
+    bloomLevel === BloomLevel.COMPREHENSION
+  ) {
+    return Difficulty.EASY;
+  }
+  if (bloomLevel === BloomLevel.APPLICATION) {
+    return Difficulty.MEDIUM;
+  }
+  return Difficulty.HARD;
+}
+
 export function isBloomLevelAllowed(difficulty: Difficulty, bloomLevel: BloomLevel) {
   return BLOOM_LEVELS_BY_DIFFICULTY[difficulty].includes(bloomLevel);
 }

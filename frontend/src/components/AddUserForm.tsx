@@ -80,7 +80,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
             firstName: form.firstName,
             lastName: form.lastName,
             role: form.role,
-            yearLevel: form.role === "STUDENT" ? parseYearLevel(form.yearLevel) : undefined,
+            yearLevel: form.role === "STUDENT" ? parseYearLevel(form.yearLevel, form.programCourse) : undefined,
             programCourse: form.role === "STUDENT" ? form.programCourse : undefined,
             gender: form.role === "STUDENT" ? form.gender : undefined,
             schoolType: form.role === "STUDENT" ? form.schoolType : undefined,
@@ -199,7 +199,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
               <div className="add-user-fields add-user-fields-2">
                 <FormField
                   label="Year level"
-                  hint="Incoming year 1–4. Sets which exam they receive."
+                  hint="Incoming year for this program (Architecture allows up to year 5)."
                 >
                   <input
                     type="text"
@@ -215,7 +215,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
                     onBlur={() =>
                       setForm((current) => ({
                         ...current,
-                        yearLevel: String(parseYearLevel(current.yearLevel)),
+                        yearLevel: String(parseYearLevel(current.yearLevel, current.programCourse)),
                       }))
                     }
                     required
@@ -228,9 +228,13 @@ export default function AddUserForm({ token, onCreated }: Props) {
                   <select
                     value={form.programCourse}
                     onChange={(event) =>
-                      setForm({
-                        ...form,
-                        programCourse: event.target.value as ProgramCourseId,
+                      setForm((current) => {
+                        const programCourse = event.target.value as ProgramCourseId;
+                        return {
+                          ...current,
+                          programCourse,
+                          yearLevel: String(parseYearLevel(current.yearLevel, programCourse)),
+                        };
                       })
                     }
                     required

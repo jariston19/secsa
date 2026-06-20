@@ -19,6 +19,22 @@ function passRate(attempts: Array<{ passed: boolean | null }>) {
   return (passed / attempts.length) * 100;
 }
 
+function cohortPassStats(attempts: Array<{ passed: boolean | null; percentage: number | null }>) {
+  const passed = attempts.filter((attempt) => attempt.passed === true).length;
+  const failed = attempts.filter((attempt) => attempt.passed === false).length;
+  const averageScore =
+    attempts.length > 0
+      ? attempts.reduce((sum, attempt) => sum + (attempt.percentage ?? 0), 0) / attempts.length
+      : 0;
+  return {
+    count: attempts.length,
+    passRate: passRate(attempts),
+    passed,
+    failed,
+    averageScore,
+  };
+}
+
 function delta(current: number, previous: number) {
   return current - previous;
 }
@@ -151,6 +167,12 @@ export async function buildOverviewDashboard(yearLevel?: number, programCourse?:
   ) => ({
     passRate: passRate(attemptsForType),
     examsTaken: attemptsForType.length,
+    averageScore:
+      attemptsForType.length > 0
+        ? average(attemptsForType.map((attempt) => attempt.percentage ?? 0))
+        : 0,
+    passed: attemptsForType.filter((attempt) => attempt.passed === true).length,
+    failed: attemptsForType.filter((attempt) => attempt.passed === false).length,
     trend: {
       week: {
         current: passRate(weekCurrent),
@@ -240,6 +262,18 @@ export async function buildOverviewDashboard(yearLevel?: number, programCourse?:
   const retakeAttempts = submittedAttempts.filter(
     (attempt) => attempt.attemptType === AttemptType.RETAKE
   );
+  const comprehensiveFirstTakerAttempts = comprehensiveAttempts.filter(
+    (attempt) => attempt.attemptType === AttemptType.FIRST
+  );
+  const comprehensiveRetakeAttempts = comprehensiveAttempts.filter(
+    (attempt) => attempt.attemptType === AttemptType.RETAKE
+  );
+  const diagnosticFirstTakerAttempts = diagnosticAttempts.filter(
+    (attempt) => attempt.attemptType === AttemptType.FIRST
+  );
+  const diagnosticRetakeAttempts = diagnosticAttempts.filter(
+    (attempt) => attempt.attemptType === AttemptType.RETAKE
+  );
 
   const average = (values: number[]) =>
     values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
@@ -250,14 +284,20 @@ export async function buildOverviewDashboard(yearLevel?: number, programCourse?:
     passRate: overallPassRate,
     averageScore: average(submittedAttempts.map((attempt) => attempt.percentage ?? 0)),
     performanceHealth: {
-      comprehensive: buildExamTypeHealth(
-        comprehensiveAttempts,
-        comprehensiveWeekCurrent,
-        comprehensiveWeekPrevious,
-        comprehensiveMonthCurrent,
-        comprehensiveMonthPrevious,
-        comprehensiveScoreDistribution
-      ),
+      comprehensive: {
+        ...buildExamTypeHealth(
+          comprehensiveAttempts,
+          comprehensiveWeekCurrent,
+          comprehensiveWeekPrevious,
+          comprehensiveMonthCurrent,
+          comprehensiveMonthPrevious,
+          comprehensiveScoreDistribution
+        ),
+        cohorts: {
+          firstTakers: cohortPassStats(comprehensiveFirstTakerAttempts),
+          retakers: cohortPassStats(comprehensiveRetakeAttempts),
+        },
+      },
       diagnostic: buildExamTypeHealth(
         diagnosticAttempts,
         diagnosticWeekCurrent,
@@ -286,6 +326,16 @@ export async function buildOverviewDashboard(yearLevel?: number, programCourse?:
         count: retakeAttempts.length,
         passRate: passRate(retakeAttempts),
         averageScore: average(retakeAttempts.map((attempt) => attempt.percentage ?? 0)),
+      },
+      cohortByExamType: {
+        comprehensive: {
+          firstTakers: cohortPassStats(comprehensiveFirstTakerAttempts),
+          retakers: cohortPassStats(comprehensiveRetakeAttempts),
+        },
+        diagnostic: {
+          firstTakers: cohortPassStats(diagnosticFirstTakerAttempts),
+          retakers: cohortPassStats(diagnosticRetakeAttempts),
+        },
       },
     },
     examActivity: {

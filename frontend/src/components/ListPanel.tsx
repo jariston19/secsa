@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
+import { ListPanelScrollContext } from "./ListPanelContext";
 
 interface Props {
   children: ReactNode;
@@ -13,6 +14,7 @@ export default function ListPanel({
   className,
   rowHeight = "default",
 }: Props) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const scrollClass = [
     "list-panel-scroll",
     rowHeight === "tall" ? "list-panel-scroll-tall" : "",
@@ -21,9 +23,13 @@ export default function ListPanel({
     .join(" ");
 
   return (
-    <div className={`list-panel${className ? ` ${className}` : ""}`}>
-      <div className={scrollClass}>{children}</div>
-      {footer ? <div className="list-panel-footer">{footer}</div> : null}
-    </div>
+    <ListPanelScrollContext.Provider value={scrollRef}>
+      <div className={`list-panel${className ? ` ${className}` : ""}`}>
+        <div ref={scrollRef} className={scrollClass}>
+          {children}
+        </div>
+        {footer ? <div className="list-panel-footer">{footer}</div> : null}
+      </div>
+    </ListPanelScrollContext.Provider>
   );
 }

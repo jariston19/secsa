@@ -3,6 +3,7 @@ import { BLOOM_LEVEL_ORDER, buildBloomCognitiveProfile, buildDifficultyDomainSco
 import { formatFullName } from "../lib/names.js";
 import { prisma } from "../lib/prisma.js";
 import { nonQaStudentWhere, nonQaSubmittedExamWhere } from "../lib/studentFilters.js";
+import { buildStudentJourneyTrend } from "./studentJourneyTrend.js";
 
 const WEAK_THRESHOLD = 50;
 const WATCH_THRESHOLD = 60;
@@ -121,6 +122,8 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
     },
   });
 
+  const journey = await buildStudentJourneyTrend(studentId);
+
   if (!latestAttempt || !latestAttempt.submittedAt) {
     return {
       student: {
@@ -128,6 +131,7 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
         name: formatFullName(student.firstName, student.lastName),
       },
       hasExamData: false,
+      journey,
     };
   }
 
@@ -245,7 +249,14 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
 
   const studentTopicStats = new Map<
     BucketKey,
-    { topicId: string; topic: string; subject: string; correct: number; total: number }
+    {
+      topicId: string;
+      topic: string;
+      subject: string;
+      courseCode: string;
+      correct: number;
+      total: number;
+    }
   >();
   const studentSubjectStats = new Map<
     BucketKey,
@@ -275,6 +286,7 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
         topicId,
         topic: topicLabel,
         subject: subjectLabel,
+        courseCode: answer.question.subject.courseCode,
         correct: 0,
         total: 0,
       });
@@ -340,6 +352,7 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
         topicId: row.topicId,
         topic: row.topic,
         subject: row.subject,
+        courseCode: row.courseCode,
         score,
         classAverage,
         tone: scoreTone(score),
@@ -573,5 +586,6 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
     byBloomLevel,
     bloomProfile,
     insights: insights.slice(0, 6),
+    journey,
   };
 }

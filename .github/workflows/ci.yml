@@ -61,6 +61,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./backend
+          platforms: linux/amd64
           push: false
           load: true
           tags: secsa-backend:ci
@@ -69,6 +70,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
+          platforms: linux/amd64
           push: false
           load: true
           tags: secsa-frontend:ci

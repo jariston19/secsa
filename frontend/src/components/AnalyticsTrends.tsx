@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import ChartCard from "./charts/ChartCard";
+import AnalyticsChartSlot from "./AnalyticsChartSlot";
 import {
   BatchComparisonLineChart,
-  ChartIconBars,
-  ChartIconScatter,
   CohortMilestoneLineChart,
   GroupedPercentBars,
   ScoreCorrelationScatter,
@@ -244,12 +243,6 @@ export default function AnalyticsTrends({ token }: Props) {
           </div>
         </div>
 
-        <p className="muted analytics-trends-intro">
-          Track each <strong>intake batch</strong> (e.g. Batch 2024, 2025) through incoming years Y1–Y4.
-          Intake year is inferred from a student&apos;s first diagnostic, or from their earliest exam.
-          Select one batch to see its full journey, or compare all batches side by side.
-        </p>
-
         <div className="analytics-trends-summary">
           <article className="analytics-trends-stat">
             <span className="analytics-trends-stat-label">Students in scope</span>
@@ -281,19 +274,22 @@ export default function AnalyticsTrends({ token }: Props) {
           <p className="muted">No intake batch data yet for this filter.</p>
         ) : comparingBatches ? (
           <div className="analytics-trends-grid">
-            <ChartCard
-              className="analytics-chart-card-wide"
-              title="Batch journeys compared"
-              description="Average score at each incoming-year milestone — one line per intake batch."
-              icon={<ChartIconBars direction="vertical" />}
-            >
-              <BatchComparisonLineChart
-                batches={data.batchJourneys.map((batch) => ({
-                  intakeYear: batch.intakeYear,
-                  milestones: batch.milestones,
-                }))}
-              />
-            </ChartCard>
+            <AnalyticsChartSlot size="wide">
+              <ChartCard
+                className="analytics-chart-card-batch-compare"
+                title="Batch journeys compared"
+                description="Average score by calendar year — one line per intake batch, oldest to newest."
+              >
+                <BatchComparisonLineChart
+                  batches={[...data.batchJourneys]
+                    .sort((a, b) => a.intakeYear - b.intakeYear)
+                    .map((batch) => ({
+                      intakeYear: batch.intakeYear,
+                      milestones: batch.milestones,
+                    }))}
+                />
+              </ChartCard>
+            </AnalyticsChartSlot>
 
             <section className="card analytics-trends-transitions">
               <h2>Intake batches</h2>
@@ -313,7 +309,10 @@ export default function AnalyticsTrends({ token }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.batchJourneys.map((batch) => (
+                    {data.batchJourneys
+                      .slice()
+                      .sort((a, b) => a.intakeYear - b.intakeYear)
+                      .map((batch) => (
                       <tr key={batch.intakeYear}>
                         <td>Batch {batch.intakeYear}</td>
                         <td>{batch.studentCount}</td>
@@ -333,120 +332,128 @@ export default function AnalyticsTrends({ token }: Props) {
           </div>
         ) : selectedBatch && assessedMilestones.length > 0 ? (
           <div className="analytics-trends-grid">
-            <ChartCard
-              className="analytics-chart-card-wide"
-              title={`Batch ${selectedBatch.intakeYear} — full journey`}
-              description={`${selectedBatch.studentCount} students in this intake cohort.`}
-              icon={<ChartIconBars direction="vertical" />}
-            >
-              <CohortMilestoneLineChart milestones={selectedBatch.milestones} />
-            </ChartCard>
+            <AnalyticsChartSlot size="square">
+              <ChartCard
+                className="analytics-chart-card-compact"
+                title={`Batch ${selectedBatch.intakeYear} — full journey`}
+                description={`${selectedBatch.studentCount} students in this intake cohort.`}
+              >
+                <CohortMilestoneLineChart milestones={selectedBatch.milestones} fill />
+              </ChartCard>
+            </AnalyticsChartSlot>
 
-            <ChartCard
-              className="analytics-chart-card-paired analytics-chart-card-difficulty"
-              title="Pass rate across milestones"
-              description={`Batch ${selectedBatch.intakeYear} — pass rate at each incoming-year exam.`}
-              icon={<ChartIconBars direction="vertical" />}
-            >
-              <GroupedPercentBars
-                ariaLabel="Milestone pass rates"
-                items={assessedMilestones.map((milestone, index) => ({
-                  id: `y${milestone.yearLevel}`,
-                  label: `Y${milestone.yearLevel}`,
-                  score: milestone.passRate,
-                  color: MILESTONE_COLORS[index % MILESTONE_COLORS.length],
-                }))}
-              />
-            </ChartCard>
+            <AnalyticsChartSlot size="tall">
+              <ChartCard
+                className="analytics-chart-card-compact"
+                title="Pass rate across milestones"
+                description={`Batch ${selectedBatch.intakeYear} — pass rate at each incoming-year exam.`}
+              >
+                <GroupedPercentBars
+                  ariaLabel="Milestone pass rates"
+                  items={assessedMilestones.map((milestone, index) => ({
+                    id: `y${milestone.yearLevel}`,
+                    label: `Y${milestone.yearLevel}`,
+                    score: milestone.passRate,
+                    color: MILESTONE_COLORS[index % MILESTONE_COLORS.length],
+                  }))}
+                />
+              </ChartCard>
+            </AnalyticsChartSlot>
 
             {hasPairedStudents ? (
               <>
-                <ChartCard
-                  className="analytics-chart-card-paired analytics-chart-card-difficulty"
-                  title="Average score — before vs after"
-                  description={`Paired students in Batch ${selectedBatch.intakeYear}: ${activeTransition!.fromLabel} vs ${activeTransition!.toLabel}.`}
-                  icon={<ChartIconBars direction="vertical" />}
-                >
-                  <GroupedPercentBars
-                    ariaLabel="Year-to-year average scores"
-                    items={[
-                      {
-                        id: "from",
-                        label: shortMilestoneLabel(activeTransition!.fromLabel),
-                        score: activeTransition!.avgFromScore,
-                        color: TRANSITION_FROM_COLOR,
-                      },
-                      {
-                        id: "to",
-                        label: shortMilestoneLabel(activeTransition!.toLabel),
-                        score: activeTransition!.avgToScore,
-                        color: TRANSITION_TO_COLOR,
-                      },
-                    ]}
-                  />
-                </ChartCard>
-
-                <ChartCard
-                  className="analytics-chart-card-paired analytics-chart-card-difficulty"
-                  title="Pass rate — before vs after"
-                  description="Same paired students at each step within this intake batch."
-                  icon={<ChartIconBars direction="vertical" />}
-                >
-                  <GroupedPercentBars
-                    ariaLabel="Year-to-year pass rates"
-                    items={[
-                      {
-                        id: "from-pass",
-                        label: shortMilestoneLabel(activeTransition!.fromLabel),
-                        score: activeTransition!.fromPassRate,
-                        color: TRANSITION_FROM_COLOR,
-                      },
-                      {
-                        id: "to-pass",
-                        label: shortMilestoneLabel(activeTransition!.toLabel),
-                        score: activeTransition!.toPassRate,
-                        color: TRANSITION_TO_COLOR,
-                      },
-                    ]}
-                  />
-                </ChartCard>
-
-                {activeCorrelation ? (
+                <AnalyticsChartSlot size="tall">
                   <ChartCard
-                    className="analytics-chart-card-wide"
-                    title={activeTransitionMeta.label}
-                    description={`Batch ${selectedBatch.intakeYear} — each dot is one student who took both exams.`}
-                    icon={<ChartIconScatter />}
+                    className="analytics-chart-card-compact"
+                    title="Average score — before vs after"
+                    description={`Paired students in Batch ${selectedBatch.intakeYear}: ${activeTransition!.fromLabel} vs ${activeTransition!.toLabel}.`}
                   >
-                    <ScoreCorrelationScatter
-                      fromLabel={activeCorrelation.fromLabel}
-                      toLabel={activeCorrelation.toLabel}
-                      points={activeCorrelation.points}
+                    <GroupedPercentBars
+                      ariaLabel="Year-to-year average scores"
+                      items={[
+                        {
+                          id: "from",
+                          label: shortMilestoneLabel(activeTransition!.fromLabel),
+                          score: activeTransition!.avgFromScore,
+                          color: TRANSITION_FROM_COLOR,
+                        },
+                        {
+                          id: "to",
+                          label: shortMilestoneLabel(activeTransition!.toLabel),
+                          score: activeTransition!.avgToScore,
+                          color: TRANSITION_TO_COLOR,
+                        },
+                      ]}
                     />
                   </ChartCard>
+                </AnalyticsChartSlot>
+
+                <AnalyticsChartSlot size="tall">
+                  <ChartCard
+                    className="analytics-chart-card-compact"
+                    title="Pass rate — before vs after"
+                    description="Same paired students at each step within this intake batch."
+                  >
+                    <GroupedPercentBars
+                      ariaLabel="Year-to-year pass rates"
+                      items={[
+                        {
+                          id: "from-pass",
+                          label: shortMilestoneLabel(activeTransition!.fromLabel),
+                          score: activeTransition!.fromPassRate,
+                          color: TRANSITION_FROM_COLOR,
+                        },
+                        {
+                          id: "to-pass",
+                          label: shortMilestoneLabel(activeTransition!.toLabel),
+                          score: activeTransition!.toPassRate,
+                          color: TRANSITION_TO_COLOR,
+                        },
+                      ]}
+                    />
+                  </ChartCard>
+                </AnalyticsChartSlot>
+
+                {activeCorrelation ? (
+                  <AnalyticsChartSlot size="tall">
+                    <ChartCard
+                      className="analytics-chart-card-compact"
+                      title={activeTransitionMeta.label}
+                      description={`Batch ${selectedBatch.intakeYear} — each dot is one student who took both exams.`}
+                    >
+                      <ScoreCorrelationScatter
+                        fill
+                        fromLabel={activeCorrelation.fromLabel}
+                        toLabel={activeCorrelation.toLabel}
+                        points={activeCorrelation.points}
+                      />
+                    </ChartCard>
+                  </AnalyticsChartSlot>
                 ) : null}
 
-                <section className="card analytics-trends-transitions">
-                  <h2>{activeTransitionMeta.label}</h2>
-                  <p className="muted section-desc">
-                    {activeTransition!.studentCount} students in Batch {selectedBatch.intakeYear} with
-                    both exams in this step.
-                  </p>
-                  <dl className="analytics-trends-transition-stats analytics-trends-transition-stats-wide">
-                    <div>
-                      <dt>Improved</dt>
-                      <dd>{activeTransition!.improvedCount}</dd>
+                <AnalyticsChartSlot size="tall">
+                  <section className="card analytics-trends-step-summary">
+                    <h2>{activeTransitionMeta.label}</h2>
+                    <p className="muted section-desc">
+                      {activeTransition!.studentCount} students in Batch {selectedBatch.intakeYear} with
+                      both exams in this step.
+                    </p>
+                    <div className="overview-activity-grid analytics-trends-step-tiles">
+                      <article className="overview-activity-tile">
+                        <span className="overview-activity-value">{activeTransition!.improvedCount}</span>
+                        <span className="overview-activity-label">Improved</span>
+                      </article>
+                      <article className="overview-activity-tile">
+                        <span className="overview-activity-value">{activeTransition!.stableCount}</span>
+                        <span className="overview-activity-label">Stable</span>
+                      </article>
+                      <article className="overview-activity-tile">
+                        <span className="overview-activity-value">{activeTransition!.declinedCount}</span>
+                        <span className="overview-activity-label">Declined</span>
+                      </article>
                     </div>
-                    <div>
-                      <dt>Stable</dt>
-                      <dd>{activeTransition!.stableCount}</dd>
-                    </div>
-                    <div>
-                      <dt>Declined</dt>
-                      <dd>{activeTransition!.declinedCount}</dd>
-                    </div>
-                  </dl>
-                </section>
+                  </section>
+                </AnalyticsChartSlot>
               </>
             ) : (
               <p className="muted">

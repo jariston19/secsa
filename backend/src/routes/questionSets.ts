@@ -7,28 +7,31 @@ import { yearLevelSchema, curriculumYearForStudentYear } from "../lib/yearLevel.
 import { programCourseSlugSchema, assertActiveProgramSlug, SHARED_DIAGNOSTIC_PROGRAM } from "../lib/programCourse.js";
 import { isSharedDiagnosticProgram } from "../lib/incomingDiagnostic.js";
 import { subjectIncludesProgram } from "../lib/subjectPrograms.js";
-import { expandConfigsWithSubjectDifficulty } from "../lib/examDifficultyDistribution.js";
 import {
   generateCanonicalExamQuestions,
   getConfigPoolQuestions,
   validateQuestionSetConfigs,
 } from "../services/examGenerator.js";
 
-const configSchema = z.object({
-  subjectId: z.string().min(1),
-  topicId: z.string().optional().nullable(),
-  itemCount: z.number().int().min(0),
-});
+const configSchema = z
+  .object({
+    subjectId: z.string().min(1),
+    topicId: z.string().optional().nullable(),
+    easyCount: z.number().int().min(0),
+    mediumCount: z.number().int().min(0),
+    hardCount: z.number().int().min(0),
+  })
+  .refine(
+    (config) => config.easyCount + config.mediumCount + config.hardCount > 0,
+    { message: "Each config must include at least one item." }
+  );
 
 function expandConfigs(configs: z.infer<typeof configSchema>[]) {
-  return expandConfigsWithSubjectDifficulty(
-    configs.filter((config) => config.itemCount > 0)
-  ).map((config, index) => ({
+  return configs.map((config, index) => ({
     id: `draft-${index}`,
     questionSetId: "draft",
     subjectId: config.subjectId,
     topicId: config.topicId ?? null,
-    itemCount: config.itemCount,
     easyCount: config.easyCount,
     mediumCount: config.mediumCount,
     hardCount: config.hardCount,

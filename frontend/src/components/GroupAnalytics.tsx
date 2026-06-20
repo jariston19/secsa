@@ -275,12 +275,6 @@ export default function GroupAnalytics({ token }: Props) {
           </div>
         </div>
 
-        <p className="muted analytics-lens-intro">
-          {selectedCohort
-            ? "Batch performance for this program and year level."
-            : "Pick a program and year level to drill into cohort charts."}
-        </p>
-
         {error && !reports ? <p className="error">{error}</p> : null}
         {loading && !reports ? <p className="muted">Loading group analytics…</p> : null}
 
@@ -288,13 +282,6 @@ export default function GroupAnalytics({ token }: Props) {
           <section
             className={`group-analytics-cohort-browser${refreshing ? " is-refreshing" : ""}`}
           >
-            <div className="group-analytics-cohort-browser-header">
-              <h2>Cohorts by program &amp; year</h2>
-              <p className="muted section-desc">
-                Each card is a program course and incoming year level with submitted exams.
-              </p>
-            </div>
-
             {cohortSummaries.length === 0 ? (
               <p className="muted">No cohort data yet. Students need a program course, year level, and a submitted exam.</p>
             ) : (

@@ -36,8 +36,12 @@ function useExamLockdown(
   const examInteractionTimerRef = useRef<number | null>(null);
   const fullscreenViolationTimerRef = useRef<number | null>(null);
   const visibilityViolationTimerRef = useRef<number | null>(null);
+  const hasEstablishedFullscreenRef = useRef(false);
+  const sessionGraceUntilRef = useRef(0);
   const onMaxViolationsReachedRef = useRef(onMaxViolationsReached);
   const autoSubmittingRef = useRef(false);
+
+  const isInStartupGrace = useCallback(() => Date.now() < sessionGraceUntilRef.current, []);
 
   useEffect(() => {
     onMaxViolationsReachedRef.current = onMaxViolationsReached;
@@ -76,6 +80,7 @@ function useExamLockdown(
 
   const pauseExam = useCallback((reason: Exclude<LockReason, null>) => {
     if (violationCooldownRef.current || autoSubmittingRef.current) return;
+    if (isInStartupGrace()) return;
     if (examInteractionRef.current) return;
     if (isAllowedExamOverlayOpen()) return;
 
@@ -99,25 +104,31 @@ function useExamLockdown(
       setLockedOut(true);
       return next;
     });
-  }, []);
+  }, [isInStartupGrace]);
 
   const scheduleFullscreenViolationCheck = useCallback(() => {
     clearFullscreenViolationTimer();
+    if (!hasEstablishedFullscreenRef.current) {
+      setNeedsFullscreenTap(true);
+      return;
+    }
+
     fullscreenViolationTimerRef.current = window.setTimeout(() => {
       fullscreenViolationTimerRef.current = null;
       const container = containerRef.current;
       if (!container || isExamFullscreenActive(container)) return;
-      if (isAllowedExamOverlayOpen() || examInteractionRef.current) return;
+      if (isAllowedExamOverlayOpen() || examInteractionRef.current || isInStartupGrace()) return;
 
       void requestExamFullscreen(container).then((entered) => {
         if (entered || isExamFullscreenActive(container)) {
+          hasEstablishedFullscreenRef.current = true;
           setNeedsFullscreenTap(false);
           return;
         }
         pauseExam("fullscreen");
       });
     }, 1200);
-  }, [clearFullscreenViolationTimer, containerRef, pauseExam]);
+  }, [clearFullscreenViolationTimer, containerRef, isInStartupGrace, pauseExam]);
 
   const resumeExam = useCallback(async () => {
     if (!supportsFullscreenLockdown()) {
@@ -134,6 +145,7 @@ function useExamLockdown(
       return false;
     }
 
+    hasEstablishedFullscreenRef.current = true;
     setNeedsFullscreenTap(false);
     setLockedOut(false);
     setLockReason(null);
@@ -144,6 +156,7 @@ function useExamLockdown(
     const container = containerRef.current;
     const entered = await requestExamFullscreen(container);
     if (entered || isExamFullscreenActive(container)) {
+      hasEstablishedFullscreenRef.current = true;
       setNeedsFullscreenTap(false);
       return true;
     }
@@ -156,16 +169,25 @@ function useExamLockdown(
       setLockReason(null);
       setAutoSubmitting(false);
       setNeedsFullscreenTap(false);
+      setViolationCount(0);
       violationCooldownRef.current = false;
+      hasEstablishedFullscreenRef.current = false;
+      sessionGraceUntilRef.current = 0;
       document.body.classList.remove("exam-session-active");
       void exitExamFullscreen();
       return;
     }
 
+    sessionGraceUntilRef.current = Date.now() + 2500;
     document.body.classList.add("exam-session-active");
 
     const frame = window.requestAnimationFrame(() => {
-      void requestExamFullscreen(containerRef.current).finally(syncFullscreenPrompt);
+      void requestExamFullscreen(containerRef.current).then((entered) => {
+        if (entered || isExamFullscreenActive(containerRef.current)) {
+          hasEstablishedFullscreenRef.current = true;
+        }
+        syncFullscreenPrompt();
+      });
     });
 
     const promptTimer = window.setTimeout(syncFullscreenPrompt, 900);
@@ -206,13 +228,19 @@ function useExamLockdown(
       if (!supportsFullscreenLockdown()) return;
 
       if (isExamFullscreenActive(containerRef.current)) {
+        hasEstablishedFullscreenRef.current = true;
         clearFullscreenViolationTimer();
         setNeedsFullscreenTap(false);
         return;
       }
 
       if (isAllowedExamOverlayOpen()) return;
-      if (examInteractionRef.current) return;
+      if (examInteractionRef.current || isInStartupGrace()) return;
+
+      if (!hasEstablishedFullscreenRef.current) {
+        setNeedsFullscreenTap(true);
+        return;
+      }
 
       setNeedsFullscreenTap(true);
       scheduleFullscreenViolationCheck();
@@ -257,7 +285,7 @@ function useExamLockdown(
       clearFullscreenViolationTimer();
       examInteractionRef.current = false;
     };
-  }, [active, clearFullscreenViolationTimer, containerRef, pauseExam, scheduleFullscreenViolationCheck]);
+  }, [active, clearFullscreenViolationTimer, containerRef, isInStartupGrace, pauseExam, scheduleFullscreenViolationCheck]);
 
   return {
     lockedOut,

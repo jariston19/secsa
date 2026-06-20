@@ -2,21 +2,20 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
-import SwappableChartGrid, { ChartReorderHint } from "./SwappableChartGrid";
+import SwappableChartGrid from "./SwappableChartGrid";
+import AnalyticsPanel from "./AnalyticsPanel";
 import ChartCard from "./charts/ChartCard";
 import {
-  ChartIconBars,
   HorizontalBarChart,
   GroupedDifficultyBars,
   GroupedBloomBars,
-  BloomCognitiveCallout,
+  StudentJourneyLineChart,
 } from "./charts/AnalyticsCharts";
 import { DIFFICULTY_LABELS } from "../lib/analyticsChartUtils";
-import { BLOOM_LEVEL_LABELS, type BloomLevelId } from "../lib/bloomLevel";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import { resetBodyScrollLock } from "../lib/scrollLock";
-import { usePagination } from "../hooks/usePagination";
+import { MODAL_PAGE_SIZE, usePagination } from "../hooks/usePagination";
 import { useChartOrder } from "../hooks/useChartOrder";
 import { formatFullName } from "../lib/names";
 import {
@@ -24,18 +23,19 @@ import {
   type ProgramCourseFilter,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
+import { INDIVIDUAL_STUDENT_CHART_LAYOUT } from "../lib/analyticsLayout";
 
 type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
 
-const STUDENT_TABLE_PAGE_SIZE = 5;
-
 const INDIVIDUAL_STUDENT_CHART_ORDER = [
+  "multi-year-journey",
   "topic-tiles",
   "class-compare",
   "bloom-levels",
   "score-by-difficulty",
   "score-per-subject",
   "avg-time-difficulty",
+  "insights-flags",
 ] as const;
 
 type IndividualStudentChartId = (typeof INDIVIDUAL_STUDENT_CHART_ORDER)[number];
@@ -93,6 +93,7 @@ interface IndividualReport {
     topicId: string;
     topic: string;
     subject: string;
+    courseCode: string;
     score: number;
     classAverage: number | null;
     tone: "strong" | "moderate" | "weak";
@@ -133,6 +134,29 @@ interface IndividualReport {
     message: string;
   } | null;
   insights?: Array<{ type: InsightType; message: string }>;
+  journey?: {
+    intakeYear: number | null;
+    hasJourneyData: boolean;
+    milestones: Array<{
+      yearLevel: number;
+      kind: string;
+      label: string;
+      score: number | null;
+      passed: boolean | null;
+      submittedAt: string | null;
+      hasData: boolean;
+    }>;
+    transitions: Array<{
+      fromYear: number;
+      toYear: number;
+      fromLabel: string;
+      toLabel: string;
+      fromScore: number;
+      toScore: number;
+      delta: number;
+      direction: "improved" | "declined" | "stable";
+    }>;
+  };
 }
 
 interface Props {
@@ -156,11 +180,49 @@ function insightLabel(type: InsightType) {
 
 function renderIndividualStudentChart(id: IndividualStudentChartId, report: IndividualReport): ReactNode {
   switch (id) {
+    case "multi-year-journey":
+      if (!report.journey?.hasJourneyData) return null;
+      return (
+        <AnalyticsPanel
+          title="Multi-year journey"
+          description={
+            report.journey.intakeYear != null
+              ? `Intake batch ${report.journey.intakeYear}`
+              : undefined
+          }
+          className="individual-student-journey-section"
+        >
+          <StudentJourneyLineChart
+            milestones={report.journey.milestones}
+            intakeYear={report.journey.intakeYear}
+            compact
+            fill
+          />
+          {report.journey.transitions.length > 0 ? (
+            <ul className="individual-student-journey-transitions">
+              {report.journey.transitions.map((transition) => (
+                <li
+                  key={`${transition.fromYear}-${transition.toYear}`}
+                  className={`individual-student-journey-transition journey-${transition.direction}`}
+                >
+                  <span>Y{transition.fromYear}→Y{transition.toYear}</span>
+                  <span>
+                    {transition.fromScore.toFixed(0)}→{transition.toScore.toFixed(0)}%
+                  </span>
+                  <span className="individual-student-journey-transition-delta">
+                    {transition.delta > 0 ? "+" : ""}
+                    {transition.delta.toFixed(0)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </AnalyticsPanel>
+      );
     case "topic-tiles":
       return (
-        <section className="card individual-student-section">
-          <h3>Score per topic</h3>
-          <div className="individual-student-topic-grid">
+        <AnalyticsPanel title="Score per topic">
+          <div className="analytics-topic-tile-grid individual-student-topic-grid">
             {(report.byTopic ?? []).map((topic) => (
               <div
                 key={topic.topicId}
@@ -168,16 +230,15 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
               >
                 <span className="individual-student-topic-name">{topic.topic}</span>
                 <span className="individual-student-topic-score">{topic.score.toFixed(0)}%</span>
-                <span className="muted">{topic.subject}</span>
+                <span className="muted individual-student-topic-code">{topic.subject}</span>
               </div>
             ))}
           </div>
-        </section>
+        </AnalyticsPanel>
       );
     case "class-compare":
       return (
-        <section className="card individual-student-section">
-          <h3>Student vs. class average</h3>
+        <AnalyticsPanel title="Student vs. class average">
           <div className="individual-student-compare-chart">
             {(report.byTopic ?? []).map((topic) => {
               const max = 100;
@@ -208,32 +269,21 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
           <p className="muted individual-student-legend">
             Blue bar = student · Grey tick = class average
           </p>
-        </section>
+        </AnalyticsPanel>
       );
     case "bloom-levels":
       return (
-        <section className="card individual-student-section">
-          <h3>Domain profile</h3>
-          <p className="muted individual-student-section-lead">
-            L1–L6 bars show which domains are strong or weak — same score can hide very different learning needs.
-          </p>
+        <AnalyticsPanel
+          title="Domain profile"
+          description="L1–L6 cognitive domains. Spot surface recall vs deeper analysis and evaluation gaps."
+        >
           <GroupedBloomBars
             items={(report.byBloomLevel ?? []).map((row) => ({
               bloomLevel: row.bloomLevel,
               score: row.score,
             }))}
           />
-          <BloomCognitiveCallout profile={report.bloomProfile} />
-          <div className="individual-student-bloom-legend">
-            {(report.byBloomLevel ?? []).map((row) => (
-              <span key={row.bloomLevel} className="muted">
-                {BLOOM_LEVEL_LABELS[row.bloomLevel as BloomLevelId] ?? row.bloomLevel}:{" "}
-                {row.score.toFixed(0)}%
-                {row.classAverage > 0 ? ` (class ${row.classAverage.toFixed(0)}%)` : ""}
-              </span>
-            ))}
-          </div>
-        </section>
+        </AnalyticsPanel>
       );
     case "score-by-difficulty":
       return (
@@ -241,15 +291,13 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
           className="analytics-chart-card-paired analytics-chart-card-difficulty"
           title="Performance by difficulty"
           description="Easy, medium, and hard bars with L1–L6 domain scores mapped to each difficulty tier."
-          icon={<ChartIconBars direction="vertical" />}
         >
           <GroupedDifficultyBars items={report.byDifficulty ?? []} />
         </ChartCard>
       );
     case "score-per-subject":
       return (
-        <section className="card individual-student-section">
-          <h3>Score per subject</h3>
+        <AnalyticsPanel title="Score per subject">
           {(report.bySubject ?? []).length === 0 ? (
             <p className="muted">No subject data yet.</p>
           ) : (
@@ -261,37 +309,94 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
               }))}
             />
           )}
-        </section>
+        </AnalyticsPanel>
       );
-    case "avg-time-difficulty":
+    case "avg-time-difficulty": {
+      const timeRows = report.byDifficulty ?? [];
+      const maxTime = Math.max(
+        1,
+        ...timeRows.flatMap((row) =>
+          [row.avgTimeSeconds, row.classAvgTimeSeconds].filter((value): value is number => value != null)
+        )
+      );
+      const scaleMax = maxTime * 1.1;
+
       return (
-        <section className="card individual-student-section">
-          <h3>Avg time per difficulty</h3>
-          <div className="individual-student-time-list">
-            {(report.byDifficulty ?? []).map((row) => {
+        <AnalyticsPanel
+          title="Avg time per difficulty"
+          description="Seconds per answered question on this exam."
+        >
+          <div className="individual-student-compare-chart individual-student-time-compare">
+            {timeRows.map((row) => {
+              const studentTime = row.avgTimeSeconds;
+              const classTime = row.classAvgTimeSeconds;
+              const studentWidth =
+                studentTime != null ? Math.min(100, (studentTime / scaleMax) * 100) : 0;
+              const classPos =
+                classTime != null ? Math.min(100, (classTime / scaleMax) * 100) : null;
               const fastHard =
                 row.difficulty === "HARD" &&
-                row.avgTimeSeconds != null &&
-                row.classAvgTimeSeconds != null &&
-                row.avgTimeSeconds < row.classAvgTimeSeconds * 0.6;
+                studentTime != null &&
+                classTime != null &&
+                studentTime < classTime * 0.6;
+
               return (
-                <div key={row.difficulty} className="individual-student-time-row">
-                  <span>{DIFFICULTY_LABELS[row.difficulty] ?? row.difficulty}</span>
-                  <strong>{row.avgTimeSeconds != null ? `${row.avgTimeSeconds}s` : "—"}</strong>
-                  <span className="muted">
-                    bench:{" "}
-                    {row.classAvgTimeSeconds != null ? `${row.classAvgTimeSeconds}s` : "—"}
+                <div key={row.difficulty} className="individual-student-compare-row">
+                  <span className="individual-student-compare-label">
+                    {DIFFICULTY_LABELS[row.difficulty] ?? row.difficulty}
+                  </span>
+                  <div className="individual-student-compare-track">
+                    {classPos != null ? (
+                      <span
+                        className="individual-student-compare-marker"
+                        style={{ left: `${classPos}%` }}
+                        title={`Class average ${classTime}s`}
+                      />
+                    ) : null}
+                    {studentTime != null ? (
+                      <span
+                        className="individual-student-compare-bar individual-student-time-bar"
+                        style={{ width: `${studentWidth}%` }}
+                      />
+                    ) : null}
+                  </div>
+                  <span className="individual-student-compare-value">
+                    {studentTime != null ? `${studentTime}s` : "—"}
                   </span>
                   {fastHard ? (
                     <span className="individual-student-time-warning">
-                      Hard items answered fast — check for guessing
+                      Answered much faster than class average — check for guessing
                     </span>
                   ) : null}
                 </div>
               );
             })}
           </div>
-        </section>
+          <p className="muted individual-student-legend">
+            Blue bar = this student · Grey tick = class average
+          </p>
+        </AnalyticsPanel>
+      );
+    }
+    case "insights-flags":
+      return (
+        <AnalyticsPanel
+          title="Insights & flags"
+          description="Auto-generated from topic, difficulty, and timing patterns."
+          className="individual-student-insights-panel"
+        >
+          <ul className="individual-student-insights-list">
+            {(report.insights ?? []).map((insight, index) => (
+              <li key={index} className={`individual-student-insight insight-${insight.type}`}>
+                <span className="individual-student-insight-dot" aria-hidden />
+                <div>
+                  <strong>{insightLabel(insight.type)}</strong>
+                  <p>{insight.message}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </AnalyticsPanel>
       );
     default:
       return null;
@@ -429,14 +534,24 @@ export default function IndividualStudentAnalytics({ token }: Props) {
     currentStudentIndex >= 0 && currentStudentIndex < studentRoster.length - 1;
 
   const studentTablePagination = usePagination(results, {
-    pageSize: STUDENT_TABLE_PAGE_SIZE,
+    pageSize: MODAL_PAGE_SIZE,
     resetKey: results.map((student) => student.id).join("|"),
   });
+
+  const studentTablePlaceholderCount = Math.max(
+    0,
+    MODAL_PAGE_SIZE - studentTablePagination.paginatedItems.length
+  );
 
   const studentCountLabel = useMemo(() => {
     const count = results.length;
     return `${count} student${count === 1 ? "" : "s"}`;
   }, [results.length]);
+
+  const visibleChartOrder = useMemo(() => {
+    if (report?.journey?.hasJourneyData) return chartOrder;
+    return chartOrder.filter((id) => id !== "multi-year-journey");
+  }, [chartOrder, report?.journey?.hasJourneyData]);
 
   const printAreaId = "analytics-print-individual-student";
   const printTitle = report?.student.name
@@ -450,9 +565,6 @@ export default function IndividualStudentAnalytics({ token }: Props) {
           <div className="individual-student-browser-header">
             <div>
               <h2>Students</h2>
-              <p className="muted section-desc">
-                Browse students with submitted exams, then open individual analytics.
-              </p>
             </div>
             <span className="muted individual-student-browser-count">{studentCountLabel}</span>
           </div>
@@ -516,6 +628,7 @@ export default function IndividualStudentAnalytics({ token }: Props) {
             <p className="muted">No students with submitted exams match your search and filters.</p>
           ) : (
             <ListPanel
+              className="individual-student-list"
               footer={
                 <ModalPagination
                   page={studentTablePagination.page}
@@ -556,6 +669,15 @@ export default function IndividualStudentAnalytics({ token }: Props) {
                             View
                           </button>
                         </td>
+                      </tr>
+                    ))}
+                    {Array.from({ length: studentTablePlaceholderCount }, (_, index) => (
+                      <tr
+                        key={`student-row-placeholder-${index}`}
+                        className="individual-student-table-row-placeholder"
+                        aria-hidden="true"
+                      >
+                        <td colSpan={5} />
                       </tr>
                     ))}
                   </tbody>
@@ -720,26 +842,13 @@ export default function IndividualStudentAnalytics({ token }: Props) {
                   </article>
                 </div>
 
-                <ChartReorderHint />
-                <SwappableChartGrid order={chartOrder} onOrderChange={setChartOrder}>
+                <SwappableChartGrid
+                  order={visibleChartOrder}
+                  onOrderChange={setChartOrder}
+                  slotLayout={INDIVIDUAL_STUDENT_CHART_LAYOUT}
+                >
                   {(id) => renderIndividualStudentChart(id as IndividualStudentChartId, report)}
                 </SwappableChartGrid>
-
-                <section className="card individual-student-section individual-student-insights">
-                  <h3>Insights &amp; flags</h3>
-                  <p className="muted section-desc">Auto-generated from topic, difficulty, and timing patterns.</p>
-                  <ul className="individual-student-insights-list">
-                    {(report.insights ?? []).map((insight, index) => (
-                      <li key={index} className={`individual-student-insight insight-${insight.type}`}>
-                        <span className="individual-student-insight-dot" aria-hidden />
-                        <div>
-                          <strong>{insightLabel(insight.type)}</strong>
-                          <p>{insight.message}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
               </>
             )}
           </div>

@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import ModalPagination from "../ModalPagination";
+import { usePagination } from "../../hooks/usePagination";
 import {
   DIFFICULTY_COLORS,
   DIFFICULTY_LABELS,
@@ -22,10 +24,11 @@ interface HistogramBucket {
 
 export function VerticalHistogram({ buckets }: { buckets: HistogramBucket[] }) {
   const max = Math.max(...buckets.map((b) => b.value), 1);
+  const compact = buckets.length >= 5;
 
   return (
     <div
-      className={`chart-vertical-histogram ${buckets.length > 6 ? "chart-vertical-histogram-compact" : ""}`.trim()}
+      className={`chart-vertical-histogram ${compact ? "chart-vertical-histogram-compact" : ""}`.trim()}
       role="img"
       aria-label="Score distribution histogram"
     >
@@ -95,18 +98,26 @@ export function PairedHorizontalBarChart({
   leftSeries,
   rightSeries,
   suffix = "%",
+  pageSize,
 }: {
   rows: Array<{ label: string; left: number; right: number }>;
   leftSeries: { label: string; color: string };
   rightSeries: { label: string; color: string };
   suffix?: string;
+  pageSize?: number;
 }) {
+  const pagination = usePagination(rows, {
+    pageSize: pageSize ?? rows.length,
+    resetKey: rows.map((row) => `${row.label}:${row.left}:${row.right}`).join("|"),
+  });
+  const visibleRows = pageSize ? pagination.paginatedItems : rows;
+
   if (rows.length === 0) {
     return <p className="muted">No data yet.</p>;
   }
 
   return (
-    <div className="chart-paired-horizontal-bars">
+    <div className="chart-paired-horizontal-panel">
       <div className="chart-paired-horizontal-legend">
         <span>
           <i style={{ background: leftSeries.color }} /> {leftSeries.label}
@@ -115,33 +126,56 @@ export function PairedHorizontalBarChart({
           <i style={{ background: rightSeries.color }} /> {rightSeries.label}
         </span>
       </div>
-      {rows.map((row) => (
-        <div key={row.label} className="chart-paired-horizontal-row">
-          <span className="chart-paired-horizontal-label">{row.label}</span>
-          <div className="chart-paired-horizontal-bars-wrap">
-            <div className="chart-paired-horizontal-bar-line">
-              <span
-                className="chart-paired-horizontal-bar-fill"
-                style={{ width: `${Math.min(100, row.left)}%`, backgroundColor: leftSeries.color }}
-              />
-              <span className="chart-paired-horizontal-value">
-                {row.left.toFixed(0)}
-                {suffix}
-              </span>
-            </div>
-            <div className="chart-paired-horizontal-bar-line">
-              <span
-                className="chart-paired-horizontal-bar-fill"
-                style={{ width: `${Math.min(100, row.right)}%`, backgroundColor: rightSeries.color }}
-              />
-              <span className="chart-paired-horizontal-value">
-                {row.right.toFixed(0)}
-                {suffix}
-              </span>
+      <div
+        className={[
+          "chart-paired-horizontal-bars",
+          pageSize ? "chart-paired-horizontal-bars-paged" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        style={pageSize ? ({ "--paired-bar-page-size": pageSize } as CSSProperties) : undefined}
+      >
+        {visibleRows.map((row) => (
+          <div key={row.label} className="chart-paired-horizontal-row">
+            <span className="chart-paired-horizontal-label">{row.label}</span>
+            <div className="chart-paired-horizontal-bars-wrap">
+              <div className="chart-paired-horizontal-bar-line">
+                <span
+                  className="chart-paired-horizontal-bar-fill"
+                  style={{ width: `${Math.min(100, row.left)}%`, backgroundColor: leftSeries.color }}
+                />
+                <span className="chart-paired-horizontal-value">
+                  {row.left.toFixed(0)}
+                  {suffix}
+                </span>
+              </div>
+              <div className="chart-paired-horizontal-bar-line">
+                <span
+                  className="chart-paired-horizontal-bar-fill"
+                  style={{ width: `${Math.min(100, row.right)}%`, backgroundColor: rightSeries.color }}
+                />
+                <span className="chart-paired-horizontal-value">
+                  {row.right.toFixed(0)}
+                  {suffix}
+                </span>
+              </div>
             </div>
           </div>
+        ))}
+      </div>
+      {pageSize && pagination.totalPages > 1 ? (
+        <div className="chart-card-pagination analytics-no-print">
+          <ModalPagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            pageStart={pagination.pageStart}
+            pageEnd={pagination.pageEnd}
+            totalItems={pagination.totalItems}
+            onPageChange={pagination.setPage}
+            itemNoun="topic"
+          />
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }
@@ -423,16 +457,25 @@ export function DonutChart({
   label,
   passed,
   failed,
+  exams,
+  metric = "passRate",
+  hideCenter = false,
 }: {
   value: number;
-  label: string;
-  passed: number;
-  failed: number;
+  label?: string;
+  passed?: number;
+  failed?: number;
+  exams?: number;
+  metric?: "passRate" | "averageScore";
+  hideCenter?: boolean;
 }) {
-  const pct = Math.min(100, Math.max(0, value));
+  const hasData = metric === "averageScore" ? (exams ?? 0) > 0 : true;
+  const pct = hasData ? Math.min(100, Math.max(0, value)) : 0;
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (pct / 100) * circumference;
+  const centerLabel = label ?? (metric === "averageScore" ? "avg score" : "passed");
+  const centerValue = hasData ? `${pct.toFixed(0)}%` : "—";
 
   return (
     <div className="chart-donut">
@@ -458,19 +501,30 @@ export function DonutChart({
             transform="rotate(-90 60 60)"
           />
         </svg>
-        <div className="chart-donut-center">
-          <span className="chart-donut-value">{pct.toFixed(0)}%</span>
-          <span className="chart-donut-label">{label}</span>
+        {!hideCenter ? (
+          <div className="chart-donut-center">
+            <span className="chart-donut-value">{centerValue}</span>
+            <span className="chart-donut-label">{centerLabel}</span>
+          </div>
+        ) : null}
+      </div>
+      {metric === "averageScore" ? (
+        <div className="chart-donut-legend">
+          <span>
+            <i className="chart-legend-dot chart-legend-pass" /> {exams ?? 0}{" "}
+            {(exams ?? 0) === 1 ? "exam" : "exams"}
+          </span>
         </div>
-      </div>
-      <div className="chart-donut-legend">
-        <span>
-          <i className="chart-legend-dot chart-legend-pass" /> {passed} passed
-        </span>
-        <span>
-          <i className="chart-legend-dot chart-legend-fail" /> {failed} failed
-        </span>
-      </div>
+      ) : (
+        <div className="chart-donut-legend">
+          <span>
+            <i className="chart-legend-dot chart-legend-pass" /> {passed ?? 0} passed
+          </span>
+          <span>
+            <i className="chart-legend-dot chart-legend-fail" /> {failed ?? 0} failed
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -766,20 +820,68 @@ interface DiscriminationPoint {
   discriminationIndex: number;
 }
 
-export function DiscriminationScatter({ points }: { points: DiscriminationPoint[] }) {
+export function DiscriminationScatter({
+  points,
+  fill = true,
+}: {
+  points: DiscriminationPoint[];
+  fill?: boolean;
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [plotSize, setPlotSize] = useState({ width: 320, height: 200 });
+
+  useEffect(() => {
+    if (!fill) return;
+    const node = wrapRef.current;
+    if (!node) return;
+
+    const update = () => {
+      setPlotSize({
+        width: Math.max(200, node.clientWidth),
+        height: Math.max(140, node.clientHeight),
+      });
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [fill]);
+
   if (points.length === 0) {
     return <p className="muted">Need more attempts per question for discrimination analysis.</p>;
   }
 
-  const width = 320;
-  const height = 200;
-  const pad = { top: 16, right: 16, bottom: 32, left: 40 };
-  const plotW = width - pad.left - pad.right;
-  const plotH = height - pad.top - pad.bottom;
+  const pad = fill
+    ? { top: 20, right: 16, bottom: 36, left: 36 }
+    : { top: 16, right: 16, bottom: 32, left: 40 };
+  const plotW = fill
+    ? Math.max(120, plotSize.width - pad.left - pad.right)
+    : 320 - pad.left - pad.right;
+  const plotH = fill
+    ? Math.max(100, plotSize.height - pad.top - pad.bottom)
+    : 200 - pad.top - pad.bottom;
+  const width = pad.left + plotW + pad.right;
+  const height = pad.top + plotH + pad.bottom;
 
   return (
-    <div className="chart-discrimination-wrap">
-      <svg viewBox={`0 0 ${width} ${height}`} className="chart-discrimination" role="img">
+    <div
+      ref={wrapRef}
+      className={[
+        "chart-discrimination-wrap",
+        fill ? "chart-discrimination-wrap-fill" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio={fill ? "xMinYMid meet" : undefined}
+        className={["chart-discrimination", fill ? "chart-discrimination-fill" : ""]
+          .filter(Boolean)
+          .join(" ")}
+        role="img"
+      >
         <line
           x1={pad.left + plotW / 2}
           y1={pad.top}
@@ -794,14 +896,14 @@ export function DiscriminationScatter({ points }: { points: DiscriminationPoint[
           y2={pad.top + plotH / 2}
           className="chart-discrimination-grid"
         />
-        <text x={pad.left + plotW / 2} y={height - 8} className="chart-scatter-axis-label" textAnchor="middle">
+        <text x={pad.left} y={height - 8} className="chart-scatter-axis-label" textAnchor="start">
           Correct rate
         </text>
         <text
-          x={12}
+          x={fill ? 8 : 12}
           y={pad.top + plotH / 2}
           className="chart-scatter-axis-label"
-          transform={`rotate(-90 12 ${pad.top + plotH / 2})`}
+          transform={`rotate(-90 ${fill ? 8 : 12} ${pad.top + plotH / 2})`}
           textAnchor="middle"
         >
           Discrimination
@@ -944,70 +1046,148 @@ export function BatchComparisonLineChart({
   }>;
 }) {
   const colors = ["#007AFF", "#34C759", "#FF9500", "#AF52DE", "#FF3B30", "#5856D6"];
-  const assessedBatches = batches
-    .map((batch) => ({
-      ...batch,
-      milestones: batch.milestones.filter((milestone) => milestone.studentsAssessed > 0),
-    }))
-    .filter((batch) => batch.milestones.length > 0);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [plotWidth, setPlotWidth] = useState(520);
+
+  function milestoneCalendarYear(intakeYear: number, yearLevel: number) {
+    return intakeYear + yearLevel - 1;
+  }
+
+  const assessedBatches = useMemo(
+    () =>
+      batches
+        .map((batch) => ({
+          ...batch,
+          milestones: batch.milestones.filter((milestone) => milestone.studentsAssessed > 0),
+        }))
+        .filter((batch) => batch.milestones.length > 0)
+        .sort((a, b) => a.intakeYear - b.intakeYear),
+    [batches]
+  );
+
+  useEffect(() => {
+    const node = wrapRef.current;
+    if (!node) return;
+
+    const update = () => {
+      setPlotWidth(Math.max(280, node.clientWidth));
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   if (assessedBatches.length === 0) {
     return <p className="muted">No milestone data yet for these batches.</p>;
   }
 
-  const width = 420;
-  const height = 220;
-  const pad = { top: 16, right: 16, bottom: 64, left: 40 };
-  const plotW = width - pad.left - pad.right;
-  const plotH = height - pad.top - pad.bottom;
-  const xSlots = [1, 2, 3, 4];
-  const step = plotW / (xSlots.length - 1);
+  const minYear = Math.min(...assessedBatches.map((batch) => batch.intakeYear));
+  const maxYear = Math.max(...assessedBatches.map((batch) => batch.intakeYear + 3));
+  const axisYears = Array.from({ length: maxYear - minYear + 1 }, (_, index) => minYear + index);
 
-  const xForYear = (yearLevel: number) => pad.left + step * (yearLevel - 1);
+  const height = 280;
+  const pad = { top: 20, right: 20, bottom: 56, left: 28 };
+  const yAxisLabelX = pad.left - 4;
+  const yearSpan = Math.max(1, maxYear - minYear);
+  const plotW = Math.max(120, plotWidth - pad.left - pad.right);
+  const yearStep = plotW / yearSpan;
+  const plotH = height - pad.top - pad.bottom;
+  const width = pad.left + plotW + pad.right;
+
+  const xForCalendarYear = (year: number) => pad.left + (year - minYear) * yearStep;
 
   return (
-    <div className="chart-progression-wrap">
-      <svg viewBox={`0 0 ${width} ${height}`} className="chart-progression" role="img">
+    <div ref={wrapRef} className="chart-progression-wrap chart-progression-wrap-compare">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMinYMid meet"
+        className="chart-progression chart-progression-compare"
+        role="img"
+      >
+        <line
+          x1={pad.left}
+          y1={pad.top}
+          x2={pad.left}
+          y2={pad.top + plotH}
+          className="chart-progression-axis-line"
+        />
         {[0, 25, 50, 75, 100].map((tick) => {
           const y = pad.top + plotH - (tick / 100) * plotH;
           return (
             <g key={tick}>
               <line x1={pad.left} y1={y} x2={pad.left + plotW} y2={y} className="chart-progression-grid" />
-              <text x={pad.left - 6} y={y + 4} className="chart-progression-axis-label" textAnchor="end">
+              <text x={yAxisLabelX} y={y + 4} className="chart-progression-axis-label" textAnchor="end">
                 {tick}
               </text>
             </g>
           );
         })}
+        {axisYears.map((year) => (
+          <line
+            key={`grid-${year}`}
+            x1={xForCalendarYear(year)}
+            y1={pad.top}
+            x2={xForCalendarYear(year)}
+            y2={pad.top + plotH}
+            className="chart-progression-year-grid"
+          />
+        ))}
         {assessedBatches.map((batch, batchIndex) => {
           const color = colors[batchIndex % colors.length];
-          const points = batch.milestones.map((milestone) => ({
-            x: xForYear(milestone.yearLevel),
-            y: pad.top + plotH - (milestone.averageScore / 100) * plotH,
-            milestone,
-          }));
+          const points = [...batch.milestones]
+            .sort(
+              (a, b) =>
+                milestoneCalendarYear(batch.intakeYear, a.yearLevel) -
+                milestoneCalendarYear(batch.intakeYear, b.yearLevel)
+            )
+            .map((milestone) => ({
+              x: xForCalendarYear(milestoneCalendarYear(batch.intakeYear, milestone.yearLevel)),
+              y: pad.top + plotH - (milestone.averageScore / 100) * plotH,
+              milestone,
+            }));
           const linePath = points
             .map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`)
             .join(" ");
 
           return (
             <g key={batch.intakeYear}>
-              <path d={linePath} fill="none" stroke={color} strokeWidth={2} />
+              {points.length > 1 ? (
+                <path
+                  d={linePath}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={2.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              ) : null}
               {points.map((point) => (
-                <circle key={point.milestone.yearLevel} cx={point.x} cy={point.y} r={4} fill={color} />
+                <g key={`${batch.intakeYear}-${point.milestone.yearLevel}`}>
+                  <circle cx={point.x} cy={point.y} r={4} fill={color} />
+                  <text
+                    x={point.x}
+                    y={point.y - 8}
+                    className="chart-progression-value"
+                    textAnchor="middle"
+                  >
+                    {point.milestone.averageScore.toFixed(0)}%
+                  </text>
+                </g>
               ))}
             </g>
           );
         })}
-        {xSlots.map((yearLevel) => (
+        {axisYears.map((year) => (
           <text
-            key={yearLevel}
-            x={xForYear(yearLevel)}
-            y={height - 28}
+            key={year}
+            x={xForCalendarYear(year)}
+            y={height - 16}
             className="chart-progression-milestone-label"
             textAnchor="middle"
           >
-            Y{yearLevel}
+            {year}
           </text>
         ))}
       </svg>
@@ -1023,21 +1203,50 @@ export function BatchComparisonLineChart({
         ))}
       </ul>
       <p className="muted chart-progression-note">
-        Average score at each incoming-year milestone, one line per intake batch.
+        Average score by calendar year at each milestone — one line per intake batch.
       </p>
     </div>
   );
 }
 
-export function CohortMilestoneLineChart({ milestones }: { milestones: MilestonePoint[] }) {
+export function CohortMilestoneLineChart({
+  milestones,
+  fill = false,
+}: {
+  milestones: MilestonePoint[];
+  fill?: boolean;
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [plotSize, setPlotSize] = useState({ width: 360, height: 200 });
+
+  useEffect(() => {
+    if (!fill) return;
+    const node = wrapRef.current;
+    if (!node) return;
+
+    const update = () => {
+      setPlotSize({
+        width: Math.max(200, node.clientWidth),
+        height: Math.max(140, node.clientHeight),
+      });
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [fill]);
+
   const assessed = milestones.filter((milestone) => milestone.studentsAssessed > 0);
   if (assessed.length === 0) {
     return <p className="muted">No milestone data yet for this cohort.</p>;
   }
 
-  const width = 360;
-  const height = 200;
-  const pad = { top: 16, right: 16, bottom: 52, left: 40 };
+  const pad = fill
+    ? { top: 18, right: 16, bottom: 44, left: 36 }
+    : { top: 16, right: 16, bottom: 52, left: 40 };
+  const width = fill ? plotSize.width : 360;
+  const height = fill ? plotSize.height : 200;
   const plotW = width - pad.left - pad.right;
   const plotH = height - pad.top - pad.bottom;
   const step = assessed.length > 1 ? plotW / (assessed.length - 1) : 0;
@@ -1051,8 +1260,18 @@ export function CohortMilestoneLineChart({ milestones }: { milestones: Milestone
   const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`).join(" ");
 
   return (
-    <div className="chart-progression-wrap">
-      <svg viewBox={`0 0 ${width} ${height}`} className="chart-progression" role="img">
+    <div
+      ref={wrapRef}
+      className={["chart-progression-wrap", fill ? "chart-progression-wrap-fill" : ""]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio={fill ? "none" : undefined}
+        className={["chart-progression", fill ? "chart-progression-fill" : ""].filter(Boolean).join(" ")}
+        role="img"
+      >
         {[0, 25, 50, 75, 100].map((tick) => {
           const y = pad.top + plotH - (tick / 100) * plotH;
           return (
@@ -1067,10 +1286,10 @@ export function CohortMilestoneLineChart({ milestones }: { milestones: Milestone
         <path d={linePath} className="chart-progression-line" fill="none" />
         {points.map((point) => (
           <g key={point.milestone.label}>
-            <circle cx={point.x} cy={point.y} r={5} className="chart-progression-dot" />
+            <circle cx={point.x} cy={point.y} r={3} className="chart-progression-dot" />
             <text
               x={point.x}
-              y={point.y - 10}
+              y={point.y - 7}
               className="chart-progression-value"
               textAnchor="middle"
             >
@@ -1082,7 +1301,7 @@ export function CohortMilestoneLineChart({ milestones }: { milestones: Milestone
           <text
             key={`${point.milestone.label}-label`}
             x={point.x}
-            y={height - 10}
+            y={height - 8}
             className="chart-progression-milestone-label"
             textAnchor="middle"
           >
@@ -1095,28 +1314,229 @@ export function CohortMilestoneLineChart({ milestones }: { milestones: Milestone
   );
 }
 
+interface StudentJourneyPoint {
+  yearLevel: number;
+  label: string;
+  score: number | null;
+  passed: boolean | null;
+  hasData: boolean;
+}
+
+export function StudentJourneyLineChart({
+  milestones,
+  intakeYear,
+  compact = false,
+  fill = false,
+}: {
+  milestones: StudentJourneyPoint[];
+  intakeYear: number | null;
+  compact?: boolean;
+  fill?: boolean;
+}) {
+  const assessed = milestones.filter((milestone) => milestone.hasData && milestone.score != null);
+  if (assessed.length === 0) {
+    return <p className="muted">No multi-year exam history yet for this student.</p>;
+  }
+
+  const width = compact ? 280 : 360;
+  const height = compact ? 140 : 200;
+  const pad = compact
+    ? { top: 12, right: 10, bottom: 28, left: 36 }
+    : { top: 16, right: 16, bottom: 52, left: 42 };
+  const yAxisLabelX = pad.left - 6;
+  const plotW = width - pad.left - pad.right;
+  const plotH = height - pad.top - pad.bottom;
+  const step = assessed.length > 1 ? plotW / (assessed.length - 1) : 0;
+  const yTicks = [0, 25, 50, 75, 100];
+  const firstPointX = pad.left + (compact ? 16 : 20);
+
+  const points = assessed.map((milestone, index) => ({
+    x: assessed.length > 1 ? pad.left + step * index : firstPointX,
+    y: pad.top + plotH - ((milestone.score ?? 0) / 100) * plotH,
+    milestone,
+    index,
+  }));
+
+  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`).join(" ");
+
+  return (
+    <div
+      className={[
+        "chart-progression-wrap",
+        compact ? "chart-progression-wrap-compact" : "",
+        fill ? "chart-progression-wrap-fill" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="chart-progression"
+        role="img"
+      >
+        {yTicks.map((tick) => {
+          const y = pad.top + plotH - (tick / 100) * plotH;
+          return (
+            <g key={tick}>
+              <line x1={pad.left} y1={y} x2={pad.left + plotW} y2={y} className="chart-progression-grid" />
+              <text x={yAxisLabelX} y={y + 4} className="chart-progression-axis-label" textAnchor="end">
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+        <path
+          d={linePath}
+          className="chart-progression-line"
+          fill="none"
+          strokeWidth={compact ? 2 : 2.5}
+        />
+        {points.map((point) => (
+          <g key={point.milestone.label}>
+            <circle
+              cx={point.x}
+              cy={point.y}
+              r={compact ? 2.5 : 3}
+              className={`chart-progression-dot${point.milestone.passed === false ? " chart-progression-dot-fail" : ""}`}
+            />
+            <text
+              x={point.x + (assessed.length === 1 ? 4 : 0)}
+              y={point.y - (compact ? 5 : 7)}
+              className="chart-progression-value"
+              textAnchor={assessed.length === 1 ? "start" : "middle"}
+            >
+              {(point.milestone.score ?? 0).toFixed(0)}%
+            </text>
+          </g>
+        ))}
+        {points.map((point) => (
+          <text
+            key={`${point.milestone.label}-label`}
+            x={point.index === 0 ? pad.left + 4 : point.x}
+            y={height - (compact ? 6 : 8)}
+            className="chart-progression-milestone-label"
+            textAnchor={point.index === 0 ? "start" : "middle"}
+          >
+            Y{point.milestone.yearLevel}
+          </text>
+        ))}
+      </svg>
+      {!compact ? (
+        intakeYear != null ? (
+          <p className="muted chart-progression-note">
+            Intake batch {intakeYear} · score at each incoming-year milestone (Y1 diagnostic, Y2–Y4 comprehensive).
+          </p>
+        ) : (
+          <p className="muted chart-progression-note">
+            Score at each incoming-year milestone (Y1 diagnostic, Y2–Y4 comprehensive).
+          </p>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 export function ScoreCorrelationScatter({
   fromLabel,
   toLabel,
   points,
+  fill = false,
 }: {
   fromLabel: string;
   toLabel: string;
   points: Array<{ fromScore: number; toScore: number }>;
+  fill?: boolean;
 }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [plotSize, setPlotSize] = useState({ width: 280, height: 220 });
+
+  useEffect(() => {
+    if (!fill) return;
+    const node = wrapRef.current;
+    if (!node) return;
+
+    const update = () => {
+      setPlotSize({
+        width: Math.max(200, node.clientWidth),
+        height: Math.max(160, node.clientHeight),
+      });
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [fill]);
+
   if (points.length === 0) {
     return <p className="muted">No paired exam history for this transition yet.</p>;
   }
 
-  const width = 320;
-  const height = 220;
-  const pad = { top: 14, right: 14, bottom: 36, left: 40 };
-  const plotW = width - pad.left - pad.right;
-  const plotH = height - pad.top - pad.bottom;
+  const pad = fill
+    ? { top: 18, right: 16, bottom: 40, left: 28 }
+    : { top: 14, right: 14, bottom: 36, left: 40 };
+  const yAxisLabelX = pad.left - 4;
+  const plotW = fill
+    ? Math.max(120, plotSize.width - pad.left - pad.right)
+    : 320 - pad.left - pad.right;
+  const plotH = fill
+    ? Math.max(120, plotSize.height - pad.top - pad.bottom)
+    : 220 - pad.top - pad.bottom;
+  const width = pad.left + plotW + pad.right;
+  const height = pad.top + plotH + pad.bottom;
+  const yTicks = [0, 25, 50, 75, 100];
 
   return (
-    <div className="chart-correlation-wrap">
-      <svg viewBox={`0 0 ${width} ${height}`} className="chart-correlation" role="img">
+    <div
+      ref={wrapRef}
+      className={[
+        "chart-correlation-wrap",
+        fill ? "chart-correlation-wrap-fill" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio={fill ? "none" : undefined}
+        className={["chart-correlation", fill ? "chart-correlation-fill" : ""].filter(Boolean).join(" ")}
+        role="img"
+      >
+        {fill
+          ? yTicks.map((tick) => {
+              const y = pad.top + plotH - (tick / 100) * plotH;
+              return (
+                <g key={`y-${tick}`}>
+                  <line
+                    x1={pad.left}
+                    y1={y}
+                    x2={pad.left + plotW}
+                    y2={y}
+                    className="chart-correlation-grid"
+                  />
+                  <text x={yAxisLabelX} y={y + 4} className="chart-correlation-axis-label" textAnchor="end">
+                    {tick}
+                  </text>
+                </g>
+              );
+            })
+          : null}
+        {fill
+          ? yTicks.map((tick) => {
+              const x = pad.left + (tick / 100) * plotW;
+              return (
+                <line
+                  key={`x-${tick}`}
+                  x1={x}
+                  y1={pad.top}
+                  x2={x}
+                  y2={pad.top + plotH}
+                  className="chart-correlation-grid"
+                />
+              );
+            })
+          : null}
         <line
           x1={pad.left}
           y1={pad.top + plotH}
@@ -1142,11 +1562,11 @@ export function ScoreCorrelationScatter({
           {fromLabel.replace(/^Incoming /, "")}
         </text>
         <text
-          x={12}
+          x={fill ? 8 : 12}
           y={pad.top + plotH / 2}
           className="chart-correlation-axis-label"
           textAnchor="middle"
-          transform={`rotate(-90 12 ${pad.top + plotH / 2})`}
+          transform={`rotate(-90 ${fill ? 8 : 12} ${pad.top + plotH / 2})`}
         >
           {toLabel.replace(/^Incoming /, "")}
         </text>
@@ -1156,9 +1576,11 @@ export function ScoreCorrelationScatter({
           return <circle key={index} cx={x} cy={y} r={4} className="chart-correlation-dot" opacity={0.7} />;
         })}
       </svg>
-      <p className="muted chart-correlation-note">
-        Each dot is one student. Points on the diagonal held steady; above improved, below declined.
-      </p>
+      {!fill ? (
+        <p className="muted chart-correlation-note">
+          Each dot is one student. Points on the diagonal held steady; above improved, below declined.
+        </p>
+      ) : null}
     </div>
   );
 }

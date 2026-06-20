@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import ChartCard from "./charts/ChartCard";
 import {
-  ChartIconBars,
   HorizontalBarChart,
   PairedHorizontalBarChart,
 } from "./charts/AnalyticsCharts";
-import SwappableChartGrid, { ChartReorderHint } from "./SwappableChartGrid";
+import SwappableChartGrid from "./SwappableChartGrid";
 import { useChartOrder } from "../hooks/useChartOrder";
+import { DEMOGRAPHICS_CHART_LAYOUT } from "../lib/analyticsLayout";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import {
@@ -69,8 +69,6 @@ const DEMOGRAPHICS_CHART_ORDER = [
 
 type DemographicsChartId = (typeof DEMOGRAPHICS_CHART_ORDER)[number];
 
-const DEMOGRAPHICS_WIDE_CHART_IDS: DemographicsChartId[] = ["gender-bloom", "gender-topic"];
-
 const PROGRAM_CHART_COLORS = ["#34C759", "#007AFF", "#FF9500", "#FF3B30", "#AF52DE", "#5856D6"];
 
 function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData): ReactNode {
@@ -89,7 +87,6 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
           className="analytics-chart-card-balanced"
           title="Overall diagnostic score by school type"
           description="Average latest diagnostic score — public vs private."
-          icon={<ChartIconBars direction="horizontal" />}
         >
           <HorizontalBarChart bars={schoolOverallBars} valueDecimals={0} />
         </ChartCard>
@@ -101,7 +98,6 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
           className="analytics-chart-card-balanced"
           title="L1–L6 cognitive gap"
           description="Absolute score gap between school types at each Bloom level."
-          icon={<ChartIconBars direction="horizontal" />}
         >
           <HorizontalBarChart
             bars={data.schoolType.bloomGaps.map((row) => ({
@@ -120,7 +116,6 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
           className="analytics-chart-card-balanced"
           title="Topic gap heatmap"
           description="Largest subject/topic gaps between public and private."
-          icon={<ChartIconBars direction="horizontal" />}
         >
           <HorizontalBarChart
             bars={data.schoolType.topicGaps.map((row) => ({
@@ -136,10 +131,9 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
     case "gender-bloom":
       return (
         <ChartCard
-          className="analytics-chart-card-wide"
+          className="analytics-chart-card-paired-bars"
           title="L1–L6 by gender"
           description="Average diagnostic performance by cognitive level."
-          icon={<ChartIconBars direction="horizontal" />}
         >
           <PairedHorizontalBarChart
             rows={data.gender.bloomComparison.map((row) => ({
@@ -155,12 +149,12 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
     case "gender-topic":
       return (
         <ChartCard
-          className="analytics-chart-card-wide"
+          className="analytics-chart-card-paired-bars"
           title="Topic strengths by gender"
           description="Shared topics with diagnostic attempts for both groups."
-          icon={<ChartIconBars direction="horizontal" />}
         >
           <PairedHorizontalBarChart
+            pageSize={5}
             rows={data.gender.topicComparison.map((row) => ({
               label: row.label,
               left: row.male,
@@ -183,7 +177,6 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
           className="analytics-chart-card-balanced"
           title="Diagnostic score by program"
           description="Average latest diagnostic score per enrolled program."
-          icon={<ChartIconBars direction="horizontal" />}
         >
           <HorizontalBarChart bars={programScoreBars} valueDecimals={0} />
         </ChartCard>
@@ -201,7 +194,6 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
           className="analytics-chart-card-balanced"
           title="L4–L6 readiness by program"
           description="Higher-order thinking average (Analysis, Synthesis, Evaluation)."
-          icon={<ChartIconBars direction="horizontal" />}
         >
           <HorizontalBarChart bars={programReadinessBars} valueDecimals={0} />
         </ChartCard>
@@ -333,12 +325,6 @@ export default function AnalyticsDemographics({ token }: Props) {
           </div>
         </div>
 
-        <p className="muted analytics-lens-intro">
-          Compare incoming diagnostic readiness across school type, gender, and program. Uses each
-          student&apos;s latest diagnostic attempt. Students without gender or school set are
-          excluded from demographic splits.
-        </p>
-
         <div className="analytics-demographics-summary">
           <article className="analytics-trends-stat">
             <span className="analytics-trends-stat-label">Students in scope</span>
@@ -360,25 +346,15 @@ export default function AnalyticsDemographics({ token }: Props) {
           <p className="muted">No diagnostic exam data yet for this filter.</p>
         ) : (
           <>
-            <ChartReorderHint />
             <SwappableChartGrid
               order={activeChartOrder}
               onOrderChange={handleChartOrderChange}
-              wideIds={DEMOGRAPHICS_WIDE_CHART_IDS}
+              slotLayout={DEMOGRAPHICS_CHART_LAYOUT}
             >
               {(id) => renderDemographicsChart(id as DemographicsChartId, data)}
             </SwappableChartGrid>
           </>
         )}
-
-        <section className="card analytics-demographics-caveat">
-          <h2>Important caveat</h2>
-          <p className="muted">
-            Use these comparisons for equity insights and institutional planning — not as causal
-            rankings. Gaps between public and private schools, gender groups, or programs highlight
-            where bridging support may be needed before comprehensive exams.
-          </p>
-        </section>
       </div>
     </AnalyticsPrintArea>
   );

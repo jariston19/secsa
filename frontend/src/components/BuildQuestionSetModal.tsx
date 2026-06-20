@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { api } from "../lib/api";
 import { curriculumYearForStudentYear, formatExamType, parseYearLevel, sanitizeYearInput } from "../lib/constants";
-import { difficultyCountsForTotal, expandTopicConfigsWithSubjectDifficulty } from "../lib/examDifficultyDistribution";
+import { difficultyCountsForTotal, expandTopicConfigsWithSubjectDifficulty, type ExamDifficultyCounts } from "../lib/examDifficultyDistribution";
 import { buildExamAllocations, type TopicAllocation } from "../lib/examItemDistribution";
 import { toastCreated, toastUpdated } from "../lib/toastMessages";
 import {
@@ -60,6 +60,44 @@ function topicAllocationKey(subjectId: string, topicId: string | null) {
   return `${subjectId}:${topicId ?? "all"}`;
 }
 
+type DifficultyField = "easy" | "medium" | "hard";
+
+const DIFFICULTY_COUNT_KEY: Record<DifficultyField, keyof ExamDifficultyCounts> = {
+  easy: "easyCount",
+  medium: "mediumCount",
+  hard: "hardCount",
+};
+
+function difficultyDraftKey(topicKey: string, field: DifficultyField) {
+  return `${topicKey}:${field}`;
+}
+
+function computeExcludedTopicKeys(
+  configs: Array<{ subjectId: string; topicId: string | null }>,
+  allTopics: Topic[]
+) {
+  const includedKeys = new Set(
+    configs.map((config) => topicAllocationKey(config.subjectId, config.topicId))
+  );
+  const subjectIds = [...new Set(configs.map((config) => config.subjectId))];
+  const excluded: string[] = [];
+
+  for (const subjectId of subjectIds) {
+    const namedTopics = allTopics.filter((topic) => topic.subjectId === subjectId);
+    if (namedTopics.length === 0) continue;
+
+    const wholeSubjectIncluded = includedKeys.has(topicAllocationKey(subjectId, null));
+    for (const topic of namedTopics) {
+      const key = topicAllocationKey(subjectId, topic.id);
+      if (wholeSubjectIncluded || !includedKeys.has(key)) {
+        excluded.push(key);
+      }
+    }
+  }
+
+  return excluded;
+}
+
 export default function BuildQuestionSetModal({
   subjects,
   topics,
@@ -88,8 +126,13 @@ export default function BuildQuestionSetModal({
   const [timeLimitMinutes, setTimeLimitMinutes] = useState("0");
   const [passThreshold, setPassThreshold] = useState("75");
   const [topicItemOverrides, setTopicItemOverrides] = useState<Record<string, number>>({});
+  const [topicDifficultyOverrides, setTopicDifficultyOverrides] = useState<
+    Record<string, ExamDifficultyCounts>
+  >({});
+  const [excludedTopicKeys, setExcludedTopicKeys] = useState<string[]>([]);
   const [adjustingSubjectIds, setAdjustingSubjectIds] = useState<string[]>([]);
   const [topicDrafts, setTopicDrafts] = useState<Record<string, string>>({});
+  const [difficultyDrafts, setDifficultyDrafts] = useState<Record<string, string>>({});
   const allocationSeedRef = useRef<string | null>(null);
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
     onClose ?? (() => {}),
@@ -152,13 +195,22 @@ export default function BuildQuestionSetModal({
         setExamTotalItems(String(set.totalItems));
         setSelectedSubjectIds([...new Set(set.configs.map((config) => config.subjectId))]);
         const savedOverrides: Record<string, number> = {};
+        const savedDifficultyOverrides: Record<string, ExamDifficultyCounts> = {};
         for (const config of set.configs) {
           const key = topicAllocationKey(config.subjectId, config.topicId);
           savedOverrides[key] = config.easyCount + config.mediumCount + config.hardCount;
+          savedDifficultyOverrides[key] = {
+            easyCount: config.easyCount,
+            mediumCount: config.mediumCount,
+            hardCount: config.hardCount,
+          };
         }
         setTopicItemOverrides(savedOverrides);
+        setTopicDifficultyOverrides(savedDifficultyOverrides);
+        setExcludedTopicKeys(computeExcludedTopicKeys(set.configs, topics));
         setAdjustingSubjectIds([]);
         setTopicDrafts({});
+        setDifficultyDrafts({});
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Failed to load question set");
@@ -230,10 +282,14 @@ export default function BuildQuestionSetModal({
           sortKey: subject.courseCode,
           topics: topics
             .filter((topic) => topic.subjectId === subject.id)
+            .filter(
+              (topic) =>
+                !excludedTopicKeys.includes(topicAllocationKey(subject.id, topic.id))
+            )
             .map((topic) => ({ topicId: topic.id, label: topic.name })),
         }))
       ),
-    [parsedTotalItems, groupedSubjects, topics]
+    [parsedTotalItems, groupedSubjects, topics, excludedTopicKeys]
   );
 
   function autoTopicItemCount(topicKey: string, autoCount: number) {
@@ -268,8 +324,13 @@ export default function BuildQuestionSetModal({
     if (allocationSeedRef.current !== seed) {
       allocationSeedRef.current = seed;
       setTopicItemOverrides({});
+      setTopicDifficultyOverrides({});
+      setExcludedTopicKeys((prev) =>
+        prev.filter((key) => selectedSubjectIds.some((id) => key.startsWith(`${id}:`)))
+      );
       setAdjustingSubjectIds([]);
       setTopicDrafts({});
+      setDifficultyDrafts({});
     }
   }, [loading, parsedTotalItems, selectedSubjectIds]);
 
@@ -302,7 +363,7 @@ export default function BuildQuestionSetModal({
     [subjectAllocations]
   );
 
-  function difficultyForRow(row: TopicAllocation) {
+  function autoDifficultyForRow(row: TopicAllocation): ExamDifficultyCounts {
     return (
       subjectDifficultyByKey.get(row.key) ?? {
         easyCount: 0,
@@ -310,6 +371,10 @@ export default function BuildQuestionSetModal({
         hardCount: 0,
       }
     );
+  }
+
+  function difficultyForRow(row: TopicAllocation): ExamDifficultyCounts {
+    return topicDifficultyOverrides[row.key] ?? autoDifficultyForRow(row);
   }
 
   function poolCount(subjectId: string, topicId: string | null, difficulty: string) {
@@ -376,6 +441,13 @@ export default function BuildQuestionSetModal({
       }
       return next;
     });
+    setTopicDifficultyOverrides((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(`${subjectId}:`)) delete next[key];
+      }
+      return next;
+    });
     setTopicDrafts((prev) => {
       const next = { ...prev };
       for (const key of Object.keys(next)) {
@@ -383,6 +455,76 @@ export default function BuildQuestionSetModal({
       }
       return next;
     });
+    setDifficultyDrafts((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(`${subjectId}:`)) delete next[key];
+      }
+      return next;
+    });
+    setExcludedTopicKeys((prev) => prev.filter((key) => !key.startsWith(`${subjectId}:`)));
+  }
+
+  function clearSubjectTopicState(subjectId: string) {
+    setTopicItemOverrides((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(`${subjectId}:`)) delete next[key];
+      }
+      return next;
+    });
+    setTopicDifficultyOverrides((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(`${subjectId}:`)) delete next[key];
+      }
+      return next;
+    });
+    setTopicDrafts((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(`${subjectId}:`)) delete next[key];
+      }
+      return next;
+    });
+    setDifficultyDrafts((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(`${subjectId}:`)) delete next[key];
+      }
+      return next;
+    });
+  }
+
+  function excludedTopicsForSubject(subjectId: string) {
+    return topics.filter(
+      (topic) =>
+        topic.subjectId === subjectId &&
+        excludedTopicKeys.includes(topicAllocationKey(subjectId, topic.id))
+    );
+  }
+
+  function removeTopicFromBuild(
+    subjectId: string,
+    topicId: string,
+    activeTopicRowCount: number
+  ) {
+    if (activeTopicRowCount <= 1) {
+      setError("Keep at least one topic row, or remove the subject instead.");
+      return;
+    }
+
+    const key = topicAllocationKey(subjectId, topicId);
+    setExcludedTopicKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    clearSubjectTopicState(subjectId);
+    setError("");
+  }
+
+  function restoreTopicToBuild(subjectId: string, topicId: string) {
+    const key = topicAllocationKey(subjectId, topicId);
+    setExcludedTopicKeys((prev) => prev.filter((entry) => entry !== key));
+    clearSubjectTopicState(subjectId);
+    setError("");
   }
 
   function toggleAdjustSubject(subjectId: string) {
@@ -402,6 +544,16 @@ export default function BuildQuestionSetModal({
           }
           return next;
         });
+        setTopicDifficultyOverrides((current) => {
+          const next = { ...current };
+          for (const topic of allocation.topics) {
+            if (next[topic.key] === undefined) {
+              const auto = subjectDifficultyByKey.get(topic.key);
+              if (auto) next[topic.key] = auto;
+            }
+          }
+          return next;
+        });
       }
 
       return [...prev, subjectId];
@@ -410,23 +562,8 @@ export default function BuildQuestionSetModal({
   }
 
   function resetSubjectTopics(subjectId: string) {
-    const allocation = baseSubjectAllocations.find((row) => row.subjectId === subjectId);
-    if (!allocation) return;
-
-    setTopicItemOverrides((prev) => {
-      const next = { ...prev };
-      for (const topic of allocation.topics) {
-        next[topic.key] = topic.itemCount;
-      }
-      return next;
-    });
-    setTopicDrafts((prev) => {
-      const next = { ...prev };
-      for (const topic of allocation.topics) {
-        delete next[topic.key];
-      }
-      return next;
-    });
+    setExcludedTopicKeys((prev) => prev.filter((key) => !key.startsWith(`${subjectId}:`)));
+    clearSubjectTopicState(subjectId);
     setError("");
   }
 
@@ -448,6 +585,76 @@ export default function BuildQuestionSetModal({
       [topicKey]: countNum(draft),
     }));
     setError("");
+  }
+
+  function updateDifficultyDraft(topicKey: string, field: DifficultyField, value: string) {
+    setDifficultyDrafts((prev) => ({
+      ...prev,
+      [difficultyDraftKey(topicKey, field)]: sanitizeCountInput(value),
+    }));
+  }
+
+  function commitDifficultyDraft(row: TopicAllocation, field: DifficultyField) {
+    const draftKey = difficultyDraftKey(row.key, field);
+    const draft = difficultyDrafts[draftKey];
+    setDifficultyDrafts((prev) => {
+      const next = { ...prev };
+      delete next[draftKey];
+      return next;
+    });
+    if (draft === undefined) return;
+
+    const countKey = DIFFICULTY_COUNT_KEY[field];
+    setTopicDifficultyOverrides((prev) => {
+      const current = prev[row.key] ?? autoDifficultyForRow(row);
+      return {
+        ...prev,
+        [row.key]: {
+          ...current,
+          [countKey]: countNum(draft),
+        },
+      };
+    });
+    setError("");
+  }
+
+  function difficultyDisplayValue(row: TopicAllocation, field: DifficultyField) {
+    const draft = difficultyDrafts[difficultyDraftKey(row.key, field)];
+    if (draft !== undefined) return draft;
+    if (row.itemCount <= 0) return "0";
+    return String(difficultyForRow(row)[DIFFICULTY_COUNT_KEY[field]]);
+  }
+
+  function renderDifficultyCell(
+    row: TopicAllocation,
+    field: DifficultyField,
+    label: string,
+    isAdjusting: boolean
+  ) {
+    if (!isAdjusting || row.itemCount <= 0) {
+      const value = difficultyForRow(row)[DIFFICULTY_COUNT_KEY[field]];
+      return (
+        <span className="build-set-num-readout">{row.itemCount > 0 ? value : "—"}</span>
+      );
+    }
+
+    return (
+      <input
+        type="text"
+        inputMode="numeric"
+        className="table-input table-input-narrow build-set-topic-items-input"
+        value={difficultyDisplayValue(row, field)}
+        aria-label={`${label} items for ${row.label}`}
+        onChange={(e) => updateDifficultyDraft(row.key, field, e.target.value)}
+        onBlur={() => commitDifficultyDraft(row, field)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitDifficultyDraft(row, field);
+          }
+        }}
+      />
+    );
   }
 
   function subjectAllocationStatus(subjectId: string) {
@@ -517,13 +724,31 @@ export default function BuildQuestionSetModal({
       return;
     }
 
+    const difficultyMismatch = allocatedRows.find((row) => {
+      if (row.itemCount === 0) return false;
+      const { easyCount, mediumCount, hardCount } = difficultyForRow(row);
+      return easyCount + mediumCount + hardCount !== row.itemCount;
+    });
+    if (difficultyMismatch) {
+      const { easyCount, mediumCount, hardCount } = difficultyForRow(difficultyMismatch);
+      setError(
+        `${difficultyMismatch.label}: easy, medium, and hard must add up to ${difficultyMismatch.itemCount} (currently ${easyCount + mediumCount + hardCount}).`
+      );
+      return;
+    }
+
     const configs = allocatedRows
       .filter((row) => row.itemCount > 0)
-      .map((row) => ({
-        subjectId: row.subjectId,
-        topicId: row.topicId,
-        itemCount: row.itemCount,
-      }));
+      .map((row) => {
+        const { easyCount, mediumCount, hardCount } = difficultyForRow(row);
+        return {
+          subjectId: row.subjectId,
+          topicId: row.topicId,
+          easyCount,
+          mediumCount,
+          hardCount,
+        };
+      });
 
     if (configs.length === 0) {
       setError("Could not allocate items across subjects and topics.");
@@ -594,7 +819,21 @@ export default function BuildQuestionSetModal({
     }
   }
 
-  const difficultySplit = difficultyCountsForTotal(parsedTotalItems);
+  const difficultyTotals = useMemo(() => {
+    return allocatedRows.reduce(
+      (acc, row) => {
+        const { easyCount, mediumCount, hardCount } = difficultyForRow(row);
+        return {
+          easyCount: acc.easyCount + easyCount,
+          mediumCount: acc.mediumCount + mediumCount,
+          hardCount: acc.hardCount + hardCount,
+        };
+      },
+      { easyCount: 0, mediumCount: 0, hardCount: 0 }
+    );
+  }, [allocatedRows, topicDifficultyOverrides, subjectDifficultyByKey]);
+
+  const autoDifficultyTotals = difficultyCountsForTotal(parsedTotalItems);
 
   const panel = (
     <>
@@ -603,8 +842,8 @@ export default function BuildQuestionSetModal({
           <h2>{isEditing ? "Edit Question Set" : "Build Question Set"}</h2>
           <p className="muted">
             {isEditing
-              ? "Adjust total items, subjects, or transfer items between topics per subject."
-              : "Set total exam items, add subjects, and transfer items between topics as needed."}
+              ? "Adjust total items, subjects, topics, or difficulty counts per topic."
+              : "Set total exam items, add subjects, and adjust topics as needed."}
           </p>
           {isEditing && setStatus === "DEPLOYED" && (
             <span className="build-set-deployed-badge">Deployed</span>
@@ -739,9 +978,9 @@ export default function BuildQuestionSetModal({
               </div>
             </div>
             <p className="field-hint build-set-total-hint">
-              Items divide evenly across subjects by course code. Use Adjust topics on each subject
-              to transfer items between its topics. Difficulty uses 30% easy, 50% medium, 20% hard
-              per subject.
+              Items divide evenly across subjects by course code. Use Edit on each subject to
+              transfer items between its topics, set easy, medium, and hard counts, or remove
+              topics from the exam. Defaults use 30% easy, 50% medium, and 20% hard per subject.
             </p>
             <div className="build-set-details-bar">
               <span className={`build-set-exam-badge build-set-exam-badge-${type.toLowerCase()}`}>
@@ -822,6 +1061,7 @@ export default function BuildQuestionSetModal({
               const isAdjusting = adjustingSubjectIds.includes(subject.id);
               const { target, assigned, remaining } = subjectAllocationStatus(subject.id);
               const subjectBalanced = remaining === 0;
+              const removedTopics = excludedTopicsForSubject(subject.id);
 
               return (
                 <div
@@ -849,7 +1089,7 @@ export default function BuildQuestionSetModal({
                         className={`btn secondary btn-sm${isAdjusting ? " active" : ""}`}
                         onClick={() => toggleAdjustSubject(subject.id)}
                       >
-                        {isAdjusting ? "Done adjusting" : "Adjust topics"}
+                        {isAdjusting ? "Done" : "Edit"}
                       </button>
                       {isAdjusting ? (
                         <button
@@ -857,7 +1097,7 @@ export default function BuildQuestionSetModal({
                           className="btn secondary btn-sm"
                           onClick={() => resetSubjectTopics(subject.id)}
                         >
-                          Reset split
+                          Reset
                         </button>
                       ) : null}
                       <button
@@ -878,17 +1118,24 @@ export default function BuildQuestionSetModal({
                         <th className="build-set-num-col">Items</th>
                         <th className="build-set-num-col">
                           <span className="difficulty-badge easy">Easy</span>
-                          <span className="build-set-auto-label">30%</span>
+                          {isAdjusting ? null : (
+                            <span className="build-set-auto-label">30%</span>
+                          )}
                         </th>
                         <th className="build-set-num-col">
                           <span className="difficulty-badge medium">Medium</span>
-                          <span className="build-set-auto-label">50%</span>
+                          {isAdjusting ? null : (
+                            <span className="build-set-auto-label">50%</span>
+                          )}
                         </th>
                         <th className="build-set-num-col">
                           <span className="difficulty-badge hard">Hard</span>
-                          <span className="build-set-auto-label">20%</span>
+                          {isAdjusting ? null : (
+                            <span className="build-set-auto-label">20%</span>
+                          )}
                         </th>
                         <th className="build-set-num-col build-set-avail-col">Available</th>
+                        {isAdjusting ? <th className="build-set-action-col" aria-label="Actions" /> : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -902,6 +1149,9 @@ export default function BuildQuestionSetModal({
                           (easyCount > availEasy ||
                             mediumCount > availMedium ||
                             hardCount > availHard);
+                        const difficultyMismatch =
+                          row.itemCount > 0 &&
+                          easyCount + mediumCount + hardCount !== row.itemCount;
                         const draftValue = topicDrafts[row.key];
                         const displayValue =
                           draftValue !== undefined ? draftValue : String(row.itemCount);
@@ -909,7 +1159,11 @@ export default function BuildQuestionSetModal({
                         return (
                           <tr
                             key={row.key}
-                            className={poolShort ? "build-set-row-pool-short" : undefined}
+                            className={
+                              poolShort || difficultyMismatch
+                                ? "build-set-row-pool-short"
+                                : undefined
+                            }
                           >
                             <td className="build-set-topic-col">{row.label}</td>
                             <td className="build-set-num-col">
@@ -935,24 +1189,62 @@ export default function BuildQuestionSetModal({
                                 </span>
                               )}
                             </td>
-                            <td className="build-set-num-col build-set-num-readout">
-                              {row.itemCount > 0 ? easyCount : "—"}
+                            <td className="build-set-num-col">
+                              {renderDifficultyCell(row, "easy", "Easy", isAdjusting)}
                             </td>
-                            <td className="build-set-num-col build-set-num-readout">
-                              {row.itemCount > 0 ? mediumCount : "—"}
+                            <td className="build-set-num-col">
+                              {renderDifficultyCell(row, "medium", "Medium", isAdjusting)}
                             </td>
-                            <td className="build-set-num-col build-set-num-readout">
-                              {row.itemCount > 0 ? hardCount : "—"}
+                            <td className="build-set-num-col">
+                              {renderDifficultyCell(row, "hard", "Hard", isAdjusting)}
                             </td>
                             <td className="build-set-num-col build-set-avail-col muted">
                               {availEasy} / {availMedium} / {availHard}
                             </td>
+                            {isAdjusting ? (
+                              <td className="build-set-action-col">
+                                {row.topicId && allocation.topics.length > 1 ? (
+                                  <button
+                                    type="button"
+                                    className="btn secondary btn-sm build-set-topic-remove"
+                                    onClick={() =>
+                                      removeTopicFromBuild(
+                                        subject.id,
+                                        row.topicId!,
+                                        allocation.topics.length
+                                      )
+                                    }
+                                  >
+                                    Remove
+                                  </button>
+                                ) : null}
+                              </td>
+                            ) : null}
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                   </div>
+                  {isAdjusting && removedTopics.length > 0 ? (
+                    <div className="build-set-removed-topics">
+                      <span className="build-set-removed-topics-label">Removed topics</span>
+                      <ul className="build-set-removed-topics-list">
+                        {removedTopics.map((topic) => (
+                          <li key={topic.id}>
+                            <span>{topic.name}</span>
+                            <button
+                              type="button"
+                              className="btn secondary btn-sm"
+                              onClick={() => restoreTopicToBuild(subject.id, topic.id)}
+                            >
+                              Restore
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
               );
             })
@@ -969,26 +1261,31 @@ export default function BuildQuestionSetModal({
                   {parsedTotalItems > 0 ? parsedTotalItems : "—"}
                 </span>
               </div>
-              {parsedTotalItems > 0 ? (
-                <>
-                  <div className="build-set-stat">
-                    <span className="build-set-stat-label">Easy (30%)</span>
-                    <span className="build-set-stat-value">{difficultySplit.easyCount}</span>
-                  </div>
-                  <div className="build-set-stat">
-                    <span className="build-set-stat-label">Medium (50%)</span>
-                    <span className="build-set-stat-value">{difficultySplit.mediumCount}</span>
-                  </div>
-                  <div className="build-set-stat">
-                    <span className="build-set-stat-label">Hard (20%)</span>
-                    <span className="build-set-stat-value">{difficultySplit.hardCount}</span>
-                  </div>
-                </>
-              ) : null}
+              <div className="build-set-stat">
+                <span className="build-set-stat-label">Easy</span>
+                <span className="build-set-stat-value">
+                  {parsedTotalItems > 0 ? difficultyTotals.easyCount : "—"}
+                </span>
+              </div>
+              <div className="build-set-stat">
+                <span className="build-set-stat-label">Medium</span>
+                <span className="build-set-stat-value">
+                  {parsedTotalItems > 0 ? difficultyTotals.mediumCount : "—"}
+                </span>
+              </div>
+              <div className="build-set-stat">
+                <span className="build-set-stat-label">Hard</span>
+                <span className="build-set-stat-value">
+                  {parsedTotalItems > 0 ? difficultyTotals.hardCount : "—"}
+                </span>
+              </div>
             </div>
             <p className="field-hint build-set-summary-hint">
-              Subject totals stay fixed from the exam total. Use Adjust topics to move items between
-              topics within a subject. Difficulty uses 30% easy, 50% medium, and 20% hard per subject.
+              Subject totals stay fixed from the exam total. Use Edit to move items, difficulty
+              counts, or remove topics within a subject. Reset restores all topics.
+              {parsedTotalItems > 0
+                ? ` Default exam split is ${autoDifficultyTotals.easyCount}/${autoDifficultyTotals.mediumCount}/${autoDifficultyTotals.hardCount} (30/50/20) before overrides.`
+                : null}
             </p>
           </div>
 

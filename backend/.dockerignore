@@ -1,9 +1,12 @@
 node_modules
 dist
-.env
+uploads
 *.db
 *.db-journal
-uploads
+.env
+.env.*
 .DS_Store
 Thumbs.db
-Desktop.ini
+npm-debug.log*
+.git
+.gitignore

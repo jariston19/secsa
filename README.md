@@ -32,9 +32,29 @@ cd .. && npm run dev
 
 ## Docker
 
+Works on macOS, Linux, and Windows (Docker Desktop with WSL2 recommended).
+
 ```bash
 docker compose up --build
 ```
+
+Or:
+
+```bash
+npm run docker:up
+```
+
+- App: http://localhost:5173
+- API: http://localhost:3001
+
+### Windows notes
+
+- Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and enable the **WSL2** backend.
+- Run commands from the repo root in **PowerShell**, **CMD**, or a WSL terminal — not Git Bash with mixed path mounts unless you know the tradeoffs.
+- If a build fails after copying files from another machine, run `docker compose build --no-cache` so Linux dependencies (for example `sharp`) are installed inside the image instead of reusing host `node_modules`.
+- Keep Docker-related files on LF line endings. This repo uses `.gitattributes` for that; if you still see `sh\r` errors, run `git add --renormalize .` and rebuild.
+
+Images target `linux/amd64` so builds are consistent across Intel/ARM laptops and Windows hosts.
 
 ## Project structure
 
