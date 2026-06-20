@@ -3,7 +3,6 @@ import DiagnosticResultProfile, { type DiagnosticProfile } from "../components/D
 import ExamInstructionsModal from "../components/ExamInstructionsModal";
 import ExamSession from "../components/ExamSession";
 import QuestionImage from "../components/QuestionImage";
-import StudentGallery from "../components/StudentGallery";
 import StudentPrivacyPolicyModal, {
   hasAcceptedPrivacyPolicy,
 } from "../components/StudentPrivacyPolicyModal";
@@ -92,8 +91,6 @@ function releaseExamSessionChrome() {
   document.body.classList.remove("exam-session-active");
 }
 
-type StudentView = "start-exam" | "gallery";
-
 export default function StudentDashboard() {
   const { token, user } = useAuth();
   const { setPageNav, setPageNavValue } = useSidebar();
@@ -130,7 +127,6 @@ export default function StudentDashboard() {
   const [loadingComprehensiveProfile, setLoadingComprehensiveProfile] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [privacyPolicyRequired, setPrivacyPolicyRequired] = useState(false);
-  const [activeView, setActiveView] = useState<StudentView>("start-exam");
   const [error, setError] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
   const [startingExam, setStartingExam] = useState(false);
@@ -240,16 +236,8 @@ export default function StudentDashboard() {
   const handlePageNavChange = useCallback(
     (id: string) => {
       if (id === "start-exam") {
-        setActiveView("start-exam");
         setPageNavValue("start-exam");
         examSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-
-      if (id === "gallery") {
-        setActiveView("gallery");
-        setPageNavValue("gallery");
-        window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
 
@@ -264,15 +252,14 @@ export default function StudentDashboard() {
     setPageNav({
       segments: [
         { id: "start-exam", label: "Start Exam" },
-        { id: "gallery", label: "Gallery" },
         { id: "privacy-policy", label: "Privacy Policy" },
       ],
-      value: activeView,
+      value: "start-exam",
       onChange: handlePageNavChange,
     });
 
     return () => setPageNav(null);
-  }, [activeView, handlePageNavChange, setPageNav]);
+  }, [handlePageNavChange, setPageNav]);
 
   const canResumeExam = status?.nextAction === "resume_exam";
   const studentYearLevel = status?.yearLevel ?? user?.yearLevel;
@@ -619,9 +606,7 @@ export default function StudentDashboard() {
     <div className="grid">
       {error && <p className="error">{error}</p>}
 
-      {!attemptId && activeView === "gallery" ? <StudentGallery /> : null}
-
-      {!attemptId && activeView === "start-exam" ? (
+      {!attemptId ? (
         <>
           <section className="card" ref={examSectionRef}>
             <h2>Your Exam</h2>

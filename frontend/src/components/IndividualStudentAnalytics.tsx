@@ -726,7 +726,7 @@ export default function IndividualStudentAnalytics({ token }: Props) {
               </div>
               <div className="individual-student-header-actions">
                 <button type="button" className="btn secondary" onClick={backToList}>
-                  Back to list
+                  Back
                 </button>
                 <button
                   type="button"

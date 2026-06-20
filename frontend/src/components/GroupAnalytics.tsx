@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import { AnalyticsReportBody } from "./AnalyticsReports";
+import PreparednessInterpretationPanel from "./PreparednessInterpretationPanel";
 import { api } from "../lib/api";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import {
@@ -11,6 +12,7 @@ import { preparednessToneFromLabel } from "../lib/preparednessFramework";
 import { useProgramCourseOptions } from "../lib/programs";
 
 type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
+type CohortDetailView = "charts" | "preparedness";
 
 interface CohortSummary {
   programCourse: string;
@@ -164,6 +166,7 @@ export default function GroupAnalytics({ token }: Props) {
   const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
   const [selectedCohort, setSelectedCohort] = useState<SelectedCohort | null>(null);
+  const [cohortDetailView, setCohortDetailView] = useState<CohortDetailView>("charts");
   const [reports, setReports] = useState<GroupReportsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -203,6 +206,10 @@ export default function GroupAnalytics({ token }: Props) {
       });
   }, [token, query]);
 
+  useEffect(() => {
+    setCohortDetailView("charts");
+  }, [selectedCohort]);
+
   const printAreaId = "analytics-print-group";
   const printTitle = "Analytics — Group";
   const printSubtitle = selectedCohort
@@ -232,6 +239,21 @@ export default function GroupAnalytics({ token }: Props) {
                   <strong>{formatProgramCourse(selectedCohort.programCourse)}</strong>
                   <span className="muted">Incoming Year {selectedCohort.yearLevel}</span>
                 </div>
+                {reports?.preparednessReport ? (
+                  <button
+                    type="button"
+                    className="btn secondary group-analytics-preparedness-toggle analytics-no-print"
+                    onClick={() =>
+                      setCohortDetailView((view) =>
+                        view === "preparedness" ? "charts" : "preparedness"
+                      )
+                    }
+                  >
+                    {cohortDetailView === "preparedness"
+                      ? "Back"
+                      : "Interpretation"}
+                  </button>
+                ) : null}
               </div>
             ) : (
               <div className="analytics-reports-filters">
@@ -334,13 +356,19 @@ export default function GroupAnalytics({ token }: Props) {
           </section>
         ) : null}
 
-        {reports && selectedCohort ? (
+        {reports && selectedCohort && cohortDetailView === "charts" ? (
           <AnalyticsReportBody
             reports={reports}
             lens="group"
             refreshing={refreshing}
             error={error}
           />
+        ) : null}
+
+        {reports && selectedCohort && cohortDetailView === "preparedness" && reports.preparednessReport ? (
+          <div className={`group-analytics-preparedness-view${refreshing ? " is-refreshing" : ""}`}>
+            <PreparednessInterpretationPanel report={reports.preparednessReport} />
+          </div>
         ) : null}
       </div>
     </AnalyticsPrintArea>

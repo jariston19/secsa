@@ -12,7 +12,7 @@ export default function PreparednessInterpretationPanel({ report }: Props) {
     <section className="card analytics-preparedness-report">
       <header className="analytics-preparedness-header">
         <div>
-          <h2>Preparedness interpretation</h2>
+          <h2>Interpretation</h2>
           <p className="muted section-desc">
             NIRNDO-based Readiness Index (0–100) for faculty reporting
             {report.basedOnDiagnostic ? " — based on latest diagnostic scores." : "."}

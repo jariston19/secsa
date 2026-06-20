@@ -66,7 +66,7 @@ export function buildExamAllocations(
 
   return subjects.map((subject, index) => {
     const subjectTotal = perSubject[index] ?? 0;
-    const topicSlots =
+    const topicSlots: Array<{ topicId: string | null; label: string }> =
       subject.topics.length > 0
         ? subject.topics.map((topic) => ({ topicId: topic.topicId, label: topic.label }))
         : [{ topicId: null, label: "Whole subject" }];

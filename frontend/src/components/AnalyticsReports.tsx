@@ -29,7 +29,6 @@ import {
   type ProgramCourseFilter,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
-import PreparednessInterpretationPanel from "./PreparednessInterpretationPanel";
 import ModalPagination from "./ModalPagination";
 import { usePagination, CHART_PAGE_SIZE } from "../hooks/usePagination";
 import { useChartOrder } from "../hooks/useChartOrder";
@@ -805,7 +804,7 @@ export function AnalyticsReportBody({
             title="Discrimination index"
             description="Scatter plot: correct rate vs discrimination. Low discrimination flags items for review."
           >
-            <DiscriminationScatter points={discriminationPoints} />
+            <DiscriminationScatter key={filterKey} points={discriminationPoints} />
           </ChartCard>
         );
       case "avg-time-question":
@@ -878,18 +877,13 @@ export function AnalyticsReportBody({
       {error ? <p className="error">{error}</p> : null}
 
       {lens === "group" && (
-        <>
-          {reports.preparednessReport ? (
-            <PreparednessInterpretationPanel report={reports.preparednessReport} />
-          ) : null}
-          <SwappableChartGrid
-            order={groupChartOrder}
-            onOrderChange={setGroupChartOrder}
-            slotLayout={GROUP_CHART_LAYOUT}
-          >
-            {(id) => renderGroupChart(id as GroupAnalyticsChartId)}
-          </SwappableChartGrid>
-        </>
+        <SwappableChartGrid
+          order={groupChartOrder}
+          onOrderChange={setGroupChartOrder}
+          slotLayout={GROUP_CHART_LAYOUT}
+        >
+          {(id) => renderGroupChart(id as GroupAnalyticsChartId)}
+        </SwappableChartGrid>
       )}
 
       {lens === "student" && (

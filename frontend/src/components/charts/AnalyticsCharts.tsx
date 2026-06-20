@@ -93,24 +93,65 @@ export function HorizontalBarChart({
   );
 }
 
+export function DemographicsBloomTable({
+  rows,
+  leftLabel,
+  rightLabel,
+}: {
+  rows: Array<{ label: string; left: number | null; right: number | null }>;
+  leftLabel: string;
+  rightLabel: string;
+}) {
+  if (rows.length === 0) {
+    return <p className="muted">No cognitive-level data yet.</p>;
+  }
+
+  return (
+    <div className="chart-demographics-table-wrap">
+      <table className="chart-demographics-table">
+        <thead>
+          <tr>
+            <th scope="col">Level</th>
+            <th scope="col">{leftLabel}</th>
+            <th scope="col">{rightLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label}>
+              <th scope="row">{row.label}</th>
+              <td>{row.left != null ? `${row.left.toFixed(0)}%` : "—"}</td>
+              <td>{row.right != null ? `${row.right.toFixed(0)}%` : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function PairedHorizontalBarChart({
   rows,
   leftSeries,
   rightSeries,
   suffix = "%",
   pageSize,
+  evenRowSpacing = false,
 }: {
   rows: Array<{ label: string; left: number; right: number }>;
   leftSeries: { label: string; color: string };
   rightSeries: { label: string; color: string };
   suffix?: string;
   pageSize?: number;
+  evenRowSpacing?: boolean;
 }) {
   const pagination = usePagination(rows, {
     pageSize: pageSize ?? rows.length,
     resetKey: rows.map((row) => `${row.label}:${row.left}:${row.right}`).join("|"),
   });
   const visibleRows = pageSize ? pagination.paginatedItems : rows;
+  const placeholderCount =
+    pageSize != null ? Math.max(0, pageSize - visibleRows.length) : 0;
 
   if (rows.length === 0) {
     return <p className="muted">No data yet.</p>;
@@ -130,10 +171,16 @@ export function PairedHorizontalBarChart({
         className={[
           "chart-paired-horizontal-bars",
           pageSize ? "chart-paired-horizontal-bars-paged" : "",
+          evenRowSpacing ? "chart-paired-horizontal-bars-even" : "",
         ]
           .filter(Boolean)
           .join(" ")}
-        style={pageSize ? ({ "--paired-bar-page-size": pageSize } as CSSProperties) : undefined}
+        style={
+          {
+            ...(pageSize ? { "--paired-bar-page-size": pageSize } : {}),
+            ...(evenRowSpacing ? { "--paired-bar-row-count": rows.length } : {}),
+          } as CSSProperties
+        }
       >
         {visibleRows.map((row) => (
           <div key={row.label} className="chart-paired-horizontal-row">
@@ -162,8 +209,15 @@ export function PairedHorizontalBarChart({
             </div>
           </div>
         ))}
+        {Array.from({ length: placeholderCount }, (_, index) => (
+          <div
+            key={`placeholder-${index}`}
+            className="chart-paired-horizontal-row chart-paired-horizontal-row-placeholder"
+            aria-hidden
+          />
+        ))}
       </div>
-      {pageSize && pagination.totalPages > 1 ? (
+      {pageSize ? (
         <div className="chart-card-pagination analytics-no-print">
           <ModalPagination
             page={pagination.page}
@@ -460,6 +514,7 @@ export function DonutChart({
   exams,
   metric = "passRate",
   hideCenter = false,
+  variant = "default",
 }: {
   value: number;
   label?: string;
@@ -468,6 +523,7 @@ export function DonutChart({
   exams?: number;
   metric?: "passRate" | "averageScore";
   hideCenter?: boolean;
+  variant?: "default" | "risk";
 }) {
   const hasData = metric === "averageScore" ? (exams ?? 0) > 0 : true;
   const pct = hasData ? Math.min(100, Math.max(0, value)) : 0;
@@ -476,9 +532,10 @@ export function DonutChart({
   const offset = circumference - (pct / 100) * circumference;
   const centerLabel = label ?? (metric === "averageScore" ? "avg score" : "passed");
   const centerValue = hasData ? `${pct.toFixed(0)}%` : "—";
+  const variantClass = variant === "risk" ? " chart-donut-risk" : "";
 
   return (
-    <div className="chart-donut">
+    <div className={`chart-donut${variantClass}`}>
       <div className="chart-donut-ring-wrap">
         <svg viewBox="0 0 120 120" className="chart-donut-svg" aria-hidden>
           <circle
@@ -531,15 +588,20 @@ export function DonutChart({
 
 export function TopicFlagGrid({
   topics,
+  valueSuffix = "%",
 }: {
   topics: Array<{ label: string; score: number; tone: ScoreTone }>;
+  valueSuffix?: string;
 }) {
   return (
     <div className="chart-topic-flags">
       {topics.map((topic) => (
         <div key={topic.label} className={`chart-topic-flag chart-tone-${topic.tone}`}>
           <span className="chart-topic-flag-label">{topic.label}</span>
-          <span className="chart-topic-flag-score">{topic.score.toFixed(0)}%</span>
+          <span className="chart-topic-flag-score">
+            {topic.score.toFixed(0)}
+            {valueSuffix}
+          </span>
         </div>
       ))}
     </div>
@@ -550,24 +612,32 @@ export function RadarChart({
   topics,
   studentScores,
   classScores,
+  seriesLabels = { primary: "Student", secondary: "Class average" },
+  fillContainer = false,
+  maxLabelLength = 10,
 }: {
   topics: string[];
   studentScores: number[];
   classScores: number[];
+  seriesLabels?: { primary: string; secondary: string };
+  fillContainer?: boolean;
+  maxLabelLength?: number;
 }) {
   if (topics.length < 3) {
     return <p className="muted">Need at least 3 topics for a radar chart.</p>;
   }
 
-  const size = 220;
+  const size = fillContainer ? 280 : 220;
   const center = size / 2;
-  const radius = 82;
+  const radius = fillContainer ? 96 : 82;
+  const labelRadius = fillContainer ? 126 : 112;
+  const labelFontSize = fillContainer ? 8.5 : 7;
   const levels = [25, 50, 75, 100];
   const angleStep = (Math.PI * 2) / topics.length;
 
-  const pointAt = (value: number, index: number) => {
+  const pointAt = (value: number, index: number, distance = radius) => {
     const angle = angleStep * index - Math.PI / 2;
-    const r = (value / 100) * radius;
+    const r = (value / 100) * distance;
     return {
       x: center + r * Math.cos(angle),
       y: center + r * Math.sin(angle),
@@ -583,7 +653,7 @@ export function RadarChart({
       .join(" ");
 
   return (
-    <div className="chart-radar-wrap">
+    <div className={`chart-radar-wrap${fillContainer ? " chart-radar-wrap-fill" : ""}`}>
       <svg viewBox={`0 0 ${size} ${size}`} className="chart-radar" role="img">
         {levels.map((level) => (
           <polygon
@@ -599,7 +669,9 @@ export function RadarChart({
         ))}
         {topics.map((topic, index) => {
           const outer = pointAt(100, index);
-          const label = pointAt(112, index);
+          const label = pointAt(100, index, labelRadius);
+          const displayLabel =
+            topic.length > maxLabelLength ? `${topic.slice(0, maxLabelLength)}…` : topic;
           return (
             <g key={topic}>
               <line
@@ -609,8 +681,14 @@ export function RadarChart({
                 y2={outer.y}
                 className="chart-radar-axis"
               />
-              <text x={label.x} y={label.y} className="chart-radar-label" textAnchor="middle">
-                {topic.length > 10 ? `${topic.slice(0, 10)}…` : topic}
+              <text
+                x={label.x}
+                y={label.y}
+                className="chart-radar-label"
+                fontSize={labelFontSize}
+                textAnchor="middle"
+              >
+                {displayLabel}
               </text>
             </g>
           );
@@ -620,10 +698,212 @@ export function RadarChart({
       </svg>
       <div className="chart-radar-legend">
         <span>
-          <i className="chart-legend-line chart-legend-class" /> Class average
+          <i className="chart-legend-line chart-legend-class" /> {seriesLabels.secondary}
         </span>
         <span>
-          <i className="chart-legend-line chart-legend-student" /> Student
+          <i className="chart-legend-line chart-legend-student" /> {seriesLabels.primary}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function BloomCognitiveGapChart({
+  rows,
+  leftSeries,
+  rightSeries,
+  fillContainer = false,
+}: {
+  rows: Array<{
+    id: string;
+    label: string;
+    shortLabel?: string;
+    left: number | null;
+    right: number | null;
+  }>;
+  leftSeries: { label: string; color: string };
+  rightSeries: { label: string; color: string };
+  fillContainer?: boolean;
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [plotWidth, setPlotWidth] = useState(320);
+
+  const visibleRows = useMemo(
+    () => rows.filter((row) => row.left != null || row.right != null),
+    [rows]
+  );
+
+  useEffect(() => {
+    const node = wrapRef.current;
+    if (!node) return;
+
+    const update = () => setPlotWidth(Math.max(240, node.clientWidth));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  if (visibleRows.length === 0) {
+    return <p className="muted">No Bloom level comparison data yet.</p>;
+  }
+
+  const height = fillContainer ? 280 : 220;
+  const pad = { top: 30, right: 16, bottom: 44, left: 32 };
+  const plotW = Math.max(120, plotWidth - pad.left - pad.right);
+  const plotH = height - pad.top - pad.bottom;
+  const width = pad.left + plotW + pad.right;
+  const count = visibleRows.length;
+  const xStep = count > 1 ? plotW / (count - 1) : 0;
+  const xAt = (index: number) =>
+    count > 1 ? pad.left + index * xStep : pad.left + plotW / 2;
+  const yAt = (score: number) => pad.top + plotH - (score / 100) * plotH;
+
+  const linePath = (side: "left" | "right") =>
+    visibleRows
+      .map((row, index) => {
+        const score = side === "left" ? row.left : row.right;
+        if (score == null) return null;
+        return { x: xAt(index), y: yAt(score) };
+      })
+      .filter((point): point is { x: number; y: number } => Boolean(point))
+      .map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`)
+      .join(" ");
+
+  const gapAreaPoints = visibleRows
+    .map((row, index) => {
+      if (row.left == null || row.right == null) return null;
+      return {
+        x: xAt(index),
+        leftY: yAt(row.left),
+        rightY: yAt(row.right),
+      };
+    })
+    .filter((pair): pair is NonNullable<typeof pair> => Boolean(pair));
+
+  const gapAreaPath =
+    gapAreaPoints.length >= 2
+      ? [
+          ...gapAreaPoints.map((pair) => `${pair.x},${pair.leftY}`),
+          ...[...gapAreaPoints].reverse().map((pair) => `${pair.x},${pair.rightY}`),
+        ].join(" ")
+      : "";
+
+  return (
+    <div
+      ref={wrapRef}
+      className={`chart-bloom-gap-wrap${fillContainer ? " chart-bloom-gap-wrap-fill" : ""}`}
+    >
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMid meet"
+        className={`chart-bloom-gap${fillContainer ? " chart-bloom-gap-fill" : ""}`}
+        role="img"
+        aria-label={`${leftSeries.label} vs ${rightSeries.label} cognitive gap across Bloom levels`}
+      >
+        <line
+          x1={pad.left}
+          y1={pad.top}
+          x2={pad.left}
+          y2={pad.top + plotH}
+          className="chart-bloom-gap-axis"
+        />
+        {[0, 25, 50, 75, 100].map((tick) => {
+          const y = yAt(tick);
+          return (
+            <g key={tick}>
+              <line
+                x1={pad.left}
+                y1={y}
+                x2={pad.left + plotW}
+                y2={y}
+                className="chart-bloom-gap-grid"
+              />
+              <text x={pad.left - 6} y={y + 4} className="chart-bloom-gap-axis-label" textAnchor="end">
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+        {visibleRows.map((_, index) => (
+          <line
+            key={`axis-${index}`}
+            x1={xAt(index)}
+            y1={pad.top}
+            x2={xAt(index)}
+            y2={pad.top + plotH}
+            className="chart-bloom-gap-level-grid"
+          />
+        ))}
+        {gapAreaPath ? <polygon points={gapAreaPath} className="chart-bloom-gap-area" /> : null}
+        <path d={linePath("left")} className="chart-bloom-gap-line" style={{ stroke: leftSeries.color }} />
+        <path d={linePath("right")} className="chart-bloom-gap-line" style={{ stroke: rightSeries.color }} />
+        {visibleRows.map((row, index) => {
+          if (row.left != null) {
+            return (
+              <circle
+                key={`${row.id}-left`}
+                cx={xAt(index)}
+                cy={yAt(row.left)}
+                r={3.5}
+                className="chart-bloom-gap-dot"
+                style={{ fill: leftSeries.color }}
+              />
+            );
+          }
+          return null;
+        })}
+        {visibleRows.map((row, index) => {
+          if (row.right != null) {
+            return (
+              <circle
+                key={`${row.id}-right`}
+                cx={xAt(index)}
+                cy={yAt(row.right)}
+                r={3.5}
+                className="chart-bloom-gap-dot"
+                style={{ fill: rightSeries.color }}
+              />
+            );
+          }
+          return null;
+        })}
+        {visibleRows.map((row, index) => {
+          if (row.left == null || row.right == null) return null;
+          const gap = Math.abs(row.right - row.left);
+          const topY = Math.min(yAt(row.left), yAt(row.right));
+          return (
+            <text
+              key={`${row.id}-gap`}
+              x={xAt(index)}
+              y={topY - 8}
+              className="chart-bloom-gap-label"
+              textAnchor="middle"
+            >
+              {gap.toFixed(0)} pt
+            </text>
+          );
+        })}
+        {visibleRows.map((row, index) => (
+          <text
+            key={`${row.id}-tick`}
+            x={xAt(index)}
+            y={pad.top + plotH + 18}
+            className="chart-bloom-gap-axis-label"
+            textAnchor="middle"
+          >
+            {row.shortLabel ?? row.label}
+          </text>
+        ))}
+      </svg>
+      <div className="chart-bloom-gap-legend">
+        <span>
+          <i className="chart-legend-line" style={{ backgroundColor: leftSeries.color }} />{" "}
+          {leftSeries.label}
+        </span>
+        <span>
+          <i className="chart-legend-line" style={{ backgroundColor: rightSeries.color }} />{" "}
+          {rightSeries.label}
         </span>
       </div>
     </div>
@@ -820,6 +1100,8 @@ interface DiscriminationPoint {
   discriminationIndex: number;
 }
 
+const DISCRIMINATION_PLOT_ASPECT = 200 / 320;
+
 export function DiscriminationScatter({
   points,
   fill = true,
@@ -831,22 +1113,27 @@ export function DiscriminationScatter({
   const [plotSize, setPlotSize] = useState({ width: 320, height: 200 });
 
   useEffect(() => {
-    if (!fill) return;
+    if (!fill || points.length === 0) {
+      setPlotSize({ width: 320, height: 200 });
+      return;
+    }
+
     const node = wrapRef.current;
     if (!node) return;
 
     const update = () => {
-      setPlotSize({
-        width: Math.max(200, node.clientWidth),
-        height: Math.max(140, node.clientHeight),
-      });
+      const width = Math.max(200, node.clientWidth);
+      const height = Math.max(140, Math.round(width * DISCRIMINATION_PLOT_ASPECT));
+      setPlotSize((prev) =>
+        prev.width === width && prev.height === height ? prev : { width, height }
+      );
     };
 
     update();
     const observer = new ResizeObserver(update);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [fill]);
+  }, [fill, points.length]);
 
   if (points.length === 0) {
     return <p className="muted">Need more attempts per question for discrimination analysis.</p>;
@@ -896,7 +1183,12 @@ export function DiscriminationScatter({
           y2={pad.top + plotH / 2}
           className="chart-discrimination-grid"
         />
-        <text x={pad.left} y={height - 8} className="chart-scatter-axis-label" textAnchor="start">
+        <text
+          x={pad.left + plotW / 2}
+          y={height - 8}
+          className="chart-scatter-axis-label"
+          textAnchor="middle"
+        >
           Correct rate
         </text>
         <text

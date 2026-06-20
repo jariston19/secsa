@@ -210,7 +210,7 @@ function LayoutShell() {
         <div className="sidebar-header">
           <img className="sidebar-logo" src="/secsa.png" alt="SECSA" />
           <div className="sidebar-brand-text">
-            <h1>SECSA Exam Platform</h1>
+            <h1>SECSA AQAP</h1>
             <p className="muted">
               {user ? formatFullName(user.firstName, user.lastName) : ""}
               {user?.role ? ` · ${formatRole(user.role)}` : ""}
@@ -285,7 +285,7 @@ function LayoutShell() {
           >
             <SidebarToggleIcon />
           </button>
-          <span className="app-topbar-title">SECSA Exam Platform</span>
+          <span className="app-topbar-title">SECSA AQAP</span>
         </header>
 
         <main className="content">
