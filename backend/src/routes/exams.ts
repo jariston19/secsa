@@ -988,6 +988,7 @@ function buildExamStartResponse({
   resumeIndex,
   timeLimitMinutes,
   resumed = false,
+  focusWarningCount = 0,
 }: {
   attempt: { id: string; startedAt: Date };
   questions: ReturnType<typeof stripCorrectAnswer>[];
@@ -1000,6 +1001,7 @@ function buildExamStartResponse({
   resumeIndex: number;
   timeLimitMinutes: number;
   resumed?: boolean;
+  focusWarningCount?: number;
 }) {
   return {
     attempt,
@@ -1008,6 +1010,7 @@ function buildExamStartResponse({
     resumeIndex,
     timeLimitMinutes,
     resumed,
+    focusWarningCount,
   };
 }
 
@@ -1034,6 +1037,7 @@ async function buildResumeExamStartResponse(attempt: InProgressExamAttempt) {
     resumeIndex: resumeIndex === -1 ? questionIds.length - 1 : resumeIndex,
     timeLimitMinutes: attempt.questionSet.timeLimitMinutes,
     resumed: true,
+    focusWarningCount: attempt.focusWarningCount,
   });
 }
 

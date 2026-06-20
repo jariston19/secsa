@@ -52,12 +52,15 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     allowedHosts: true,
-    hmr: {
-      clientPort: 5173,
-    },
     proxy: {
-      "/api": "http://127.0.0.1:3001",
-      "/uploads": "http://127.0.0.1:3001",
+      "/api": {
+        target: "http://127.0.0.1:3001",
+        changeOrigin: true,
+      },
+      "/uploads": {
+        target: "http://127.0.0.1:3001",
+        changeOrigin: true,
+      },
     },
   },
 });

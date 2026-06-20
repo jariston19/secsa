@@ -8,7 +8,6 @@ import StudentPrivacyPolicyModal, {
 } from "../components/StudentPrivacyPolicyModal";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { primeExamFullscreen } from "../lib/examFullscreen";
 import { resetBodyScrollLock } from "../lib/scrollLock";
 import { useSidebar } from "../lib/sidebar";
 import {
@@ -84,6 +83,8 @@ interface ExamStartResponse {
   savedAnswers: SavedAnswer[];
   resumeIndex: number;
   timeLimitMinutes: number;
+  resumed?: boolean;
+  focusWarningCount?: number;
 }
 
 function releaseExamSessionChrome() {
@@ -138,11 +139,13 @@ export default function StudentDashboard() {
     "comprehensive" | "incoming_diagnostic" | "retake"
   >("comprehensive");
   const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
+  const [initialFocusWarningCount, setInitialFocusWarningCount] = useState(0);
   const focusWarningCountRef = useRef(0);
   const examInteractionGuardRef = useRef<((durationMs?: number) => void) | null>(null);
   const examDeadlineMsRef = useRef<number | null>(null);
   const submittingExamRef = useRef(false);
   const examSectionRef = useRef<HTMLElement | null>(null);
+  const autoResumeAttemptedRef = useRef(false);
 
   const answerTimesRef = useRef<Record<string, number>>({});
   const questionShownAtRef = useRef(Date.now());
@@ -343,7 +346,9 @@ export default function StudentDashboard() {
       }
     }
 
-    focusWarningCountRef.current = 0;
+    const savedFocusWarnings = data.focusWarningCount ?? 0;
+    focusWarningCountRef.current = savedFocusWarnings;
+    setInitialFocusWarningCount(savedFocusWarnings);
     submittingExamRef.current = false;
     const durationMs = data.timeLimitMinutes * 60 * 1000;
     const startedMs = new Date(data.attempt.startedAt).getTime();
@@ -361,27 +366,42 @@ export default function StudentDashboard() {
     questionShownAtRef.current = Date.now();
   }
 
-  async function resumeExam() {
-    primeExamFullscreen();
-    setStartingExam(true);
-    setStartError("");
-    setError("");
-    try {
-      const data = await api<ExamStartResponse>(
-        "/exams/start",
-        {
-          method: "POST",
-          body: isQa ? JSON.stringify({ examYearLevel: Number(qaExamYear) }) : undefined,
-        },
-        token
-      );
-      applyExamStart(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to resume exam");
-    } finally {
-      setStartingExam(false);
+  const resumeExam = useCallback(
+    async (options?: { isAuto?: boolean }) => {
+      setStartingExam(true);
+      setStartError("");
+      setError("");
+      try {
+        const data = await api<ExamStartResponse>(
+          "/exams/start",
+          {
+            method: "POST",
+            body: isQa ? JSON.stringify({ examYearLevel: Number(qaExamYear) }) : undefined,
+          },
+          token
+        );
+        applyExamStart(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to resume exam");
+        if (options?.isAuto) {
+          autoResumeAttemptedRef.current = false;
+        }
+      } finally {
+        setStartingExam(false);
+      }
+    },
+    [isQa, qaExamYear, token]
+  );
+
+  useEffect(() => {
+    if (!token || !status || attemptId || result || startingExam || autoResumeAttemptedRef.current) {
+      return;
     }
-  }
+    if (status.nextAction !== "resume_exam") return;
+
+    autoResumeAttemptedRef.current = true;
+    void resumeExam({ isAuto: true });
+  }, [token, status, attemptId, result, startingExam, resumeExam]);
 
   function openInstructions(kind: "comprehensive" | "incoming_diagnostic" | "retake") {
     setPendingExamKind(kind);
@@ -390,7 +410,6 @@ export default function StudentDashboard() {
   }
 
   async function beginExam() {
-    primeExamFullscreen();
     setStartingExam(true);
     setStartError("");
     try {
@@ -553,6 +572,9 @@ export default function StudentDashboard() {
         setAnswers({});
         setAnswerTimes({});
         answerTimesRef.current = {};
+        setInitialFocusWarningCount(0);
+        focusWarningCountRef.current = 0;
+        autoResumeAttemptedRef.current = false;
         examDeadlineMsRef.current = null;
         setSecondsRemaining(null);
         setExamTimeLimitMinutes(null);
@@ -677,10 +699,14 @@ export default function StudentDashboard() {
             {!attemptId && !result && canResumeExam && (
               <>
                 <p className="muted">
-                  You have an exam in progress on this account. Resume here to continue where you
-                  left off — including on another computer or browser.
+                  You have an exam in progress. This page will resume it automatically, including
+                  after a reload. If it does not, use the button below.
                 </p>
-                <button className="btn" onClick={resumeExam} disabled={startingExam}>
+                <button
+                  className="btn"
+                  onClick={() => void resumeExam()}
+                  disabled={startingExam}
+                >
                   {startingExam ? "Resuming..." : "Resume Exam"}
                 </button>
               </>
@@ -898,6 +924,7 @@ export default function StudentDashboard() {
       {attemptId && currentQuestion && (
         <ExamSession
           active
+          initialFocusWarningCount={initialFocusWarningCount}
           interactionGuardRef={examInteractionGuardRef}
           onFocusWarningCountChange={syncFocusWarnings}
           onMaxViolationsReached={handleMaxFocusViolations}

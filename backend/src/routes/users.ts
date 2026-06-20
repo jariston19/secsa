@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import { programCourseSlugSchema, assertActiveProgramSlug } from "../lib/programCourse.js";
 import { MIN_YEAR_LEVEL, assertYearLevelForProgram, maxYearLevelForProgram, yearLevelSchema } from "../lib/yearLevel.js";
+import { findDuplicateUserEmail, normalizeUserEmail } from "../services/userDuplicates.js";
 import {
   executeBulkGraduate,
   executeBulkPromote,
@@ -15,8 +16,10 @@ import {
   previewSchoolYearRollover,
 } from "../services/bulkStudentYearOps.js";
 
+const emailSchema = z.string().trim().email().transform(normalizeUserEmail);
+
 const createUserSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
   password: z.string().min(6),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
@@ -29,7 +32,7 @@ const createUserSchema = z.object({
 });
 
 const updateUserSchema = z.object({
-  email: z.string().email().optional(),
+  email: emailSchema.optional(),
   password: z.string().min(6).optional(),
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
@@ -150,6 +153,13 @@ export async function userRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "You cannot deactivate your own account." });
     }
 
+    if (body.email !== undefined) {
+      const duplicate = await findDuplicateUserEmail(prisma, body.email, id);
+      if (duplicate) {
+        return reply.code(409).send({ error: "A user with this email already exists." });
+      }
+    }
+
     try {
       const updated = await prisma.user.update({
         where: { id },
@@ -173,7 +183,7 @@ export async function userRoutes(app: FastifyInstance) {
 
       return { user: updated };
     } catch {
-      return reply.code(400).send({ error: "A user with this email already exists." });
+      return reply.code(409).send({ error: "A user with this email already exists." });
     }
   });
 
@@ -211,24 +221,32 @@ export async function userRoutes(app: FastifyInstance) {
       }
     }
 
-    const passwordHash = await bcrypt.hash(body.password, 10);
-    const created = await prisma.user.create({
-      data: {
-        email: body.email,
-        passwordHash,
-        firstName: body.firstName,
-        lastName: body.lastName,
-        role: body.role,
-        yearLevel: body.role === Role.STUDENT ? body.yearLevel : null,
-        programCourse: body.role === Role.STUDENT ? body.programCourse : null,
-        gender: body.role === Role.STUDENT ? body.gender : null,
-        schoolType: body.role === Role.STUDENT ? body.schoolType : null,
-        qaUnlimited: body.role === Role.STUDENT ? Boolean(body.qaUnlimited) : false,
-      },
-      select: userSelect,
-    });
+    const duplicate = await findDuplicateUserEmail(prisma, body.email);
+    if (duplicate) {
+      return reply.code(409).send({ error: "A user with this email already exists." });
+    }
 
-    return reply.code(201).send({ user: created });
+    const passwordHash = await bcrypt.hash(body.password, 10);
+    try {
+      const created = await prisma.user.create({
+        data: {
+          email: body.email,
+          passwordHash,
+          firstName: body.firstName,
+          lastName: body.lastName,
+          role: body.role,
+          yearLevel: body.role === Role.STUDENT ? body.yearLevel : null,
+          programCourse: body.role === Role.STUDENT ? body.programCourse : null,
+          gender: body.role === Role.STUDENT ? body.gender : null,
+          schoolType: body.role === Role.STUDENT ? body.schoolType : null,
+          qaUnlimited: body.role === Role.STUDENT ? Boolean(body.qaUnlimited) : false,
+        },
+        select: userSelect,
+      });
+      return reply.code(201).send({ user: created });
+    } catch {
+      return reply.code(409).send({ error: "A user with this email already exists." });
+    }
   });
 
   app.post("/bulk/promote/preview", async (request, reply) => {

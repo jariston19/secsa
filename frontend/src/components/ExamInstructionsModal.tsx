@@ -126,14 +126,13 @@ export default function ExamInstructionsModal({
           <h3>Exam lockdown</h3>
           <ul className="instructions-list">
             <li>
-              When you click <strong>Begin Exam</strong>, your browser should enter{" "}
-              <strong>fullscreen mode</strong>. If it does not, click <strong>Enter fullscreen</strong>{" "}
-              on the next screen and choose <strong>Allow</strong> when Chrome asks.
+              Use your browser&apos;s fullscreen (e.g. <strong>F11</strong> on Windows) if you want
+              a distraction-free view — this is optional and you control it yourself.
             </li>
             <li>Do <strong>not</strong> switch tabs, minimize the window, or open other applications during the exam.</li>
             <li>
               You may switch away <strong>up to {MAX_EXAM_FOCUS_VIOLATIONS - 1} times</strong> — each time
-              the exam pauses until you return to fullscreen.
+              the exam pauses until you return to the exam screen.
             </li>
             <li>
               On the <strong>{MAX_EXAM_FOCUS_VIOLATIONS}rd</strong> tab or window switch, your exam is{" "}

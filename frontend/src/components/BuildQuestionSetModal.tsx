@@ -73,6 +73,26 @@ function difficultyDraftKey(topicKey: string, field: DifficultyField) {
   return `${topicKey}:${field}`;
 }
 
+function subjectMatchesSet(
+  subject: Subject,
+  curriculumYear: number,
+  programCourse: ProgramCourseId
+) {
+  return (
+    subject.yearLevel === curriculumYear &&
+    subjectHasProgram(subject.programCourses, programCourse)
+  );
+}
+
+function withoutSubjectKeys<T>(record: Record<string, T>, subjectId: string) {
+  const prefix = `${subjectId}:`;
+  const next: Record<string, T> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (!key.startsWith(prefix)) next[key] = value;
+  }
+  return next;
+}
+
 function computeExcludedTopicKeys(
   configs: Array<{ subjectId: string; topicId: string | null }>,
   allTopics: Topic[]
@@ -216,13 +236,13 @@ export default function BuildQuestionSetModal({
         setError(err instanceof Error ? err.message : "Failed to load question set");
       })
       .finally(() => setLoading(false));
-  }, [setId, token]);
+  }, [setId, token, topics]);
 
   useEffect(() => {
     allocationSeedRef.current = null;
   }, [setId]);
 
-  const parsedStudentYear = parseYearLevel(yearLevel);
+  const parsedStudentYear = parseYearLevel(yearLevel, setProgramCourse);
   const curriculumYear = curriculumYearForStudentYear(parsedStudentYear);
   const isIncomingDiagnosticYear = parsedStudentYear === 1;
   const isSharedDiagnostic = type === "DIAGNOSTIC";
@@ -258,18 +278,19 @@ export default function BuildQuestionSetModal({
   }
 
   function commitYearLevel() {
-    const nextYear = String(parseYearLevel(yearLevel));
+    const nextYear = String(parseYearLevel(yearLevel, setProgramCourse));
     setYearLevel(nextYear);
   }
 
   const curriculumSubjects = useMemo(
-    () =>
-      subjects.filter(
-        (s) =>
-          s.yearLevel === curriculumYear && subjectHasProgram(s.programCourses, setProgramCourse)
-      ),
+    () => subjects.filter((subject) => subjectMatchesSet(subject, curriculumYear, setProgramCourse)),
     [subjects, curriculumYear, setProgramCourse]
   );
+
+  const addSubjectOptions = useMemo(() => {
+    const selected = new Set(selectedSubjectIds);
+    return curriculumSubjects.filter((subject) => !selected.has(subject.id));
+  }, [curriculumSubjects, selectedSubjectIds]);
 
   useEffect(() => {
     if (isEditing || !yearLevel.trim()) return;
@@ -424,17 +445,14 @@ export default function BuildQuestionSetModal({
     const subject = subjects.find((s) => s.id === addSubjectId);
     if (!subject) return;
 
-    if (subject.yearLevel !== curriculumYear) {
-      setError(
-        `Only curriculum year ${curriculumYear} subjects can be added for student year ${parsedStudentYear}.`
-      );
-      return;
-    }
-
-    if (!subjectHasProgram(subject.programCourses, setProgramCourse)) {
-      setError(
-        `${subject.courseCode} is not linked to ${formatProgramCourse(setProgramCourse)}.`
-      );
+    if (!subjectMatchesSet(subject, curriculumYear, setProgramCourse)) {
+      if (subject.yearLevel !== curriculumYear) {
+        setError(
+          `Only curriculum year ${curriculumYear} subjects can be added for student year ${parsedStudentYear}.`
+        );
+        return;
+      }
+      setError(`${subject.courseCode} is not linked to ${formatProgramCourse(setProgramCourse)}.`);
       return;
     }
 
@@ -446,66 +464,15 @@ export default function BuildQuestionSetModal({
   function removeSubject(subjectId: string) {
     setSelectedSubjectIds((prev) => prev.filter((id) => id !== subjectId));
     setAdjustingSubjectIds((prev) => prev.filter((id) => id !== subjectId));
-    setTopicItemOverrides((prev) => {
-      const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        if (key.startsWith(`${subjectId}:`)) delete next[key];
-      }
-      return next;
-    });
-    setTopicDifficultyOverrides((prev) => {
-      const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        if (key.startsWith(`${subjectId}:`)) delete next[key];
-      }
-      return next;
-    });
-    setTopicDrafts((prev) => {
-      const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        if (key.startsWith(`${subjectId}:`)) delete next[key];
-      }
-      return next;
-    });
-    setDifficultyDrafts((prev) => {
-      const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        if (key.startsWith(`${subjectId}:`)) delete next[key];
-      }
-      return next;
-    });
+    clearSubjectTopicState(subjectId);
     setExcludedTopicKeys((prev) => prev.filter((key) => !key.startsWith(`${subjectId}:`)));
   }
 
   function clearSubjectTopicState(subjectId: string) {
-    setTopicItemOverrides((prev) => {
-      const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        if (key.startsWith(`${subjectId}:`)) delete next[key];
-      }
-      return next;
-    });
-    setTopicDifficultyOverrides((prev) => {
-      const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        if (key.startsWith(`${subjectId}:`)) delete next[key];
-      }
-      return next;
-    });
-    setTopicDrafts((prev) => {
-      const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        if (key.startsWith(`${subjectId}:`)) delete next[key];
-      }
-      return next;
-    });
-    setDifficultyDrafts((prev) => {
-      const next = { ...prev };
-      for (const key of Object.keys(next)) {
-        if (key.startsWith(`${subjectId}:`)) delete next[key];
-      }
-      return next;
-    });
+    setTopicItemOverrides((prev) => withoutSubjectKeys(prev, subjectId));
+    setTopicDifficultyOverrides((prev) => withoutSubjectKeys(prev, subjectId));
+    setTopicDrafts((prev) => withoutSubjectKeys(prev, subjectId));
+    setDifficultyDrafts((prev) => withoutSubjectKeys(prev, subjectId));
   }
 
   function excludedTopicsForSubject(subjectId: string) {
@@ -699,20 +666,18 @@ export default function BuildQuestionSetModal({
       return;
     }
 
-    const mismatchedSubject = groupedSubjects.find((s) => s.yearLevel !== curriculumYear);
-    if (mismatchedSubject) {
-      setError(
-        `${mismatchedSubject.courseCode} belongs to curriculum year ${mismatchedSubject.yearLevel}, not year ${curriculumYear}. Remove it or change student year level.`
-      );
-      return;
-    }
-
-    const mismatchedCourse = groupedSubjects.find(
-      (s) => !subjectHasProgram(s.programCourses, setProgramCourse)
+    const mismatchedSubject = groupedSubjects.find(
+      (subject) => !subjectMatchesSet(subject, curriculumYear, setProgramCourse)
     );
-    if (mismatchedCourse) {
+    if (mismatchedSubject) {
+      if (mismatchedSubject.yearLevel !== curriculumYear) {
+        setError(
+          `${mismatchedSubject.courseCode} belongs to curriculum year ${mismatchedSubject.yearLevel}, not year ${curriculumYear}. Remove it or change student year level.`
+        );
+        return;
+      }
       setError(
-        `${mismatchedCourse.courseCode} is not linked to ${formatProgramCourse(setProgramCourse)}.`
+        `${mismatchedSubject.courseCode} is not linked to ${formatProgramCourse(setProgramCourse)}.`
       );
       return;
     }
@@ -886,7 +851,7 @@ export default function BuildQuestionSetModal({
                 />
               </label>
               <label className="build-set-meta-year">
-                <span className="build-set-field-label">Year level</span>
+                <span className="build-set-field-label">Incoming year</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -897,6 +862,9 @@ export default function BuildQuestionSetModal({
                   disabled={isEditing}
                   required
                 />
+                <span className="field-hint">
+                  Uses curriculum year {curriculumYear} subjects.
+                </span>
               </label>
               <label className="build-set-meta-course">
                 <span className="build-set-field-label">Program course</span>
@@ -1035,29 +1003,33 @@ export default function BuildQuestionSetModal({
                 onChange={(e) => setAddSubjectId(e.target.value)}
               >
                 <option value="">Select a subject</option>
-                {curriculumSubjects
-                  .filter((s) => !selectedSubjectIds.includes(s.id))
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.courseCode} — {s.courseTitle}
-                    </option>
-                  ))}
+                {addSubjectOptions.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.courseCode} — {subject.courseTitle}
+                  </option>
+                ))}
               </select>
             </label>
             <button
               type="button"
               className="btn secondary"
               onClick={addSubject}
-              disabled={curriculumSubjects.length === 0}
+              disabled={!addSubjectId}
             >
               Add subject
             </button>
+            <span className="field-hint build-set-add-subject-hint">
+              Showing curriculum year {curriculumYear} subjects linked to{" "}
+              {formatProgramCourse(setProgramCourse)}.
+            </span>
           </div>
 
           {groupedSubjects.length === 0 ? (
             <p className="build-set-empty muted">
               {curriculumSubjects.length === 0
-                ? `No ${abbreviateProgramCourse(setProgramCourse)} yr ${curriculumYear} subjects in Setup.`
+                ? subjects.length === 0
+                  ? "No subjects in Setup yet."
+                  : `No subjects match curriculum yr ${curriculumYear} and ${abbreviateProgramCourse(setProgramCourse)}.`
                 : "Add subjects above. Item counts auto-fill from the total."}
             </p>
           ) : parsedTotalItems <= 0 ? (

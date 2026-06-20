@@ -44,8 +44,41 @@ Or:
 npm run docker:up
 ```
 
-- App: http://localhost:5173
-- API: http://localhost:3001
+- App (HTTPS): **https://localhost:5173**
+- On your LAN: **https://<server-ip>:5173** (same port as before, now HTTPS)
+- API is proxied at `/api` through the frontend — you do not need port 3001 on client machines.
+
+Docker runs database migrations on startup, but it does **not** load demo seed data by default.
+To intentionally load the demo accounts/content, set `SEED_ON_START=true` for the backend service.
+
+### HTTPS in Docker
+
+A **Caddy** reverse proxy terminates TLS and forwards to the frontend container.
+
+| Scenario | Setup |
+|----------|--------|
+| **Lab / LAN (no domain)** | Default. Caddy uses an internal certificate. Students open `https://<server-ip>:5173` and accept the browser security warning once (Advanced → Proceed). This enables secure-context features such as in-app fullscreen. |
+| **Production (public domain)** | Edit `docker/caddy/Caddyfile` to use your domain (see comments in that file). Point DNS to the server. Caddy obtains a Let's Encrypt certificate automatically. |
+
+HTTP on port **80** redirects to **https://…:5173**.
+
+Optional `.env` in the repo root:
+
+```env
+SEED_ON_START=false
+```
+
+To serve HTTPS on port 443 instead of 5173, change the Caddy `ports` in `docker-compose.yml` to `"443:443"` and update the `:80` redirect in `docker/caddy/Caddyfile`.
+
+If seed data already exists in your Docker database, rebuilding the image will not remove it because
+SQLite data is kept in the `secsa-data` Docker volume. To wipe that Docker database and start fresh:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+Only run `docker compose down -v` if you are okay deleting the Docker database volume.
 
 ### Windows notes
 

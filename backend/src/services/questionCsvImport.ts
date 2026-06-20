@@ -1,6 +1,7 @@
 import { BloomLevel, Difficulty, type PrismaClient } from "@prisma/client";
 import { isBloomLevelAllowed } from "../lib/bloomLevel.js";
 import { parseCsv } from "../lib/parseCsv.js";
+import { questionDuplicateKey } from "./questionDuplicates.js";
 
 export const QUESTION_CSV_HEADERS = [
   "course_code",
@@ -237,12 +238,15 @@ export async function importQuestionsFromCsv(
     return { created: 0, failed: 0, errors: [{ row: 1, message: "No question rows found." }] };
   }
 
-  const [subjects, topics] = await Promise.all([
+  const [subjects, topics, existingQuestions] = await Promise.all([
     prisma.subject.findMany({
       select: { id: true, courseCode: true, yearLevel: true },
     }),
     prisma.topic.findMany({
       select: { id: true, name: true, subjectId: true },
+    }),
+    prisma.question.findMany({
+      select: { subjectId: true, topicId: true, text: true },
     }),
   ]);
 
@@ -252,6 +256,7 @@ export async function importQuestionsFromCsv(
   const topicByKey = new Map(
     topics.map((topic) => [`${topic.subjectId}::${topic.name.trim().toLowerCase()}`, topic])
   );
+  const duplicateKeys = new Set(existingQuestions.map(questionDuplicateKey));
 
   let created = 0;
   const errors: Array<{ row: number; message: string }> = [];
@@ -288,6 +293,19 @@ export async function importQuestionsFromCsv(
       topicId = topic.id;
     }
 
+    const duplicateKey = questionDuplicateKey({
+      subjectId: subject.id,
+      topicId,
+      text: data.text,
+    });
+    if (duplicateKeys.has(duplicateKey)) {
+      errors.push({
+        row: rowNumber,
+        message: "Duplicate question text already exists for this subject and topic.",
+      });
+      continue;
+    }
+
     try {
       await prisma.question.create({
         data: {
@@ -305,6 +323,7 @@ export async function importQuestionsFromCsv(
         },
       });
       created += 1;
+      duplicateKeys.add(duplicateKey);
     } catch {
       errors.push({ row: rowNumber, message: "Could not save question." });
     }

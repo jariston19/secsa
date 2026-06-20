@@ -179,12 +179,14 @@ export async function topicRoutes(app: FastifyInstance) {
             }),
           ]
         : []),
+      prisma.question.deleteMany({ where: { topicId: id } }),
       prisma.topic.delete({ where: { id } }),
     ]);
 
     return {
       success: true,
       archivedSets: deployedSetIds.length,
+      deletedQuestions: topic.questions.length,
     };
   });
 }

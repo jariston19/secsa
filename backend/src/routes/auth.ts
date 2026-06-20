@@ -3,9 +3,10 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser } from "../lib/auth.js";
+import { normalizeUserEmail } from "../services/userDuplicates.js";
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email().transform(normalizeUserEmail),
   password: z.string().min(1),
 });
 

@@ -3,13 +3,12 @@ services:
     build:
       context: ./backend
     platform: linux/amd64
-    ports:
-      - "3001:3001"
     environment:
       DATABASE_URL: file:/data/prod.db
       JWT_SECRET: change-this-in-production
       UPLOAD_DIR: /data/uploads
       NODE_ENV: production
+      SEED_ON_START: "false"
     volumes:
       - secsa-data:/data
     healthcheck:
@@ -27,11 +26,26 @@ services:
     build:
       context: ./frontend
     platform: linux/amd64
-    ports:
-      - "5173:80"
+    expose:
+      - "80"
     depends_on:
       backend:
         condition: service_healthy
 
+  caddy:
+    image: caddy:2-alpine
+    platform: linux/amd64
+    ports:
+      - "5173:443"
+      - "80:80"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frontend
+
 volumes:
   secsa-data:
+  caddy-data:
+  caddy-config:

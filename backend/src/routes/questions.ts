@@ -7,6 +7,7 @@ import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
 import { isBloomLevelAllowed } from "../lib/bloomLevel.js";
 import { uploadDir } from "../lib/paths.js";
+import { findDuplicateQuestion } from "../services/questionDuplicates.js";
 import { saveOptimizedImage } from "../services/imageUpload.js";
 import { importQuestionsFromCsv, questionCsvTemplate } from "../services/questionCsvImport.js";
 
@@ -76,6 +77,13 @@ export async function questionRoutes(app: FastifyInstance) {
       ...fields,
       topicId: fields.topicId || null,
     });
+
+    const duplicate = await findDuplicateQuestion(prisma, body);
+    if (duplicate) {
+      return reply.code(409).send({
+        error: "A question with the same text already exists for this subject and topic.",
+      });
+    }
 
     let imagePath: string | undefined;
     if (imageBuffer) {
@@ -170,6 +178,13 @@ export async function questionRoutes(app: FastifyInstance) {
       ...fields,
       topicId: fields.topicId || null,
     });
+
+    const duplicate = await findDuplicateQuestion(prisma, { ...body, excludeId: id });
+    if (duplicate) {
+      return reply.code(409).send({
+        error: "A question with the same text already exists for this subject and topic.",
+      });
+    }
 
     let imagePath = existing.imagePath;
     if (fields.removeImage === "true") {
