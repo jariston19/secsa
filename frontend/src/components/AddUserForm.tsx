@@ -112,19 +112,15 @@ export default function AddUserForm({ token, onCreated }: Props) {
   }
 
   return (
-    <div className="add-user-page">
-      <section className="card add-user-card">
-        <header className="add-user-header">
-          <div className="add-user-header-copy">
-            <h2>Add User</h2>
-            <p className="muted section-desc">
-              Create accounts for students, teachers, or superadmins. Student settings determine
-              which exams they receive.
-            </p>
-          </div>
-        </header>
+    <section className="card build-sets-panel add-user-card">
+      <header className="sets-header build-set-inline-header add-user-header">
+        <div className="add-user-header-copy">
+          <h2>Add User</h2>
+        </div>
+      </header>
 
-        <form className="add-user-form" onSubmit={handleSubmit}>
+      <form className="add-user-form build-set-form" onSubmit={handleSubmit}>
+        <div className="add-user-form-body build-set-form-body">
           <fieldset className="add-user-section">
             <legend>Profile</legend>
             <div className="add-user-fields add-user-fields-2">
@@ -296,13 +292,14 @@ export default function AddUserForm({ token, onCreated }: Props) {
             </fieldset>
           )}
 
-          <div className="add-user-actions">
-            <button className="btn" type="submit" disabled={submitting}>
-              {submitting ? "Creating..." : "Create User"}
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
+        </div>
+
+        <div className="add-user-actions build-set-form-footer">
+          <button className="btn" type="submit" disabled={submitting}>
+            {submitting ? "Creating..." : "Create User"}
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }

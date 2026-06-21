@@ -129,19 +129,15 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
   }
 
   return (
-    <div className="add-user-page">
-      <div className="add-user-card card">
-        <header className="add-user-header">
-          <h1>Program Courses</h1>
-          <p className="muted section-desc">
-            Define the programs offered at your school. New programs appear in user enrollment,
-            subject linking, exam sets, and analytics filters.
-          </p>
-        </header>
+    <section className="card build-sets-panel program-courses-panel">
+      <header className="sets-header build-set-inline-header program-courses-header">
+        <h2>Program Courses</h2>
+      </header>
 
-        <form className="add-user-form" onSubmit={handleSubmit}>
+      <div className="program-courses-layout">
+        <form className="program-courses-add-form" onSubmit={handleSubmit}>
           <section className="add-user-section">
-            <h2 className="add-user-section-title">Add program</h2>
+            <h3 className="add-user-section-title">Add program</h3>
             <div className="add-user-fields add-user-fields-2">
               <label>
                 Full name
@@ -172,15 +168,15 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
             </div>
           </section>
 
-          <div className="add-user-actions">
+          <div className="program-courses-add-actions">
             <button className="btn" type="submit" disabled={submitting}>
               {submitting ? "Adding…" : "Add program course"}
             </button>
           </div>
         </form>
 
-        <section className="add-user-section program-courses-list-section">
-          <h2 className="add-user-section-title">Existing programs</h2>
+        <section className="program-courses-list-section">
+          <h3 className="add-user-section-title">Existing programs</h3>
           {programsLoading && programs.length === 0 ? (
             <p className="muted">Loading program courses…</p>
           ) : programs.length === 0 ? (
@@ -311,6 +307,6 @@ export default function ProgramCoursesSettings({ token, onCreated }: Props) {
           )}
         </section>
       </div>
-    </div>
+    </section>
   );
 }

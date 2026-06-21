@@ -7,7 +7,6 @@ import { buildExamAllocations, type TopicAllocation } from "../lib/examItemDistr
 import { toastCreated, toastUpdated } from "../lib/toastMessages";
 import {
   abbreviateProgramCourse,
-  DEFAULT_PROGRAM_COURSE,
   formatProgramCourse,
   SHARED_DIAGNOSTIC_PROGRAM,
   subjectHasProgram,
@@ -132,7 +131,7 @@ export default function BuildQuestionSetModal({
   const isEditing = Boolean(setId);
   const [name, setName] = useState("");
   const [yearLevel, setYearLevel] = useState("2");
-  const [setProgramCourse, setSetProgramCourse] = useState<ProgramCourseId>(programCourse);
+  const [setProgramCourse, setSetProgramCourse] = useState<ProgramCourseId | "">("");
   const [type, setType] = useState<"COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE">("COMPREHENSIVE");
   const [setStatus, setSetStatus] = useState<string | null>(null);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
@@ -162,11 +161,6 @@ export default function BuildQuestionSetModal({
   function handleCancel() {
     requestClose();
   }
-
-  useEffect(() => {
-    if (isEditing) return;
-    setSetProgramCourse(programCourse);
-  }, [programCourse, isEditing]);
 
   useEffect(() => {
     api<{ questions: Question[] }>("/questions", {}, token)
@@ -260,18 +254,20 @@ export default function BuildQuestionSetModal({
   }, [isIncomingDiagnosticYear, isEditing]);
 
   useEffect(() => {
-    if (isEditing || !isSharedDiagnostic) return;
-    setSetProgramCourse(SHARED_DIAGNOSTIC_PROGRAM);
-  }, [isSharedDiagnostic, isEditing]);
+    if (isEditing || programCourseOptions.length === 0) return;
 
-  useEffect(() => {
-    if (isEditing || isIncomingDiagnosticYear) return;
+    if (isIncomingDiagnosticYear) {
+      setSetProgramCourse(SHARED_DIAGNOSTIC_PROGRAM);
+      return;
+    }
+
     setSetProgramCourse((current) => {
-      if (current !== SHARED_DIAGNOSTIC_PROGRAM) return current;
-      if (programCourse !== SHARED_DIAGNOSTIC_PROGRAM) return programCourse;
-      return programCourseOptions[0]?.id ?? DEFAULT_PROGRAM_COURSE;
+      if (current && programCourseOptions.some((option) => option.id === current)) {
+        return current;
+      }
+      return programCourseOptions[0].id;
     });
-  }, [isIncomingDiagnosticYear, isEditing, programCourse, programCourseOptions]);
+  }, [isEditing, isIncomingDiagnosticYear, programCourseOptions]);
 
   function updateYearLevel(value: string) {
     setYearLevel(value);
@@ -996,9 +992,13 @@ export default function BuildQuestionSetModal({
             </div>
 
           <div className="build-set-add-subject">
-            <label>
-              <span className="build-set-field-label">Add subject</span>
+            <span className="build-set-field-label" id="build-set-add-subject-label">
+              Add subject
+            </span>
+            <div className="build-set-add-subject-row">
               <select
+                id="build-set-add-subject-select"
+                aria-labelledby="build-set-add-subject-label"
                 value={addSubjectId}
                 onChange={(e) => setAddSubjectId(e.target.value)}
               >
@@ -1009,15 +1009,15 @@ export default function BuildQuestionSetModal({
                   </option>
                 ))}
               </select>
-            </label>
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={addSubject}
-              disabled={!addSubjectId}
-            >
-              Add subject
-            </button>
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={addSubject}
+                disabled={!addSubjectId}
+              >
+                Add
+              </button>
+            </div>
             <span className="field-hint build-set-add-subject-hint">
               Showing curriculum year {curriculumYear} subjects linked to{" "}
               {formatProgramCourse(setProgramCourse)}.

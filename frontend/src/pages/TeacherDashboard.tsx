@@ -29,7 +29,6 @@ import {
   toastUndeployed,
 } from "../lib/toastMessages";
 import {
-  DEFAULT_PROGRAM_COURSE,
   formatProgramCourse,
   formatProgramCoursesList,
   SHARED_DIAGNOSTIC_PROGRAM,
@@ -151,11 +150,10 @@ export default function TeacherDashboard() {
       if (nextCourses.length === form.programCourses.length) return form;
       return {
         ...form,
-        programCourses:
-          nextCourses.length > 0 ? nextCourses : ([defaultSlug] as ProgramCourseId[]),
+        programCourses: nextCourses,
       };
     });
-  }, [programCourseOptions, defaultSlug]);
+  }, [programCourseOptions]);
 
   const [setsStatusFilter, setSetsStatusFilter] = useState<SetStatusFilter>("ALL");
   const [setsTypeFilter, setSetsTypeFilter] = useState<SetTypeFilter>("ALL");
@@ -164,7 +162,7 @@ export default function TeacherDashboard() {
     courseCode: "",
     courseTitle: "",
     yearLevel: "1",
-    programCourses: [DEFAULT_PROGRAM_COURSE] as ProgramCourseId[],
+    programCourses: [] as ProgramCourseId[],
   });
 
   const [topicSubjectId, setTopicSubjectId] = useState("");
@@ -314,12 +312,12 @@ export default function TeacherDashboard() {
           ? toastLinked("subject", label, "Linked to additional program course(s).")
           : toastCreated("subject", label)
       );
-      setSubjectForm((form) => ({
+      setSubjectForm({
         courseCode: "",
         courseTitle: "",
         yearLevel: "1",
-        programCourses: form.programCourses,
-      }));
+        programCourses: [],
+      });
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create subject");
@@ -567,193 +565,186 @@ export default function TeacherDashboard() {
       )}
 
       {activeTab === "setup" && (
-        <div className="grid">
-          <div className="setup-split">
-          <section className="card setup-card setup-subject-card">
-            <h2>Add Subject</h2>
-            <p className="muted section-desc setup-desc">
-              Add a course to the curriculum (e.g. ACEE 106 — Electromagnetics). Link one subject to
-              multiple programs to reuse the same question pool (e.g. Trigonometry for CE, EE, ME).
-            </p>
-            <form className="form-grid setup-form" onSubmit={createSubject}>
-              <label>
-                Course code
-                <input
-                  placeholder="e.g. ACEE 106"
-                  value={subjectForm.courseCode}
-                  onChange={(e) => setSubjectForm({ ...subjectForm, courseCode: e.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                Course title
-                <input
-                  placeholder="e.g. Electromagnetics"
-                  value={subjectForm.courseTitle}
-                  onChange={(e) => setSubjectForm({ ...subjectForm, courseTitle: e.target.value })}
-                  required
-                />
-              </label>
-              <fieldset className="program-course-checkboxes">
-                <legend>Program courses</legend>
-                <div className="program-course-checkbox-grid">
-                  {programCourseOptions.map((course) => {
-                    const checked = subjectForm.programCourses.includes(course.id);
-                    return (
-                      <label key={course.id} className="checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            setSubjectForm((form) => {
-                              const next = e.target.checked
-                                ? [...form.programCourses, course.id]
-                                : form.programCourses.filter((id) => id !== course.id);
-                              return {
-                                ...form,
-                                programCourses:
-                                  next.length > 0 ? next : ([course.id] as ProgramCourseId[]),
-                              };
-                            });
-                          }}
-                        />
-                        {course.abbr}
-                      </label>
-                    );
-                  })}
-                </div>
-                <span className="field-hint">
-                  Select every program that shares this subject. Questions are encoded once.
-                </span>
-              </fieldset>
-              <label>
-                Curriculum year level
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="1"
-                  value={subjectForm.yearLevel}
-                  onChange={(e) =>
-                    setSubjectForm({
-                      ...subjectForm,
-                      yearLevel: sanitizeYearInput(e.target.value),
-                    })
-                  }
-                  onBlur={() =>
-                    setSubjectForm((form) => ({
-                      ...form,
-                      yearLevel: String(parseYearLevel(form.yearLevel)),
-                    }))
-                  }
-                  required
-                />
-                <span className="field-hint">1–4 only (1 = 1st year subjects).</span>
-              </label>
-              <button className="btn">Save Subject</button>
-            </form>
-          </section>
-
-          <section className="card setup-card topic-batch-card">
-            <h2>Add Topics (optional)</h2>
-            <p className="muted section-desc setup-desc">
-              Pick a subject, add topic rows, then save. Switch subjects to batch topics across
-              multiple courses before saving.
-            </p>
-            <form className="topic-batch-form" onSubmit={saveTopicBatch}>
-              <label>
-                Program filter
-                <select
-                  value={activeProgramId}
-                  onChange={(e) => setActiveProgramId(e.target.value)}
-                >
-                  {programCourseOptions.map((course) => (
-                    <option key={course.programId} value={course.programId}>
-                      {course.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {courseSubjects.length === 0 ? (
-                <p className="muted">No subjects for this program course yet.</p>
-              ) : (
-                <>
-                  <label>
-                    Subject
-                    <select
-                      value={topicSubjectId}
-                      onChange={(e) => setTopicSubjectId(e.target.value)}
-                      required
-                    >
-                      {courseSubjects.map((subject) => (
-                        <option key={subject.id} value={subject.id}>
-                          {subject.courseCode} — {subject.courseTitle}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedTopicSubject && (
-                      <span className="field-hint">
-                        Yr {selectedTopicSubject.yearLevel}
-                        {(existingTopicsBySubject.get(selectedTopicSubject.id) ?? 0) > 0
-                          ? ` · ${existingTopicsBySubject.get(selectedTopicSubject.id)} existing topic${
-                              existingTopicsBySubject.get(selectedTopicSubject.id) === 1 ? "" : "s"
-                            }`
-                          : ""}
-                      </span>
-                    )}
-                  </label>
-
-                  <div className="topic-batch-rows">
-                    {currentTopicRows.map((row, index) => (
-                      <div key={row.key} className="topic-batch-row">
-                        <label>
-                          Topic / unit name
+        <section className="card setup-card setup-unified-card">
+          <div className="setup-unified-split">
+            <div className="setup-unified-section">
+              <h2 className="setup-section-heading">Add subject</h2>
+              <form className="form-grid setup-form" onSubmit={createSubject}>
+                <label>
+                  Course code
+                  <input
+                    placeholder="e.g. ACEE 106"
+                    value={subjectForm.courseCode}
+                    onChange={(e) => setSubjectForm({ ...subjectForm, courseCode: e.target.value })}
+                    required
+                  />
+                </label>
+                <label>
+                  Course title
+                  <input
+                    placeholder="e.g. Electromagnetics"
+                    value={subjectForm.courseTitle}
+                    onChange={(e) => setSubjectForm({ ...subjectForm, courseTitle: e.target.value })}
+                    required
+                  />
+                </label>
+                <fieldset className="program-course-checkboxes">
+                  <legend>Program courses</legend>
+                  <div className="program-course-checkbox-grid">
+                    {programCourseOptions.map((course) => {
+                      const checked = subjectForm.programCourses.includes(course.id);
+                      return (
+                        <label key={course.id} className="checkbox-label">
                           <input
-                            placeholder="e.g. Magnetic Fields"
-                            value={row.name}
-                            onChange={(e) =>
-                              updateTopicRow(topicSubjectId, row.key, e.target.value)
-                            }
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              setSubjectForm((form) => {
+                                const next = e.target.checked
+                                  ? [...form.programCourses, course.id]
+                                  : form.programCourses.filter((id) => id !== course.id);
+                                return {
+                                  ...form,
+                                  programCourses: next,
+                                };
+                              });
+                            }}
                           />
+                          {course.abbr}
                         </label>
-                        <div className="topic-batch-row-actions">
-                          {currentTopicRows.length > 1 && (
-                            <button
-                              type="button"
-                              className="btn secondary"
-                              onClick={() => removeTopicRow(topicSubjectId, row.key)}
-                            >
-                              Remove
-                            </button>
-                          )}
-                          {index === currentTopicRows.length - 1 && (
-                            <button
-                              type="button"
-                              className="btn secondary"
-                              onClick={() => addTopicRow(topicSubjectId)}
-                            >
-                              Add row
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                </>
-              )}
+                  <span className="field-hint">
+                    Select every program that shares this subject. Questions are encoded once.
+                  </span>
+                </fieldset>
+                <label>
+                  Curriculum year level
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="1"
+                    value={subjectForm.yearLevel}
+                    onChange={(e) =>
+                      setSubjectForm({
+                        ...subjectForm,
+                        yearLevel: sanitizeYearInput(e.target.value),
+                      })
+                    }
+                    onBlur={() =>
+                      setSubjectForm((form) => ({
+                        ...form,
+                        yearLevel: String(parseYearLevel(form.yearLevel)),
+                      }))
+                    }
+                    required
+                  />
+                  <span className="field-hint">1–4 only (1 = 1st year subjects).</span>
+                </label>
+                <button className="btn" disabled={subjectForm.programCourses.length === 0}>
+                  Save subject
+                </button>
+              </form>
+            </div>
 
-              <button
-                className="btn"
-                disabled={savingTopics || courseSubjects.length === 0 || topicBatchCount === 0}
-              >
-                {savingTopics
-                  ? "Saving..."
-                  : `Save topic${topicBatchCount === 1 ? "" : "s"}${topicBatchCount > 0 ? ` (${topicBatchCount})` : ""}`}
-              </button>
-            </form>
-          </section>
+            <div className="setup-unified-section">
+              <h2 className="setup-section-heading">Add topics (optional)</h2>
+              <form className="topic-batch-form" onSubmit={saveTopicBatch}>
+                <label>
+                  Program filter
+                  <select
+                    value={activeProgramId}
+                    onChange={(e) => setActiveProgramId(e.target.value)}
+                  >
+                    {programCourseOptions.map((course) => (
+                      <option key={course.programId} value={course.programId}>
+                        {course.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {courseSubjects.length === 0 ? (
+                  <p className="muted">No subjects for this program course yet.</p>
+                ) : (
+                  <>
+                    <label>
+                      Subject
+                      <select
+                        value={topicSubjectId}
+                        onChange={(e) => setTopicSubjectId(e.target.value)}
+                        required
+                      >
+                        {courseSubjects.map((subject) => (
+                          <option key={subject.id} value={subject.id}>
+                            {subject.courseCode} — {subject.courseTitle}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedTopicSubject && (
+                        <span className="field-hint">
+                          Yr {selectedTopicSubject.yearLevel}
+                          {(existingTopicsBySubject.get(selectedTopicSubject.id) ?? 0) > 0
+                            ? ` · ${existingTopicsBySubject.get(selectedTopicSubject.id)} existing topic${
+                                existingTopicsBySubject.get(selectedTopicSubject.id) === 1 ? "" : "s"
+                              }`
+                            : ""}
+                        </span>
+                      )}
+                    </label>
+
+                    <div className="topic-batch-rows">
+                      {currentTopicRows.map((row, index) => (
+                        <div key={row.key} className="topic-batch-row">
+                          <label>
+                            Topic / unit name
+                            <input
+                              placeholder="e.g. Magnetic Fields"
+                              value={row.name}
+                              onChange={(e) =>
+                                updateTopicRow(topicSubjectId, row.key, e.target.value)
+                              }
+                            />
+                          </label>
+                          <div className="topic-batch-row-actions">
+                            {currentTopicRows.length > 1 && (
+                              <button
+                                type="button"
+                                className="btn secondary"
+                                onClick={() => removeTopicRow(topicSubjectId, row.key)}
+                              >
+                                Remove
+                              </button>
+                            )}
+                            {index === currentTopicRows.length - 1 && (
+                              <button
+                                type="button"
+                                className="btn secondary"
+                                onClick={() => addTopicRow(topicSubjectId)}
+                              >
+                                Add row
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <button
+                  className="btn"
+                  disabled={savingTopics || courseSubjects.length === 0 || topicBatchCount === 0}
+                >
+                  {savingTopics
+                    ? "Saving..."
+                    : `Save topic${topicBatchCount === 1 ? "" : "s"}${topicBatchCount > 0 ? ` (${topicBatchCount})` : ""}`}
+                </button>
+              </form>
+            </div>
           </div>
-        </div>
+        </section>
       )}
 
       {activeTab === "encode" && (

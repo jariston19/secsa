@@ -290,10 +290,6 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
     <div className="encoder">
       <div className="encoder-header card">
         <h2>Encode Questions</h2>
-        <p className="muted section-desc">
-          Filter by program course and curriculum year, then choose the subject and optional topic
-          for all questions below.
-        </p>
         <div className="encoder-meta">
           <label>
             Program course
@@ -365,10 +361,6 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
         <div className="encoder-csv-import">
           <div>
             <h3>Import from CSV</h3>
-            <p className="muted">
-              Upload a spreadsheet with one question per row. Subjects and topics must already
-              exist in Setup.
-            </p>
           </div>
           <div className="encoder-csv-import-actions">
             <a className="btn secondary btn-sm" href="/questions-import-template.csv" download>

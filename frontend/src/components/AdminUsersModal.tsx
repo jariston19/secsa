@@ -9,7 +9,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { parseYearLevel } from "../lib/constants";
 import { compareByName, formatFullName } from "../lib/names";
-import { DEFAULT_PROGRAM_COURSE, formatProgramCourse, maxYearLevelForProgram } from "../lib/programCourse";
+import { formatProgramCourse, maxYearLevelForProgram, type ProgramCourseId } from "../lib/programCourse";
 import { toastDeleted, toastRestored, toastUpdated } from "../lib/toastMessages";
 import { useConfirm } from "../lib/confirm";
 import { useProgramCourseOptions } from "../lib/programs";
@@ -56,9 +56,9 @@ export default function AdminUsersModal({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
-  const [bulkProgramCourse, setBulkProgramCourse] = useState(DEFAULT_PROGRAM_COURSE);
-  const [bulkBusy, setBulkBusy] = useState<string | null>(null);
   const courseOptions = useProgramCourseOptions();
+  const [bulkProgramCourse, setBulkProgramCourse] = useState<ProgramCourseId | "">("");
+  const [bulkBusy, setBulkBusy] = useState<string | null>(null);
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
     onClose ?? (() => {}),
     !inline
@@ -80,6 +80,16 @@ export default function AdminUsersModal({
   useEffect(() => {
     loadUsers().catch(() => {});
   }, [token]);
+
+  useEffect(() => {
+    if (courseOptions.length === 0) return;
+    setBulkProgramCourse((current) => {
+      if (current && courseOptions.some((option) => option.id === current)) {
+        return current;
+      }
+      return courseOptions[0].id;
+    });
+  }, [courseOptions]);
 
   const students = useMemo(
     () => users.filter((u) => u.role === "STUDENT").sort(compareByName),
@@ -228,7 +238,7 @@ export default function AdminUsersModal({
       lastName: user.lastName,
       role: user.role,
       yearLevel: user.yearLevel != null ? String(user.yearLevel) : "2",
-      programCourse: user.programCourse ?? DEFAULT_PROGRAM_COURSE,
+      programCourse: user.programCourse ?? courseOptions[0]?.id ?? "",
       gender: user.gender ?? "MALE",
       schoolType: user.schoolType ?? "PUBLIC",
       isActive: user.isActive,
