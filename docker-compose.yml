@@ -7,7 +7,7 @@ services:
       - "3001:3001"
     environment:
       DATABASE_URL: file:/data/prod.db
-      JWT_SECRET: change-this-in-production
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in a .env file at the repo root}
       UPLOAD_DIR: /data/uploads
       NODE_ENV: production
       SEED_ON_START: "false"

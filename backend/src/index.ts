@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
+import { requireEnv } from "./lib/env.js";
 import { uploadDir } from "./lib/paths.js";
 import { authRoutes } from "./routes/auth.js";
 import { userRoutes } from "./routes/users.js";
@@ -20,7 +21,7 @@ const app = Fastify({ logger: true });
 await mkdir(uploadDir, { recursive: true });
 
 await app.register(cors, { origin: true });
-await app.register(jwt, { secret: process.env.JWT_SECRET || "dev-secret" });
+await app.register(jwt, { secret: requireEnv("JWT_SECRET") });
 await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
 await app.register(fastifyStatic, {
   root: uploadDir,

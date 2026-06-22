@@ -51,11 +51,14 @@ npm run docker:up
 Docker runs database migrations on startup, but it does **not** load demo seed data by default.
 To intentionally load the demo accounts/content, set `SEED_ON_START=true` for the backend service.
 
-Optional `.env` in the repo root:
+Create a `.env` in the repo root before `docker compose up` (see `.env.example`):
 
 ```env
+JWT_SECRET=your-long-random-secret-here
 SEED_ON_START=false
 ```
+
+For local backend dev, copy `backend/.env.example` to `backend/.env` and set `JWT_SECRET` there too.
 
 If seed data already exists in your Docker database, rebuilding the image will not remove it because
 SQLite data is kept in the `secsa-data` Docker volume. To wipe that Docker database and start fresh:

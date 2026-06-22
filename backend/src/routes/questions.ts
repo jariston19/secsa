@@ -38,6 +38,9 @@ export async function questionRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate);
 
   app.get("/", async (request) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
     const query = request.query as { subjectId?: string; topicId?: string };
     const questions = await prisma.question.findMany({
       where: {
@@ -101,7 +104,10 @@ export async function questionRoutes(app: FastifyInstance) {
     return reply.code(201).send({ question });
   });
 
-  app.get("/import/template.csv", async (_request, reply) => {
+  app.get("/import/template.csv", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
     reply
       .header("Content-Type", "text/csv; charset=utf-8")
       .header("Content-Disposition", 'attachment; filename="questions-import-template.csv"');

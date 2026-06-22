@@ -115,6 +115,9 @@ export async function questionSetRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate);
 
   app.get("/", async (request) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
     const query = request.query as {
       yearLevel?: string;
       programCourse?: string;
@@ -278,6 +281,9 @@ export async function questionSetRoutes(app: FastifyInstance) {
   });
 
   app.get("/:id/preview", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
     const { id } = request.params as { id: string };
     const set = await prisma.questionSet.findUnique({
       where: { id },
