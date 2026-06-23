@@ -1212,6 +1212,31 @@ body {
   flex-direction: column;
 }
 
+.card.saved-panel.admin-users-modal,
+.modal.admin-users-modal {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+.card.saved-panel.admin-users-modal .admin-users-modal-body,
+.modal.admin-users-modal .admin-users-modal-body,
+.card.saved-panel.admin-users-modal .admin-users-modal-body .list-panel,
+.modal.admin-users-modal .admin-users-modal-body .list-panel {
+  flex: none;
+  min-height: auto;
+  overflow: visible;
+}
+
+.card.saved-panel.admin-users-modal .list-panel-scroll,
+.modal.admin-users-modal .list-panel-scroll {
+  flex: none;
+  min-height: auto;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
 .admin-dashboard .card.saved-panel.admin-users-modal {
   margin-inline: -0.75rem;
   width: calc(100% + 1.5rem);
@@ -1306,6 +1331,12 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.card.saved-panel.admin-users-modal .admin-users-modal-body,
+.modal.admin-users-modal .admin-users-modal-body {
+  flex: none;
+  overflow: visible;
 }
 
 .admin-users-modal-body .list-panel {
@@ -7035,7 +7066,7 @@ td:has(.action-buttons) {
 .list-panel-scroll {
   --list-panel-row-height: 2.75rem;
   flex: 1 1 0;
-  min-height: 0;
+  min-height: 14rem;
   overflow: auto;
   border: 0.5px solid var(--ios-separator-opaque);
   border-radius: var(--ios-radius-md);
@@ -9018,7 +9049,7 @@ td:has(.action-buttons) {
   }
 
   .student-submissions-panel,
-  .card.saved-panel,
+  .card.saved-panel:not(.admin-users-modal),
   .card.individual-student-browser,
   .card.build-sets-panel:not(.build-set-panel),
   .card.add-user-card.build-sets-panel {
