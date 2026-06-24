@@ -3,7 +3,7 @@ import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { formatExamTimeLimit, MAX_EXAM_FOCUS_VIOLATIONS } from "../lib/constants";
 
 interface Props {
-  examType: "comprehensive" | "incoming_diagnostic" | "retake";
+  examType: "comprehensive" | "incoming_diagnostic" | "retake" | "preboard";
   timeLimitMinutes: number;
   passThreshold: number;
   onConfirm: () => void;
@@ -29,7 +29,16 @@ export default function ExamInstructionsModal({
       ? "Retake Exam Instructions"
       : examType === "incoming_diagnostic"
         ? "Incoming Diagnostic Instructions"
-        : "Comprehensive Exam Instructions";
+        : examType === "preboard"
+          ? "Preboard Exam Instructions"
+          : "Comprehensive Exam Instructions";
+
+  const examLabel =
+    examType === "incoming_diagnostic"
+      ? "diagnostic"
+      : examType === "preboard"
+        ? "preboard"
+        : "comprehensive";
 
   return portal(
     <div className={overlayClass} onClick={requestClose}>
@@ -45,9 +54,7 @@ export default function ExamInstructionsModal({
           <h3>Before you start</h3>
           <ul className="instructions-list">
             <li>
-              This is a multiple-choice{" "}
-              {examType === "incoming_diagnostic" ? "diagnostic" : "comprehensive"} exam. Each
-              question has one correct answer.
+              This is a multiple-choice {examLabel} exam. Each question has one correct answer.
             </li>
             <li>Questions are presented in a <strong>random order</strong> unique to you.</li>
             <li>
@@ -110,6 +117,18 @@ export default function ExamInstructionsModal({
                 <li>This <strong>incoming diagnostic</strong> measures readiness for incoming 1st-year students.</li>
                 <li>It is separate from the comprehensive exam and does not use your retake allowance.</li>
                 <li>Your result helps teachers identify strengths and topics to reinforce early.</li>
+              </ul>
+            </>
+          ) : examType === "preboard" ? (
+            <>
+              <h3>About this preboard</h3>
+              <ul className="instructions-list">
+                <li>
+                  This <strong>preboard exam</strong> is for incoming final-year students in your
+                  program and covers subjects across all curriculum years in that program.
+                </li>
+                <li>Complete your comprehensive exam track before taking the preboard.</li>
+                <li>You get one preboard attempt when a set is deployed for your program.</li>
               </ul>
             </>
           ) : (

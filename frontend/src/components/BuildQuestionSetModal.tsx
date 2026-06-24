@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { api } from "../lib/api";
-import { curriculumYearForStudentYear, formatExamType, parseYearLevel, sanitizeYearInput } from "../lib/constants";
+import { curriculumYearForStudentYear, formatExamType, parseYearLevel, sanitizeYearInput, type QuestionSetExamType, preboardMaxCurriculumYearForProgram, preboardStudentYearForProgram } from "../lib/constants";
 import { difficultyCountsForTotal, expandTopicConfigsWithSubjectDifficulty, type ExamDifficultyCounts } from "../lib/examDifficultyDistribution";
 import { buildExamAllocations, type TopicAllocation } from "../lib/examItemDistribution";
 import { toastCreated, toastUpdated } from "../lib/toastMessages";
@@ -74,9 +74,18 @@ function difficultyDraftKey(topicKey: string, field: DifficultyField) {
 
 function subjectMatchesSet(
   subject: Subject,
+  setType: QuestionSetExamType,
   curriculumYear: number,
   programCourse: ProgramCourseId
 ) {
+  if (setType === "PREBOARD") {
+    return (
+      subject.yearLevel >= 1 &&
+      subject.yearLevel <= preboardMaxCurriculumYearForProgram(programCourse) &&
+      subjectHasProgram(subject.programCourses, programCourse)
+    );
+  }
+
   return (
     subject.yearLevel === curriculumYear &&
     subjectHasProgram(subject.programCourses, programCourse)
@@ -132,7 +141,7 @@ export default function BuildQuestionSetModal({
   const [name, setName] = useState("");
   const [yearLevel, setYearLevel] = useState("2");
   const [setProgramCourse, setSetProgramCourse] = useState<ProgramCourseId | "">("");
-  const [type, setType] = useState<"COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE">("COMPREHENSIVE");
+  const [type, setType] = useState<QuestionSetExamType>("COMPREHENSIVE");
   const [setStatus, setSetStatus] = useState<string | null>(null);
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [examTotalItems, setExamTotalItems] = useState("");
@@ -180,7 +189,7 @@ export default function BuildQuestionSetModal({
         name: string;
         yearLevel: number;
         programCourse: ProgramCourseId;
-        type: "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE";
+        type: QuestionSetExamType;
         status: string;
         timeLimitMinutes: number;
         passThreshold: number;
@@ -238,8 +247,12 @@ export default function BuildQuestionSetModal({
 
   const parsedStudentYear = parseYearLevel(yearLevel, setProgramCourse);
   const curriculumYear = curriculumYearForStudentYear(parsedStudentYear);
+  const preboardStudentYear = preboardStudentYearForProgram(setProgramCourse);
+  const preboardMaxCurriculumYear = preboardMaxCurriculumYearForProgram(setProgramCourse);
   const isIncomingDiagnosticYear = parsedStudentYear === 1;
+  const isPreboardYear = parsedStudentYear === preboardStudentYear;
   const isSharedDiagnostic = type === "DIAGNOSTIC";
+  const isPreboard = type === "PREBOARD";
   const programCourseOptions = useProgramCourseOptions({
     includeSharedDiagnostic: isIncomingDiagnosticYear,
   });
@@ -252,6 +265,20 @@ export default function BuildQuestionSetModal({
     }
     setType((current) => (current === "DIAGNOSTIC" ? "COMPREHENSIVE" : current));
   }, [isIncomingDiagnosticYear, isEditing]);
+
+  useEffect(() => {
+    if (isEditing) return;
+    if (type === "PREBOARD") {
+      setYearLevel(String(preboardStudentYearForProgram(setProgramCourse)));
+    }
+  }, [type, isEditing, setProgramCourse]);
+
+  useEffect(() => {
+    if (isEditing) return;
+    if (!isPreboardYear && type === "PREBOARD") {
+      setType("COMPREHENSIVE");
+    }
+  }, [isPreboardYear, type, isEditing]);
 
   useEffect(() => {
     if (isEditing || programCourseOptions.length === 0) return;
@@ -279,8 +306,11 @@ export default function BuildQuestionSetModal({
   }
 
   const curriculumSubjects = useMemo(
-    () => subjects.filter((subject) => subjectMatchesSet(subject, curriculumYear, setProgramCourse)),
-    [subjects, curriculumYear, setProgramCourse]
+    () =>
+      subjects.filter((subject) =>
+        subjectMatchesSet(subject, type, curriculumYear, setProgramCourse)
+      ),
+    [subjects, type, curriculumYear, setProgramCourse]
   );
 
   const addSubjectOptions = useMemo(() => {
@@ -294,7 +324,7 @@ export default function BuildQuestionSetModal({
     const allowedSubjectIds = new Set(curriculumSubjects.map((s) => s.id));
     setSelectedSubjectIds((prev) => prev.filter((id) => allowedSubjectIds.has(id)));
     setAddSubjectId("");
-  }, [curriculumYear, curriculumSubjects, yearLevel, isEditing, setProgramCourse]);
+  }, [curriculumYear, curriculumSubjects, yearLevel, isEditing, setProgramCourse, type]);
 
   const groupedSubjects = selectedSubjectIds
     .map((id) => subjects.find((s) => s.id === id))
@@ -441,7 +471,13 @@ export default function BuildQuestionSetModal({
     const subject = subjects.find((s) => s.id === addSubjectId);
     if (!subject) return;
 
-    if (!subjectMatchesSet(subject, curriculumYear, setProgramCourse)) {
+    if (!subjectMatchesSet(subject, type, curriculumYear, setProgramCourse)) {
+      if (isPreboard) {
+        setError(
+          `${subject.courseCode} is not available for preboard (must be curriculum years 1–${preboardMaxCurriculumYear} and linked to ${formatProgramCourse(setProgramCourse)}).`
+        );
+        return;
+      }
       if (subject.yearLevel !== curriculumYear) {
         setError(
           `Only curriculum year ${curriculumYear} subjects can be added for student year ${parsedStudentYear}.`
@@ -663,9 +699,15 @@ export default function BuildQuestionSetModal({
     }
 
     const mismatchedSubject = groupedSubjects.find(
-      (subject) => !subjectMatchesSet(subject, curriculumYear, setProgramCourse)
+      (subject) => !subjectMatchesSet(subject, type, curriculumYear, setProgramCourse)
     );
     if (mismatchedSubject) {
+      if (isPreboard) {
+        setError(
+          `${mismatchedSubject.courseCode} is not valid for preboard. Use curriculum years 1–${preboardMaxCurriculumYear} subjects only.`
+        );
+        return;
+      }
       if (mismatchedSubject.yearLevel !== curriculumYear) {
         setError(
           `${mismatchedSubject.courseCode} belongs to curriculum year ${mismatchedSubject.yearLevel}, not year ${curriculumYear}. Remove it or change student year level.`
@@ -859,7 +901,9 @@ export default function BuildQuestionSetModal({
                   required
                 />
                 <span className="field-hint">
-                  Uses curriculum year {curriculumYear} subjects.
+                  {isPreboard
+                    ? `Uses curriculum years 1–${preboardMaxCurriculumYear} subjects.`
+                    : `Uses curriculum year ${curriculumYear} subjects.`}
                 </span>
               </label>
               <label className="build-set-meta-course">
@@ -881,9 +925,7 @@ export default function BuildQuestionSetModal({
                 <span className="build-set-field-label">Exam type</span>
                 <select
                   value={type}
-                  onChange={(e) =>
-                    setType(e.target.value as "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE")
-                  }
+                  onChange={(e) => setType(e.target.value as QuestionSetExamType)}
                   disabled={isEditing || isIncomingDiagnosticYear}
                 >
                   {isIncomingDiagnosticYear ? (
@@ -892,6 +934,7 @@ export default function BuildQuestionSetModal({
                     <>
                       <option value="COMPREHENSIVE">Comprehensive</option>
                       <option value="RETAKE">Retake</option>
+                      {isPreboardYear ? <option value="PREBOARD">Preboard</option> : null}
                     </>
                   )}
                 </select>
@@ -965,13 +1008,21 @@ export default function BuildQuestionSetModal({
               <span className="build-set-details-bar-copy">
                 {isIncomingDiagnosticYear
                   ? "Shared incoming diagnostic for all programs."
-                  : "Comprehensive or retake exam for year levels 2–4."}
+                  : isPreboard
+                    ? `Preboard exam for incoming year ${preboardStudentYear} across curriculum years 1–${preboardMaxCurriculumYear}.`
+                    : "Comprehensive or retake exam for year levels 2–4."}
               </span>
               <span
                 className="build-set-details-bar-meta"
-                title={`Uses curriculum year ${curriculumYear} subjects for ${formatProgramCourse(setProgramCourse)} when available.`}
+                title={
+                  isPreboard
+                    ? `Uses curriculum years 1–${preboardMaxCurriculumYear} subjects for ${formatProgramCourse(setProgramCourse)}.`
+                    : `Uses curriculum year ${curriculumYear} subjects for ${formatProgramCourse(setProgramCourse)} when available.`
+                }
               >
-                Curriculum yr {curriculumYear} · {abbreviateProgramCourse(setProgramCourse)}
+                {isPreboard
+                  ? `Curriculum yrs 1–${preboardMaxCurriculumYear} · ${abbreviateProgramCourse(setProgramCourse)}`
+                  : `Curriculum yr ${curriculumYear} · ${abbreviateProgramCourse(setProgramCourse)}`}
               </span>
             </div>
           </section>
@@ -1005,7 +1056,9 @@ export default function BuildQuestionSetModal({
                 <option value="">Select a subject</option>
                 {addSubjectOptions.map((subject) => (
                   <option key={subject.id} value={subject.id}>
-                    {subject.courseCode} — {subject.courseTitle}
+                    {isPreboard
+                      ? `${subject.courseCode} — ${subject.courseTitle} (yr ${subject.yearLevel})`
+                      : `${subject.courseCode} — ${subject.courseTitle}`}
                   </option>
                 ))}
               </select>
@@ -1019,8 +1072,9 @@ export default function BuildQuestionSetModal({
               </button>
             </div>
             <span className="field-hint build-set-add-subject-hint">
-              Showing curriculum year {curriculumYear} subjects linked to{" "}
-              {formatProgramCourse(setProgramCourse)}.
+              {isPreboard
+                ? `Showing curriculum years 1–${preboardMaxCurriculumYear} subjects linked to ${formatProgramCourse(setProgramCourse)}.`
+                : `Showing curriculum year ${curriculumYear} subjects linked to ${formatProgramCourse(setProgramCourse)}.`}
             </span>
           </div>
 
@@ -1029,7 +1083,9 @@ export default function BuildQuestionSetModal({
               {curriculumSubjects.length === 0
                 ? subjects.length === 0
                   ? "No subjects in Setup yet."
-                  : `No subjects match curriculum yr ${curriculumYear} and ${abbreviateProgramCourse(setProgramCourse)}.`
+                  : isPreboard
+                    ? `No subjects match curriculum yrs 1–${preboardMaxCurriculumYear} and ${abbreviateProgramCourse(setProgramCourse)}.`
+                    : `No subjects match curriculum yr ${curriculumYear} and ${abbreviateProgramCourse(setProgramCourse)}.`
                 : "Add subjects above. Item counts auto-fill from the total."}
             </p>
           ) : parsedTotalItems <= 0 ? (

@@ -3,44 +3,13 @@ import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { api } from "../lib/api";
 import { formatExamType } from "../lib/constants";
 import { useConfirm } from "../lib/confirm";
-
-interface PreviewQuestion {
-  id: string;
-  text: string;
-  difficulty: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
-  correctOption: string;
-  imagePath: string | null;
-  topic: string | null;
-  subject: string;
-}
-
-interface PreviewSection {
-  configId: string;
-  subject: { courseCode: string; courseTitle: string };
-  topic: { name: string } | null;
-  required: { easy: number; medium: number; hard: number };
-  available: { easy: number; medium: number; hard: number };
-  questions: PreviewQuestion[];
-}
-
-interface PreviewData {
-  questionSet: {
-    id: string;
-    name: string;
-    yearLevel: number;
-    type: string;
-    status: string;
-    totalItems: number;
-    _count?: { examAttempts: number };
-  };
-  sections: PreviewSection[];
-  isReady: boolean;
-  validationErrors: string[];
-}
+import {
+  fetchQuestionSetPreview,
+  printQuestionSetPreview,
+  type QuestionSetPreviewData,
+  type QuestionSetPreviewQuestion,
+  type QuestionSetPreviewSection,
+} from "../lib/questionSetPreview";
 
 interface Props {
   setId: string;
@@ -62,7 +31,7 @@ export default function QuestionSetPreviewModal({
   onSetUndeployed,
 }: Props) {
   const confirm = useConfirm();
-  const [data, setData] = useState<PreviewData | null>(null);
+  const [data, setData] = useState<QuestionSetPreviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -75,7 +44,7 @@ export default function QuestionSetPreviewModal({
     setLoading(true);
     setError("");
     try {
-      const result = await api<PreviewData>(`/question-sets/${setId}/preview`, {}, token);
+      const result = await fetchQuestionSetPreview(setId, token);
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load preview");
@@ -87,6 +56,11 @@ export default function QuestionSetPreviewModal({
   useEffect(() => {
     loadPreview();
   }, [setId, token]);
+
+  function handlePrint() {
+    if (!data) return;
+    printQuestionSetPreview(data);
+  }
 
   async function undeployQuestionSet() {
     if (!data) return;
@@ -196,6 +170,16 @@ export default function QuestionSetPreviewModal({
             )}
           </div>
           <div className="modal-actions">
+            {data && (
+              <button
+                type="button"
+                className="btn secondary analytics-print-btn"
+                disabled={loading}
+                onClick={handlePrint}
+              >
+                Print
+              </button>
+            )}
             {data && data.questionSet.status === "DEPLOYED" && (
               <button
                 type="button"
@@ -321,3 +305,5 @@ export default function QuestionSetPreviewModal({
       </div>
     </div>
   );}
+
+export type { QuestionSetPreviewQuestion, QuestionSetPreviewSection, QuestionSetPreviewData };

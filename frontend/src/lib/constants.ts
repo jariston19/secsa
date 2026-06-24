@@ -29,11 +29,21 @@ export function curriculumYearForStudentYear(studentYear: number): number {
   return Math.max(MIN_YEAR_LEVEL, studentYear - 1);
 }
 
-export type QuestionSetExamType = "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE";
+export type QuestionSetExamType = "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE" | "PREBOARD";
 
 export function formatExamType(type: string): string {
   if (type === "COMPREHENSIVE") return "Comprehensive";
   if (type === "DIAGNOSTIC") return "Diagnostic";
   if (type === "RETAKE") return "Retake";
+  if (type === "PREBOARD") return "Preboard";
   return type;
+}
+
+/** Incoming year when students take preboard (final year of their program). */
+export function preboardStudentYearForProgram(programCourse?: string | null) {
+  return maxYearLevelForProgram(programCourse);
+}
+
+export function preboardMaxCurriculumYearForProgram(programCourse?: string | null) {
+  return maxYearLevelForProgram(programCourse);
 }

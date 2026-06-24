@@ -8,6 +8,10 @@ import { formatExamType } from "../lib/constants";
 import { toastRestored } from "../lib/toastMessages";
 import { formatProgramCourse, type ProgramCourseFilter, type ProgramCourseId } from "../lib/programCourse";
 import { useConfirm } from "../lib/confirm";
+import {
+  fetchQuestionSetPreview,
+  printQuestionSetPreview,
+} from "../lib/questionSetPreview";
 
 interface QuestionSet {
   id: string;
@@ -42,6 +46,7 @@ export default function ArchivedQuestionSetsModal({
   const [sets, setSets] = useState<QuestionSet[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [printingSetId, setPrintingSetId] = useState<string | null>(null);
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
 
   async function loadArchived() {
@@ -96,6 +101,18 @@ export default function ArchivedQuestionSetsModal({
       onUpdated(err instanceof Error ? err.message : "Failed to restore question set", true);
     } finally {
       setRestoringId(null);
+    }
+  }
+
+  async function printSet(id: string) {
+    setPrintingSetId(id);
+    try {
+      const preview = await fetchQuestionSetPreview(id, token);
+      printQuestionSetPreview(preview);
+    } catch (err) {
+      onUpdated(err instanceof Error ? err.message : "Failed to print question set", true);
+    } finally {
+      setPrintingSetId(null);
     }
   }
 
@@ -171,6 +188,14 @@ export default function ArchivedQuestionSetsModal({
                             onClick={() => onPreview(set.id)}
                           >
                             Preview
+                          </button>
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            disabled={printingSetId === set.id}
+                            onClick={() => printSet(set.id)}
+                          >
+                            {printingSetId === set.id ? "Printing..." : "Print"}
                           </button>
                           <button
                             type="button"

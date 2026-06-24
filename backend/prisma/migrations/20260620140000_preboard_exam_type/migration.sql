@@ -1,0 +1,2 @@
+-- Preboard is a new QuestionSetType value (PREBOARD) for incoming year-4 exams
+-- spanning curriculum years 1–4. SQLite stores enum values as TEXT; no column change needed.

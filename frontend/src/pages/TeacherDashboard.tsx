@@ -43,6 +43,10 @@ import {
   type ProgramCourseFilter,
 } from "../lib/programCourse";
 import { useProgramCourseOptions, usePrograms } from "../lib/programs";
+import {
+  fetchQuestionSetPreview,
+  printQuestionSetPreview,
+} from "../lib/questionSetPreview";
 
 type Tab =
   | "setup"
@@ -91,7 +95,7 @@ interface QuestionSet {
   name: string;
   yearLevel: number;
   programCourse: ProgramCourseId;
-  type: "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE";
+  type: "COMPREHENSIVE" | "DIAGNOSTIC" | "RETAKE" | "PREBOARD";
   status: string;
   totalItems: number;
   _count?: { examAttempts: number };
@@ -107,6 +111,7 @@ export default function TeacherDashboard() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [sets, setSets] = useState<QuestionSet[]>([]);
   const [previewSetId, setPreviewSetId] = useState<string | null>(null);
+  const [printingSetId, setPrintingSetId] = useState<string | null>(null);
   const [pendingRetakes, setPendingRetakes] = useState(0);
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -434,6 +439,18 @@ export default function TeacherDashboard() {
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to deploy question set");
+    }
+  }
+
+  async function printSet(id: string) {
+    setPrintingSetId(id);
+    try {
+      const preview = await fetchQuestionSetPreview(id, token);
+      printQuestionSetPreview(preview);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to print question set");
+    } finally {
+      setPrintingSetId(null);
     }
   }
 
@@ -866,6 +883,7 @@ export default function TeacherDashboard() {
                     <option value="COMPREHENSIVE">{formatExamType("COMPREHENSIVE")}</option>
                     <option value="DIAGNOSTIC">{formatExamType("DIAGNOSTIC")}</option>
                     <option value="RETAKE">{formatExamType("RETAKE")}</option>
+                    <option value="PREBOARD">{formatExamType("PREBOARD")}</option>
                   </select>
                 </label>
               </div>
@@ -917,6 +935,14 @@ export default function TeacherDashboard() {
                               onClick={() => setPreviewSetId(set.id)}
                             >
                               Preview
+                            </button>
+                            <button
+                              type="button"
+                              className="btn secondary"
+                              disabled={printingSetId === set.id}
+                              onClick={() => printSet(set.id)}
+                            >
+                              {printingSetId === set.id ? "Printing..." : "Print"}
                             </button>
                             <button
                               type="button"

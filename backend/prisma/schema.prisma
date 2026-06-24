@@ -32,6 +32,7 @@ enum QuestionSetType {
   COMPREHENSIVE
   DIAGNOSTIC
   RETAKE
+  PREBOARD
 }
 
 enum QuestionSetStatus {

@@ -3,9 +3,10 @@ import { QuestionSetStatus, QuestionSetType, Role } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
-import { yearLevelSchema, curriculumYearForStudentYear } from "../lib/yearLevel.js";
+import { yearLevelSchema, curriculumYearForStudentYear, MIN_YEAR_LEVEL } from "../lib/yearLevel.js";
 import { programCourseSlugSchema, assertActiveProgramSlug, SHARED_DIAGNOSTIC_PROGRAM } from "../lib/programCourse.js";
 import { isSharedDiagnosticProgram } from "../lib/incomingDiagnostic.js";
+import { isPreboardQuestionSetType, isPreboardCurriculumYear, preboardStudentYearForProgram } from "../lib/questionSetType.js";
 import { subjectIncludesProgram } from "../lib/subjectPrograms.js";
 import {
   generateCanonicalExamQuestions,
@@ -57,8 +58,9 @@ const updateSetSchema = z.object({
   configs: z.array(configSchema).min(1),
 });
 
-async function validateSetConfigsForYear(
+async function validateSetConfigs(
   yearLevel: number,
+  setType: QuestionSetType,
   programCourse: string,
   configs: z.infer<typeof configSchema>[]
 ) {
@@ -68,7 +70,6 @@ async function validateSetConfigsForYear(
     0
   );
 
-  const curriculumYear = curriculumYearForStudentYear(yearLevel);
   const subjectIds = [...new Set(configs.map((c) => c.subjectId))];
   const subjectsInConfigs = await prisma.subject.findMany({
     where: { id: { in: subjectIds } },
@@ -84,11 +85,31 @@ async function validateSetConfigsForYear(
     return { error: "One or more subjects in this set were not found." };
   }
 
-  const mismatchedYear = subjectsInConfigs.find((s) => s.yearLevel !== curriculumYear);
-  if (mismatchedYear) {
-    return {
-      error: `${mismatchedYear.courseCode} is curriculum year ${mismatchedYear.yearLevel}, but student year ${yearLevel} requires curriculum year ${curriculumYear} subjects only.`,
-    };
+  if (isPreboardQuestionSetType(setType)) {
+    const expectedStudentYear = preboardStudentYearForProgram(programCourse);
+    if (yearLevel !== expectedStudentYear) {
+      return {
+        error: `Preboard sets must use incoming year level ${expectedStudentYear} for this program course.`,
+      };
+    }
+
+    const mismatchedYear = subjectsInConfigs.find(
+      (subject) => !isPreboardCurriculumYear(subject.yearLevel, programCourse)
+    );
+    if (mismatchedYear) {
+      const maxCurriculum = preboardStudentYearForProgram(programCourse);
+      return {
+        error: `${mismatchedYear.courseCode} is curriculum year ${mismatchedYear.yearLevel}. Preboard sets can only include curriculum years ${MIN_YEAR_LEVEL}–${maxCurriculum} for this program.`,
+      };
+    }
+  } else {
+    const curriculumYear = curriculumYearForStudentYear(yearLevel);
+    const mismatchedYear = subjectsInConfigs.find((s) => s.yearLevel !== curriculumYear);
+    if (mismatchedYear) {
+      return {
+        error: `${mismatchedYear.courseCode} is curriculum year ${mismatchedYear.yearLevel}, but student year ${yearLevel} requires curriculum year ${curriculumYear} subjects only.`,
+      };
+    }
   }
 
   const mismatchedCourse = subjectsInConfigs.find(
@@ -155,8 +176,9 @@ export async function questionSetRoutes(app: FastifyInstance) {
     const programCourse =
       body.type === QuestionSetType.DIAGNOSTIC ? SHARED_DIAGNOSTIC_PROGRAM : body.programCourse;
     await assertActiveProgramSlug(programCourse);
-    const validation = await validateSetConfigsForYear(
+    const validation = await validateSetConfigs(
       body.yearLevel,
+      body.type,
       programCourse,
       body.configs
     );
@@ -176,6 +198,15 @@ export async function questionSetRoutes(app: FastifyInstance) {
       return reply.code(400).send({
         error: "Incoming diagnostic sets must use year level 1.",
       });
+    }
+
+    if (body.type === QuestionSetType.PREBOARD) {
+      const expectedYear = preboardStudentYearForProgram(programCourse);
+      if (body.yearLevel !== expectedYear) {
+        return reply.code(400).send({
+          error: `Preboard sets must use incoming year level ${expectedYear} for this program course.`,
+        });
+      }
     }
 
     const questionSet = await prisma.questionSet.create({
@@ -221,8 +252,9 @@ export async function questionSetRoutes(app: FastifyInstance) {
     }
 
     const body = updateSetSchema.parse(request.body);
-    const validation = await validateSetConfigsForYear(
+    const validation = await validateSetConfigs(
       existing.yearLevel,
+      existing.type,
       existing.programCourse,
       body.configs
     );

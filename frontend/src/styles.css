@@ -7503,6 +7503,10 @@ td:has(.action-buttons) {
   max-width: 16rem;
 }
 
+.saved-subjects-filter-year {
+  max-width: 8rem;
+}
+
 .saved-subjects-toolbar .saved-subjects-filter {
   margin-bottom: 0;
 }
@@ -8354,6 +8358,11 @@ td:has(.action-buttons) {
 .build-set-exam-badge-retake {
   background: rgba(255, 149, 0, 0.16);
   color: var(--ios-orange);
+}
+
+.build-set-exam-badge-preboard {
+  background: rgba(52, 199, 89, 0.16);
+  color: #248a3d;
 }
 
 [data-theme="dark"] .build-set-exam-badge-comprehensive {

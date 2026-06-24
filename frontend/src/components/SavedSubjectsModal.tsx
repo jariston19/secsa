@@ -4,7 +4,7 @@ import { usePagination } from "../hooks/usePagination";
 import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
-import { parseYearLevel, sanitizeYearInput } from "../lib/constants";
+import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import {
   subjectLabel,
   toastDeleted,
@@ -50,6 +50,8 @@ interface Props {
   inline?: boolean;
 }
 
+type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
+
 export default function SavedSubjectsModal({
   subjects,
   token,
@@ -60,6 +62,7 @@ export default function SavedSubjectsModal({
   const confirm = useConfirm();
   const programCourseOptions = useProgramCourseOptions();
   const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>("ALL");
+  const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -71,12 +74,13 @@ export default function SavedSubjectsModal({
 
   const filteredSubjects = useMemo(
     () =>
-      subjects.filter((subject) =>
-        programFilter === "ALL"
-          ? true
-          : subjectHasProgram(subject.programCourses, programFilter)
-      ),
-    [subjects, programFilter]
+      subjects.filter((subject) => {
+        const programMatch =
+          programFilter === "ALL" || subjectHasProgram(subject.programCourses, programFilter);
+        const yearMatch = yearFilter === "ALL" || subject.yearLevel === Number(yearFilter);
+        return programMatch && yearMatch;
+      }),
+    [subjects, programFilter, yearFilter]
   );
 
   const {
@@ -87,7 +91,7 @@ export default function SavedSubjectsModal({
     pageStart,
     pageEnd,
     totalItems,
-  } = usePagination(filteredSubjects, { resetKey: programFilter });
+  } = usePagination(filteredSubjects, { resetKey: `${programFilter}-${yearFilter}` });
 
   const editCourseCodeDuplicate = useMemo(() => {
     if (!editingId || !editDraft) return null;
@@ -96,6 +100,11 @@ export default function SavedSubjectsModal({
 
   function handleProgramFilterChange(value: ProgramCourseFilter) {
     setProgramFilter(value);
+    cancelEdit();
+  }
+
+  function handleYearFilterChange(value: YearLevelFilter) {
+    setYearFilter(value);
     cancelEdit();
   }
 
@@ -212,8 +221,8 @@ export default function SavedSubjectsModal({
         <div>
           <h2>Saved Subjects</h2>
           <p className="muted section-desc">
-            Filter by program course, then edit or delete subjects. Subjects already used in
-            student exams cannot be deleted.
+            Filter by program course and curriculum year, then edit or delete subjects. Subjects
+            already used in student exams cannot be deleted.
           </p>
         </div>
         <div className="saved-panel-header-end">
@@ -247,10 +256,27 @@ export default function SavedSubjectsModal({
                 ))}
               </select>
             </label>
+            <label className="saved-subjects-filter saved-subjects-filter-year">
+              Year level
+              <select
+                value={yearFilter}
+                onChange={(e) => handleYearFilterChange(e.target.value as YearLevelFilter)}
+              >
+                <option value="ALL">All</option>
+                {Array.from(
+                  { length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 },
+                  (_, i) => MIN_YEAR_LEVEL + i
+                ).map((level) => (
+                  <option key={level} value={String(level)}>
+                    {level}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           {filteredSubjects.length === 0 ? (
-            <p className="muted">No subjects linked to this program course.</p>
+            <p className="muted">No subjects match these filters.</p>
           ) : (
             <>
               <ListPanel

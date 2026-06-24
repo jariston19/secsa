@@ -79,6 +79,61 @@ const PRINT_STYLES = `
   .bloom-tone-strong { color: #0a7a43; }
   .bloom-tone-moderate { color: #d68910; }
   .bloom-tone-weak { color: #c0392b; }
+  .preview-section {
+    margin-top: 1.25rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #ddd;
+  }
+  .section-meta { margin-bottom: 0.75rem; }
+  .question-block {
+    margin: 0 0 1rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .question-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+  }
+  .question-heading .difficulty {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #555;
+  }
+  .question-text {
+    margin: 0 0 0.5rem;
+    white-space: pre-wrap;
+  }
+  .question-options {
+    margin: 0.35rem 0 0.5rem;
+    padding-left: 1.1rem;
+  }
+  .option-correct {
+    font-weight: 700;
+    color: #0a7a43;
+  }
+  .answer-key {
+    margin: 0;
+    font-size: 0.85rem;
+  }
+  .question-image {
+    display: block;
+    max-width: 100%;
+    max-height: 14rem;
+    margin: 0.5rem 0;
+    object-fit: contain;
+  }
+  .validation-list {
+    margin: 0.35rem 0 0;
+    padding-left: 1.2rem;
+    color: #c0392b;
+  }
 `;
 
 function buildPrintDocument(title: string, bodyHtml: string) {

@@ -16,6 +16,7 @@ import {
   MIN_YEAR_LEVEL,
   formatExamTimeLimit,
   formatExamType,
+  preboardStudentYearForProgram,
 } from "../lib/constants";
 
 interface QaExamOption {
@@ -27,20 +28,24 @@ interface QaExamOption {
 
 interface ExamStatus {
   yearLevel?: number;
+  programCourse?: string;
   nextAction: string;
   inProgressAttemptId?: string | null;
   comprehensiveAvailable: boolean;
   incomingDiagnosticAvailable: boolean;
   retakeAvailable: boolean;
+  preboardAvailable?: boolean;
   retakesRemaining: number | null;
   examYearLevel?: number;
   examTimeLimitMinutes?: number | null;
   diagnosticTimeLimitMinutes?: number | null;
   comprehensiveTimeLimitMinutes?: number | null;
   retakeTimeLimitMinutes?: number | null;
+  preboardTimeLimitMinutes?: number | null;
   diagnosticPassThreshold?: number | null;
   comprehensivePassThreshold?: number | null;
   retakePassThreshold?: number | null;
+  preboardPassThreshold?: number | null;
   qaMode?: boolean;
   usingSetYearLevel?: number | null;
   usingSetName?: string | null;
@@ -136,7 +141,7 @@ export default function StudentDashboard() {
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
   const [examTimeLimitMinutes, setExamTimeLimitMinutes] = useState<number | null>(null);
   const [pendingExamKind, setPendingExamKind] = useState<
-    "comprehensive" | "incoming_diagnostic" | "retake"
+    "comprehensive" | "incoming_diagnostic" | "retake" | "preboard"
   >("comprehensive");
   const [savingAnswerId, setSavingAnswerId] = useState<string | null>(null);
   const [initialFocusWarningCount, setInitialFocusWarningCount] = useState(0);
@@ -266,14 +271,23 @@ export default function StudentDashboard() {
 
   const canResumeExam = status?.nextAction === "resume_exam";
   const studentYearLevel = status?.yearLevel ?? user?.yearLevel;
+  const studentProgramCourse = status?.programCourse ?? user?.programCourse;
+  const isPreboardEligibleYear =
+    studentYearLevel != null &&
+    studentProgramCourse != null &&
+    studentYearLevel === preboardStudentYearForProgram(studentProgramCourse);
   const hasSubmittedIncomingDiagnostic = Boolean(
     status?.attempts.some(
       (a) => a.questionSet?.type === "DIAGNOSTIC" && a.percentage != null
     )
   );
 
+  const canStartPreboard =
+    !canResumeExam && status?.nextAction === "take_preboard";
+
   const canStartComprehensive =
     !canResumeExam &&
+    !canStartPreboard &&
     studentYearLevel !== MIN_YEAR_LEVEL &&
     (status?.nextAction === "take_comprehensive" || status?.nextAction === "take_retake");
 
@@ -288,7 +302,7 @@ export default function StudentDashboard() {
     comprehensiveProfile && (status?.showComprehensiveProfile || comprehensiveNotices)
   );
 
-  const examType: "comprehensive" | "incoming_diagnostic" | "retake" = pendingExamKind;
+  const examType: "comprehensive" | "incoming_diagnostic" | "retake" | "preboard" = pendingExamKind;
 
   const currentQuestion = questions[currentIndex];
   const allAnswered = questions.length > 0 && questions.every((q) => answers[q.id]);
@@ -303,6 +317,9 @@ export default function StudentDashboard() {
     if (pendingExamKind === "retake") {
       return status.retakeTimeLimitMinutes ?? status.examTimeLimitMinutes ?? 60;
     }
+    if (pendingExamKind === "preboard") {
+      return status.preboardTimeLimitMinutes ?? status.examTimeLimitMinutes ?? 60;
+    }
     return status.comprehensiveTimeLimitMinutes ?? status.examTimeLimitMinutes ?? 60;
   }
 
@@ -313,6 +330,9 @@ export default function StudentDashboard() {
     }
     if (pendingExamKind === "retake") {
       return status.retakePassThreshold ?? 75;
+    }
+    if (pendingExamKind === "preboard") {
+      return status.preboardPassThreshold ?? 75;
     }
     return status.comprehensivePassThreshold ?? 75;
   }
@@ -403,7 +423,7 @@ export default function StudentDashboard() {
     void resumeExam({ isAuto: true });
   }, [token, status, attemptId, result, startingExam, resumeExam]);
 
-  function openInstructions(kind: "comprehensive" | "incoming_diagnostic" | "retake") {
+  function openInstructions(kind: "comprehensive" | "incoming_diagnostic" | "retake" | "preboard") {
     setPendingExamKind(kind);
     setStartError("");
     setShowInstructions(true);
@@ -424,6 +444,8 @@ export default function StudentDashboard() {
         }
       } else if (pendingExamKind === "incoming_diagnostic") {
         body.examKind = "incoming_diagnostic";
+      } else if (pendingExamKind === "preboard") {
+        body.examKind = "preboard";
       }
 
       const data = await api<ExamStartResponse>(
@@ -687,6 +709,9 @@ export default function StudentDashboard() {
                   {status.usingSetYearLevel != null ? ` (year ${status.usingSetYearLevel})` : ""}
                 </li>
               )}
+              {isPreboardEligibleYear ? (
+                <li>Preboard available: {status.preboardAvailable ? "Yes" : "No"}</li>
+              ) : null}
               {studentYearLevel !== MIN_YEAR_LEVEL ? (
                 <>
                   <li>Retake pool available: {status.retakeAvailable ? "Yes" : "No"}</li>
@@ -711,6 +736,11 @@ export default function StudentDashboard() {
                 </button>
               </>
             )}
+            {!attemptId && !result && canStartPreboard && (
+              <button className="btn" onClick={() => openInstructions("preboard")}>
+                Start Preboard Exam
+              </button>
+            )}
             {!attemptId && !result && canStartComprehensive && (
               <button
                 className="btn"
@@ -729,7 +759,7 @@ export default function StudentDashboard() {
                 Start Incoming Diagnostic
               </button>
             )}
-            {!attemptId && !result && !canStartComprehensive && !canStartIncomingDiagnostic && !canResumeExam && (
+            {!attemptId && !result && !canStartComprehensive && !canStartPreboard && !canStartIncomingDiagnostic && !canResumeExam && (
               <p className="muted">
                 {status.nextAction === "wait_approval"
                   ? "Waiting for retake approval from your teacher or superadmin."
@@ -744,7 +774,11 @@ export default function StudentDashboard() {
                         ? hasSubmittedIncomingDiagnostic
                           ? "You have completed the incoming diagnostic exam."
                           : "No incoming diagnostic exam is available yet."
-                        : "No exam is currently available for your year level."
+                        : isPreboardEligibleYear
+                          ? status.nextAction === "completed"
+                            ? "You have completed your available exams for this year level."
+                            : "No exam is currently available for your year level."
+                          : "No exam is currently available for your year level."
                     : "No exam is currently available for your year level."}
               </p>
             )}

@@ -22,6 +22,7 @@ import {
   findDeployedIncomingDiagnosticWithConfigs,
   incomingDiagnosticAttemptFilter,
 } from "../lib/incomingDiagnostic.js";
+import { isPreboardQuestionSetType, preboardStudentYearForProgram } from "../lib/questionSetType.js";
 
 const submitSchema = z.object({
   answers: z.array(
@@ -45,7 +46,7 @@ const saveAnswerSchema = z.object({
 
 const startExamSchema = z.object({
   examYearLevel: yearLevelSchema.optional(),
-  examKind: z.enum(["comprehensive", "incoming_diagnostic"]).optional(),
+  examKind: z.enum(["comprehensive", "incoming_diagnostic", "preboard"]).optional(),
 });
 
 const MAX_RETAKES = 2;
@@ -55,6 +56,35 @@ type StudentAttemptRow = {
   submittedAt: Date | null;
   questionSet: { type: QuestionSetType };
 };
+
+function hasSubmittedPreboard(attempts: StudentAttemptRow[]) {
+  return attempts.some(
+    (attempt) => attempt.submittedAt && isPreboardQuestionSetType(attempt.questionSet.type)
+  );
+}
+
+function finishedComprehensiveTrack(attempts: StudentAttemptRow[]) {
+  return attempts.some(
+    (attempt) =>
+      attempt.submittedAt &&
+      (attempt.questionSet.type === QuestionSetType.COMPREHENSIVE ||
+        attempt.questionSet.type === QuestionSetType.RETAKE)
+  );
+}
+
+function preboardAvailableForStudent(
+  studentYearLevel: number,
+  programCourse: string,
+  preboardSet: { id: string } | null,
+  attempts: StudentAttemptRow[]
+) {
+  return (
+    studentYearLevel === preboardStudentYearForProgram(programCourse) &&
+    Boolean(preboardSet) &&
+    finishedComprehensiveTrack(attempts) &&
+    !hasSubmittedPreboard(attempts)
+  );
+}
 
 function hasProgressedPastDiagnostic(attempts: StudentAttemptRow[]) {
   return attempts.some(
@@ -208,6 +238,18 @@ export async function examRoutes(app: FastifyInstance) {
       },
     });
 
+    const preboardSet =
+      student.yearLevel === preboardStudentYearForProgram(student.programCourse)
+        ? await prisma.questionSet.findFirst({
+            where: {
+              yearLevel: student.yearLevel,
+              programCourse: student.programCourse,
+              type: QuestionSetType.PREBOARD,
+              status: QuestionSetStatus.DEPLOYED,
+            },
+          })
+        : null;
+
     if (student.qaUnlimited) {
       const query = request.query as { examYearLevel?: string };
       const examYearLevel = parseQaExamYear(student, query.examYearLevel);
@@ -252,6 +294,7 @@ export async function examRoutes(app: FastifyInstance) {
         incomingDiagnostic: qaDiagnosticSet,
         comprehensive: qaComprehensiveSet,
         retake: qaRetakeSet,
+        preboard: null,
         inProgress: inProgressAttempt,
       });
 
@@ -308,6 +351,7 @@ export async function examRoutes(app: FastifyInstance) {
       | "take_comprehensive"
       | "take_incoming_diagnostic"
       | "take_retake"
+      | "take_preboard"
       | "wait_approval"
       | "completed"
       | "resume_exam" = "take_comprehensive";
@@ -321,9 +365,17 @@ export async function examRoutes(app: FastifyInstance) {
     } else if (firstComprehensiveAttempts.length === 0) {
       nextAction = "take_comprehensive";
     } else if (latest?.passed) {
-      nextAction = "completed";
+      if (preboardAvailableForStudent(student.yearLevel, student.programCourse, preboardSet, attempts)) {
+        nextAction = "take_preboard";
+      } else {
+        nextAction = "completed";
+      }
     } else if (retakeAttempts.length >= MAX_RETAKES) {
-      nextAction = "completed";
+      if (preboardAvailableForStudent(student.yearLevel, student.programCourse, preboardSet, attempts)) {
+        nextAction = "take_preboard";
+      } else {
+        nextAction = "completed";
+      }
     } else if (approvedRetakes > retakeAttempts.length) {
       nextAction = "take_retake";
     } else {
@@ -334,6 +386,7 @@ export async function examRoutes(app: FastifyInstance) {
       incomingDiagnostic: incomingDiagnosticSet,
       comprehensive: comprehensiveSet,
       retake: retakeSet,
+      preboard: preboardSet,
       inProgress: inProgressAttempt,
     });
 
@@ -348,6 +401,12 @@ export async function examRoutes(app: FastifyInstance) {
       incomingDiagnosticAvailable,
       retakeAvailable:
         student.yearLevel !== MIN_YEAR_LEVEL && Boolean(retakeSet),
+      preboardAvailable: preboardAvailableForStudent(
+        student.yearLevel,
+        student.programCourse,
+        preboardSet,
+        attempts
+      ),
       retakesUsed: retakeAttempts.length,
       retakesRemaining: Math.max(0, MAX_RETAKES - retakeAttempts.length),
       qaMode: false,
@@ -355,9 +414,11 @@ export async function examRoutes(app: FastifyInstance) {
       diagnosticTimeLimitMinutes: incomingDiagnosticSet?.timeLimitMinutes ?? null,
       comprehensiveTimeLimitMinutes: comprehensiveSet?.timeLimitMinutes ?? null,
       retakeTimeLimitMinutes: retakeSet?.timeLimitMinutes ?? null,
+      preboardTimeLimitMinutes: preboardSet?.timeLimitMinutes ?? null,
       diagnosticPassThreshold: incomingDiagnosticSet?.passThreshold ?? null,
       comprehensivePassThreshold: comprehensiveSet?.passThreshold ?? null,
       retakePassThreshold: retakeSet?.passThreshold ?? null,
+      preboardPassThreshold: preboardSet?.passThreshold ?? null,
       ...diagnosticProfileMeta(attempts),
       ...comprehensiveProfileMeta(attempts),
     };
@@ -417,6 +478,7 @@ export async function examRoutes(app: FastifyInstance) {
 
     const attempts = await prisma.examAttempt.findMany({
       where: { studentId: user.id },
+      include: { questionSet: true },
       orderBy: { createdAt: "asc" },
     });
 
@@ -549,6 +611,67 @@ export async function examRoutes(app: FastifyInstance) {
         questionSet,
         attemptType: AttemptType.FIRST,
         attemptNumber: priorIncomingAttempts + 1,
+      });
+
+      if (examStart.type === "resume") {
+        return reply.send(await buildResumeExamStartResponse(examStart.attempt));
+      }
+
+      return reply.code(201).send(
+        buildExamStartResponse({
+          attempt: examStart.attempt,
+          questions: examStart.questions.map(stripCorrectAnswer),
+          savedAnswers: [],
+          resumeIndex: 0,
+          timeLimitMinutes: examStart.timeLimitMinutes,
+        })
+      );
+    }
+
+    if (body.examKind === "preboard") {
+      const preboardYear = preboardStudentYearForProgram(student.programCourse);
+      if (student.yearLevel !== preboardYear) {
+        return reply.code(403).send({
+          error: `Preboard exams are only for incoming year ${preboardYear} students in your program.`,
+        });
+      }
+
+      if (!finishedComprehensiveTrack(attempts)) {
+        return reply.code(403).send({
+          error: "Complete your comprehensive exam before taking the preboard.",
+        });
+      }
+
+      if (hasSubmittedPreboard(attempts)) {
+        return reply.code(403).send({ error: "Preboard exam already completed." });
+      }
+
+      const questionSet = await prisma.questionSet.findFirst({
+        where: {
+          yearLevel: preboardYear,
+          programCourse: student.programCourse,
+          type: QuestionSetType.PREBOARD,
+          status: QuestionSetStatus.DEPLOYED,
+        },
+        include: { configs: true },
+      });
+
+      if (!questionSet) {
+        return reply.code(404).send({ error: "No deployed preboard set for your program course." });
+      }
+
+      const priorPreboardAttempts = await prisma.examAttempt.count({
+        where: {
+          studentId: user.id,
+          questionSet: { type: QuestionSetType.PREBOARD },
+        },
+      });
+
+      const examStart = await startNewExamAttempt({
+        userId: user.id,
+        questionSet,
+        attemptType: AttemptType.FIRST,
+        attemptNumber: priorPreboardAttempts + 1,
       });
 
       if (examStart.type === "resume") {
@@ -916,6 +1039,7 @@ function nextActionSetTimeLimit(
     incomingDiagnostic: { timeLimitMinutes: number } | null;
     comprehensive: { timeLimitMinutes: number } | null;
     retake: { timeLimitMinutes: number } | null;
+    preboard: { timeLimitMinutes: number } | null;
     inProgress: { questionSet: { timeLimitMinutes: number } } | null | undefined;
   }
 ) {
@@ -927,6 +1051,9 @@ function nextActionSetTimeLimit(
   }
   if (nextAction === "take_retake" && sets.retake) {
     return sets.retake.timeLimitMinutes;
+  }
+  if (nextAction === "take_preboard" && sets.preboard) {
+    return sets.preboard.timeLimitMinutes;
   }
   if (sets.comprehensive) {
     return sets.comprehensive.timeLimitMinutes;
