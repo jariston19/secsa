@@ -92,6 +92,23 @@ export async function userRoutes(app: FastifyInstance) {
     return { users };
   });
 
+  app.get("/check-email", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    const query = request.query as { email?: string; excludeId?: string };
+    const parsed = emailSchema.safeParse(query.email ?? "");
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "Enter a valid email address." });
+    }
+
+    const duplicate = await findDuplicateUserEmail(prisma, parsed.data, query.excludeId);
+    return {
+      available: !duplicate,
+      duplicate,
+    };
+  });
+
   app.patch("/:id", async (request, reply) => {
     const user = getUser(request);
     requireRoles(user, [Role.SUPERADMIN]);

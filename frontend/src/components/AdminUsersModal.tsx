@@ -10,6 +10,7 @@ import { useAuth } from "../lib/auth";
 import { parseYearLevel } from "../lib/constants";
 import { compareByName, formatFullName } from "../lib/names";
 import { formatProgramCourse, maxYearLevelForProgram, type ProgramCourseId } from "../lib/programCourse";
+import { duplicateUserEmailMessage, findDuplicateUserEmail } from "../lib/userEmailDuplicates";
 import { toastDeleted, toastRestored, toastUpdated } from "../lib/toastMessages";
 import { useConfirm } from "../lib/confirm";
 import { useProgramCourseOptions } from "../lib/programs";
@@ -254,6 +255,12 @@ export default function AdminUsersModal({
 
   async function saveEdit(id: string) {
     if (!editDraft) return;
+
+    const duplicate = findDuplicateUserEmail(users, editDraft.email, id);
+    if (duplicate) {
+      onUpdated(duplicateUserEmailMessage(duplicate), true);
+      return;
+    }
 
     setSavingId(id);
 
@@ -615,6 +622,7 @@ export default function AdminUsersModal({
             >
               <AdminUserGroupTable
                 users={paginatedUsers}
+                allUsers={users}
                 group={tableGroup}
                 hideYearColumn={roleTab === "students" && !isArchiveView}
                 archiveMode={isArchiveView}

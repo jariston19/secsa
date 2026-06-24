@@ -1,4 +1,4 @@
-import { FormEvent, useState, type ReactNode } from "react";
+import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import { formatFullName } from "../lib/names";
@@ -10,6 +10,7 @@ import {
   type GenderId,
   type SchoolTypeId,
 } from "../lib/studentDemographics";
+import { duplicateUserEmailMessage } from "../lib/userEmailDuplicates";
 import { toastCreated } from "../lib/toastMessages";
 
 type UserRole = "STUDENT" | "TEACHER" | "SUPERADMIN";
@@ -23,11 +24,13 @@ const ROLE_OPTIONS: Array<{ id: UserRole; label: string; description: string }> 
 function FormField({
   label,
   hint,
+  hintError = false,
   reserveHintSpace = false,
   children,
 }: {
   label: string;
   hint?: string;
+  hintError?: boolean;
   reserveHintSpace?: boolean;
   children: ReactNode;
 }) {
@@ -36,7 +39,12 @@ function FormField({
       <span className="add-user-field-label">{label}</span>
       <div className="add-user-field-control">{children}</div>
       {hint ? (
-        <span className="field-hint add-user-field-hint">{hint}</span>
+        <span
+          className={`field-hint add-user-field-hint${hintError ? " field-hint-error" : ""}`}
+          role={hintError ? "alert" : undefined}
+        >
+          {hint}
+        </span>
       ) : reserveHintSpace ? (
         <span className="add-user-field-hint-spacer" aria-hidden="true" />
       ) : null}
@@ -52,6 +60,12 @@ interface Props {
 export default function AddUserForm({ token, onCreated }: Props) {
   const programCourseOptions = useProgramCourseOptions();
   const [submitting, setSubmitting] = useState(false);
+  const [emailChecking, setEmailChecking] = useState(false);
+  const [emailDuplicate, setEmailDuplicate] = useState<{
+    email: string;
+    firstName: string;
+    lastName: string;
+  } | null>(null);
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -65,8 +79,41 @@ export default function AddUserForm({ token, onCreated }: Props) {
     qaUnlimited: false,
   });
 
+  useEffect(() => {
+    const email = form.email.trim();
+    if (!email || !email.includes("@")) {
+      setEmailDuplicate(null);
+      setEmailChecking(false);
+      return;
+    }
+
+    setEmailChecking(true);
+    const timer = window.setTimeout(() => {
+      api<{
+        available: boolean;
+        duplicate: { email: string; firstName: string; lastName: string } | null;
+      }>(`/users/check-email?email=${encodeURIComponent(email)}`, {}, token)
+        .then((result) => {
+          setEmailDuplicate(result.available ? null : result.duplicate);
+        })
+        .catch(() => {
+          setEmailDuplicate(null);
+        })
+        .finally(() => {
+          setEmailChecking(false);
+        });
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [form.email, token]);
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (emailDuplicate) {
+      onCreated(duplicateUserEmailMessage(emailDuplicate), true);
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -146,13 +193,24 @@ export default function AddUserForm({ token, onCreated }: Props) {
           <fieldset className="add-user-section">
             <legend>Account</legend>
             <div className="add-user-fields add-user-fields-2">
-              <FormField label="Email" hint="Used for sign-in.">
+              <FormField
+                label="Email"
+                hintError={Boolean(emailDuplicate)}
+                hint={
+                  emailDuplicate
+                    ? duplicateUserEmailMessage(emailDuplicate)
+                    : emailChecking
+                      ? "Checking email availability..."
+                      : "Used for sign-in."
+                }
+              >
                 <input
                   placeholder="e.g. student@school.edu"
                   type="email"
                   value={form.email}
                   onChange={(event) => setForm({ ...form, email: event.target.value })}
                   required
+                  aria-invalid={emailDuplicate ? true : undefined}
                 />
               </FormField>
               <FormField label="Password" reserveHintSpace>
@@ -295,7 +353,11 @@ export default function AddUserForm({ token, onCreated }: Props) {
         </div>
 
         <div className="add-user-actions build-set-form-footer">
-          <button className="btn" type="submit" disabled={submitting}>
+          <button
+            className="btn"
+            type="submit"
+            disabled={submitting || emailChecking || Boolean(emailDuplicate)}
+          >
             {submitting ? "Creating..." : "Create User"}
           </button>
         </div>

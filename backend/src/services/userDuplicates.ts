@@ -15,13 +15,13 @@ export async function findDuplicateUserEmail(
 
   const exact = await prisma.user.findUnique({
     where: { email: normalizedEmail },
-    select: { id: true, email: true },
+    select: { id: true, email: true, firstName: true, lastName: true },
   });
   if (exact && exact.id !== excludeId) return exact;
 
   const candidates = await prisma.user.findMany({
     where: excludeId ? { id: { not: excludeId } } : undefined,
-    select: { id: true, email: true },
+    select: { id: true, email: true, firstName: true, lastName: true },
   });
 
   return candidates.find((user) => normalizeUserEmail(user.email) === normalizedEmail) ?? null;

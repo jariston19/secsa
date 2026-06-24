@@ -3,6 +3,7 @@ services:
     build:
       context: ./backend
     platform: linux/amd64
+    restart: unless-stopped
     ports:
       - "3001:3001"
     environment:
@@ -28,6 +29,7 @@ services:
     build:
       context: ./frontend
     platform: linux/amd64
+    restart: unless-stopped
     ports:
       - "5173:80"
     depends_on:

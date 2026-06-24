@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useMemo } from "react";
 import { parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import {
   DEFAULT_PROGRAM_COURSE,
@@ -6,6 +6,10 @@ import {
   formatProgramCourse,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
+import {
+  duplicateUserEmailMessage,
+  findDuplicateUserEmail,
+} from "../lib/userEmailDuplicates";
 import {
   GENDER_OPTIONS,
   SCHOOL_TYPE_OPTIONS,
@@ -47,6 +51,7 @@ type UserGroup = "student" | "teacher" | "admin";
 
 interface Props {
   users: UserRow[];
+  allUsers: UserRow[];
   group: UserGroup;
   hideYearColumn?: boolean;
   archiveMode?: boolean;
@@ -255,6 +260,7 @@ function UserEditFields({
 
 export default function AdminUserGroupTable({
   users,
+  allUsers,
   group,
   hideYearColumn = false,
   archiveMode = false,
@@ -275,6 +281,10 @@ export default function AdminUserGroupTable({
   setEditDraft,
 }: Props) {
   const programCourseOptions = useProgramCourseOptions();
+  const editingEmailDuplicate = useMemo(() => {
+    if (!editingId || !editDraft?.email.trim()) return null;
+    return findDuplicateUserEmail(allUsers, editDraft.email, editingId);
+  }, [allUsers, editDraft?.email, editingId]);
   const showYearColumn = group === "student" && !hideYearColumn;
   const showCourseColumn = group === "student";
   const showDemographicsColumns = group === "student";
@@ -355,14 +365,22 @@ export default function AdminUserGroupTable({
                   </td>
                   <td>
                     {isEditing ? (
-                      <input
-                        className="table-input"
-                        type="email"
-                        value={editDraft?.email ?? ""}
-                        onChange={(e) =>
-                          setEditDraft((draft) => draft && { ...draft, email: e.target.value })
-                        }
-                      />
+                      <div className="admin-user-email-edit">
+                        <input
+                          className="table-input"
+                          type="email"
+                          value={editDraft?.email ?? ""}
+                          onChange={(e) =>
+                            setEditDraft((draft) => draft && { ...draft, email: e.target.value })
+                          }
+                          aria-invalid={editingEmailDuplicate ? true : undefined}
+                        />
+                        {editingEmailDuplicate && (
+                          <span className="field-hint field-hint-error" role="alert">
+                            {duplicateUserEmailMessage(editingEmailDuplicate)}
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       user.email
                     )}
@@ -550,7 +568,7 @@ export default function AdminUserGroupTable({
                           <button
                             type="button"
                             className="btn btn-sm"
-                            disabled={savingId === user.id}
+                            disabled={savingId === user.id || Boolean(editingEmailDuplicate)}
                             onClick={() => onSaveEdit(user.id)}
                           >
                             {savingId === user.id ? "Saving..." : "Save"}
