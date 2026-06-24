@@ -11,6 +11,10 @@ import { subjectIncludesProgram } from "../lib/subjectPrograms.js";
 import {
   generateCanonicalExamQuestions,
   getConfigPoolQuestions,
+  loadQuestionsInOrderWithDetails,
+  mapQuestionForPreview,
+  resolvePreviewExamQuestions,
+  splitQuestionsAcrossConfigs,
   validateQuestionSetConfigs,
 } from "../services/examGenerator.js";
 
@@ -327,12 +331,21 @@ export async function questionSetRoutes(app: FastifyInstance) {
 
     if (!set) return reply.code(404).send({ error: "Question set not found." });
 
+    const selectedQuestions = await resolvePreviewExamQuestions(set.configs, set.examQuestionIds);
+    const selectedQuestionsWithDetails = await loadQuestionsInOrderWithDetails(
+      selectedQuestions.map((question) => question.id)
+    );
+    const selectedDetailSections = splitQuestionsAcrossConfigs(
+      set.configs,
+      selectedQuestionsWithDetails
+    );
+
     const sections = await Promise.all(
-      set.configs.map(async (config) => {
-        const questions = await getConfigPoolQuestions(config.subjectId, config.topicId);
-        const easy = questions.filter((q) => q.difficulty === "EASY");
-        const medium = questions.filter((q) => q.difficulty === "MEDIUM");
-        const hard = questions.filter((q) => q.difficulty === "HARD");
+      set.configs.map(async (config, index) => {
+        const poolQuestions = await getConfigPoolQuestions(config.subjectId, config.topicId);
+        const easy = poolQuestions.filter((q) => q.difficulty === "EASY");
+        const medium = poolQuestions.filter((q) => q.difficulty === "MEDIUM");
+        const hard = poolQuestions.filter((q) => q.difficulty === "HARD");
 
         return {
           configId: config.id,
@@ -348,19 +361,7 @@ export async function questionSetRoutes(app: FastifyInstance) {
             medium: medium.length,
             hard: hard.length,
           },
-          questions: questions.map((q) => ({
-            id: q.id,
-            text: q.text,
-            difficulty: q.difficulty,
-            optionA: q.optionA,
-            optionB: q.optionB,
-            optionC: q.optionC,
-            optionD: q.optionD,
-            correctOption: q.correctOption,
-            imagePath: q.imagePath,
-            topic: q.topic?.name ?? null,
-            subject: `${q.subject.courseCode} ${q.subject.courseTitle}`,
-          })),
+          questions: (selectedDetailSections[index] ?? []).map(mapQuestionForPreview),
         };
       })
     );

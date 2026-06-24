@@ -257,12 +257,13 @@ export default function QuestionSetPreviewModal({
                 <p className={`field-hint${sectionReady ? "" : " preview-pool-gap"}`}>
                   Required: {section.required.easy} easy, {section.required.medium} medium,{" "}
                   {section.required.hard} hard · Available: {section.available.easy} easy,{" "}
-                  {section.available.medium} medium, {section.available.hard} hard
+                  {section.available.medium} medium, {section.available.hard} hard · Selected:{" "}
+                  {section.questions.length}
                   {!sectionReady && " · Pool short"}
                 </p>
 
                 {section.questions.length === 0 ? (
-                  <p className="muted">No questions in this pool yet.</p>
+                  <p className="muted">No questions selected for this section.</p>
                 ) : (
                   <div className="preview-questions">
                     {section.questions.map((q) => (

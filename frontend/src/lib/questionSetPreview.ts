@@ -88,7 +88,7 @@ function renderSection(section: QuestionSetPreviewSection, questionOffset: numbe
 
   const questionsHtml =
     section.questions.length === 0
-      ? `<p class="muted">No questions in this pool.</p>`
+      ? `<p class="muted">No questions selected for this section.</p>`
       : section.questions
           .map((question, index) => renderQuestion(question, questionOffset + index + 1))
           .join("");
@@ -99,6 +99,7 @@ function renderSection(section: QuestionSetPreviewSection, questionOffset: numbe
       <p class="muted section-meta">
         Required: ${section.required.easy} easy, ${section.required.medium} medium, ${section.required.hard} hard
         · Available: ${section.available.easy} easy, ${section.available.medium} medium, ${section.available.hard} hard
+        · Selected: ${section.questions.length}
       </p>
       ${questionsHtml}
     </section>

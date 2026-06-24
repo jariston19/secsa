@@ -212,6 +212,78 @@ export async function loadQuestionsInOrder(ids: string[]) {
   return ids.map((id) => map.get(id)).filter((question): question is Question => Boolean(question));
 }
 
+const questionPreviewInclude = {
+  subject: { select: { courseCode: true, courseTitle: true } },
+  topic: { select: { name: true } },
+} as const;
+
+export type QuestionPreviewRow = Question & {
+  subject: { courseCode: string; courseTitle: string };
+  topic: { name: string } | null;
+};
+
+export async function loadQuestionsInOrderWithDetails(ids: string[]) {
+  const questions = await prisma.question.findMany({
+    where: { id: { in: ids } },
+    include: questionPreviewInclude,
+  });
+  const map = new Map(questions.map((question) => [question.id, question]));
+  return ids
+    .map((id) => map.get(id))
+    .filter((question): question is QuestionPreviewRow => Boolean(question));
+}
+
+export async function resolvePreviewExamQuestions(
+  configs: QuestionSetConfig[],
+  examQuestionIds: string | null
+): Promise<Question[]> {
+  if (examQuestionIds) {
+    try {
+      const ids = JSON.parse(examQuestionIds) as string[];
+      if (ids.length > 0) {
+        const questions = await loadQuestionsInOrder(ids);
+        if (questions.length > 0) return questions;
+      }
+    } catch {
+      // fall through and build a fresh canonical preview set
+    }
+  }
+
+  return generateCanonicalExamQuestions(configs);
+}
+
+export function splitQuestionsAcrossConfigs<T extends Question>(
+  configs: QuestionSetConfig[],
+  questions: T[]
+): T[][] {
+  const sections: T[][] = [];
+  let index = 0;
+
+  for (const config of configs) {
+    const count = config.easyCount + config.mediumCount + config.hardCount;
+    sections.push(questions.slice(index, index + count));
+    index += count;
+  }
+
+  return sections;
+}
+
+export function mapQuestionForPreview(question: QuestionPreviewRow) {
+  return {
+    id: question.id,
+    text: question.text,
+    difficulty: question.difficulty,
+    optionA: question.optionA,
+    optionB: question.optionB,
+    optionC: question.optionC,
+    optionD: question.optionD,
+    correctOption: question.correctOption,
+    imagePath: question.imagePath,
+    topic: question.topic?.name ?? null,
+    subject: `${question.subject.courseCode} ${question.subject.courseTitle}`,
+  };
+}
+
 export async function prepareAttemptExamQuestions(questionSet: {
   id: string;
   examQuestionIds: string | null;
