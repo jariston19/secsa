@@ -14,8 +14,11 @@ import { duplicateUserEmailMessage, findDuplicateUserEmail } from "../lib/userEm
 import { toastDeleted, toastRestored, toastUpdated } from "../lib/toastMessages";
 import { useConfirm } from "../lib/confirm";
 import { useProgramCourseOptions } from "../lib/programs";
+import type { GenderId, SchoolTypeId } from "../lib/studentDemographics";
 
 type RoleTab = "students" | "teachers" | "admins";
+type GenderFilter = "all" | GenderId;
+type SchoolFilter = "all" | SchoolTypeId;
 
 const ROLE_SEGMENTS = [
   { id: "students", label: "Students" },
@@ -31,6 +34,15 @@ const STUDENT_YEAR_SEGMENTS = [
   { id: "5", label: "Fifth Year" },
   { id: "archive", label: "Archive" },
 ] as const;
+
+const GENDER_FILTER_KEY = "secsa-admin-gender-filter";
+const SCHOOL_FILTER_KEY = "secsa-admin-school-filter";
+
+function readStoredFilter<T extends string>(key: string, allowed: readonly T[], defaultValue: T) {
+  if (typeof window === "undefined") return defaultValue;
+  const stored = localStorage.getItem(key);
+  return stored && allowed.includes(stored as T) ? (stored as T) : defaultValue;
+}
 
 interface Props {
   token: string | null;
@@ -60,6 +72,12 @@ export default function AdminUsersModal({
   const courseOptions = useProgramCourseOptions();
   const [bulkProgramCourse, setBulkProgramCourse] = useState<ProgramCourseId | "">("");
   const [bulkBusy, setBulkBusy] = useState<string | null>(null);
+  const [genderFilter, setGenderFilter] = useState<GenderFilter>(() =>
+    readStoredFilter(GENDER_FILTER_KEY, ["all", "MALE", "FEMALE"] as const, "all")
+  );
+  const [schoolFilter, setSchoolFilter] = useState<SchoolFilter>(() =>
+    readStoredFilter(SCHOOL_FILTER_KEY, ["all", "PUBLIC", "PRIVATE"] as const, "all")
+  );
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
     onClose ?? (() => {}),
     !inline
@@ -105,10 +123,17 @@ export default function AdminUsersModal({
     [users]
   );
 
+  function matchesStudentDemographics(user: UserRow) {
+    if (genderFilter !== "all" && user.gender !== genderFilter) return false;
+    if (schoolFilter !== "all" && user.schoolType !== schoolFilter) return false;
+    return true;
+  }
+
   function studentsForView(year: number, programCourse = bulkProgramCourse) {
     return students.filter((user) => {
       if (!user.isActive) return false;
       if (user.yearLevel !== year) return false;
+      if (!matchesStudentDemographics(user)) return false;
       if (currentUser?.role === "SUPERADMIN") {
         return user.programCourse === programCourse;
       }
@@ -119,6 +144,7 @@ export default function AdminUsersModal({
   function archivedStudentsForView(programCourse = bulkProgramCourse) {
     return students.filter((user) => {
       if (user.isActive) return false;
+      if (!matchesStudentDemographics(user)) return false;
       if (currentUser?.role === "SUPERADMIN") {
         return user.programCourse === programCourse;
       }
@@ -133,9 +159,20 @@ export default function AdminUsersModal({
     if (roleTab === "admins") return admins;
     if (isArchiveView) return archivedStudentsForView();
     return studentsForView(Number(studentYearTab));
-  }, [roleTab, studentYearTab, teachers, admins, students, bulkProgramCourse, currentUser?.role, isArchiveView]);
+  }, [
+    roleTab,
+    studentYearTab,
+    teachers,
+    admins,
+    students,
+    bulkProgramCourse,
+    currentUser?.role,
+    isArchiveView,
+    genderFilter,
+    schoolFilter,
+  ]);
 
-  const usersResetKey = `${roleTab}-${studentYearTab}-${bulkProgramCourse}-${visibleUsers.length}`;
+  const usersResetKey = `${roleTab}-${studentYearTab}-${bulkProgramCourse}-${genderFilter}-${schoolFilter}-${visibleUsers.length}`;
   const {
     paginatedItems: paginatedUsers,
     page,
@@ -205,6 +242,30 @@ export default function AdminUsersModal({
       return;
     }
     cancelEditIfHidden(studentsForView(Number(studentYearTab), next));
+  }
+
+  function handleGenderFilterChange(next: GenderFilter) {
+    setGenderFilter(next);
+    localStorage.setItem(GENDER_FILTER_KEY, next);
+    if (isArchiveView) {
+      cancelEditIfHidden(archivedStudentsForView());
+      return;
+    }
+    if (roleTab === "students") {
+      cancelEditIfHidden(studentsForView(Number(studentYearTab)));
+    }
+  }
+
+  function handleSchoolFilterChange(next: SchoolFilter) {
+    setSchoolFilter(next);
+    localStorage.setItem(SCHOOL_FILTER_KEY, next);
+    if (isArchiveView) {
+      cancelEditIfHidden(archivedStudentsForView());
+      return;
+    }
+    if (roleTab === "students") {
+      cancelEditIfHidden(studentsForView(Number(studentYearTab)));
+    }
   }
 
   async function restoreStudent(user: UserRow) {
@@ -514,20 +575,36 @@ export default function AdminUsersModal({
               value={studentYearTab}
               onChange={handleStudentYearChange}
             />
+            <div className="admin-users-student-filters" role="group" aria-label="Student filters">
+              <label className="admin-users-student-filter">
+                Gender
+                <select
+                  value={genderFilter}
+                  onChange={(event) => handleGenderFilterChange(event.target.value as GenderFilter)}
+                >
+                  <option value="all">All</option>
+                  <option value="MALE">Male</option>
+                  <option value="FEMALE">Female</option>
+                </select>
+              </label>
+              <label className="admin-users-student-filter">
+                School
+                <select
+                  value={schoolFilter}
+                  onChange={(event) => handleSchoolFilterChange(event.target.value as SchoolFilter)}
+                >
+                  <option value="all">All</option>
+                  <option value="PUBLIC">Public</option>
+                  <option value="PRIVATE">Private</option>
+                </select>
+              </label>
+            </div>
           </div>
         )}
       </div>
 
       {roleTab === "students" && currentUser?.role === "SUPERADMIN" && !isArchiveView ? (
         <div className="admin-users-bulk-panel card">
-          <div className="admin-users-bulk-copy">
-            <h3>School year actions</h3>
-            <p className="muted section-desc">
-              Promote one incoming year at a time, or run a full rollover that archives finished Y
-              {bulkMaxYear} then moves {rolloverPromoteChain} in one step so year levels stay
-              aligned.
-            </p>
-          </div>
           <div className="admin-users-bulk-controls">
             <label className="admin-users-bulk-field">
               Program
@@ -576,30 +653,21 @@ export default function AdminUsersModal({
         </div>
       ) : null}
 
-      {isArchiveView ? (
+      {isArchiveView && currentUser?.role === "SUPERADMIN" ? (
         <div className="admin-users-archive-panel card">
-          <div className="admin-users-archive-copy">
-            <h3>Finished students</h3>
-            <p className="muted section-desc">
-              Students archived after graduating or school-year rollover. Restore an account to
-              re-enable login while keeping exam history.
-            </p>
-          </div>
-          {currentUser?.role === "SUPERADMIN" ? (
-            <label className="admin-users-bulk-field">
-              Program
-              <select
-                value={bulkProgramCourse}
-                onChange={(event) => handleBulkProgramCourseChange(event.target.value)}
-              >
-                {courseOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
+          <label className="admin-users-bulk-field">
+            Program
+            <select
+              value={bulkProgramCourse}
+              onChange={(event) => handleBulkProgramCourseChange(event.target.value)}
+            >
+              {courseOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       ) : null}
 

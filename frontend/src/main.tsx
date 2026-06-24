@@ -7,8 +7,11 @@ import { ProgramsProvider } from "./lib/programs";
 import { ThemeProvider } from "./lib/theme";
 import { ToastProvider } from "./lib/toast";
 import { ConfirmProvider } from "./lib/confirm";
+import { applyDocumentMeta } from "./lib/applyDocumentMeta";
 import "./index.css";
 import "./styles.css";
+
+applyDocumentMeta();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

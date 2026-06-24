@@ -4,9 +4,15 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 
+const appPublishedAt = "2026-06-11T00:00:00.000Z";
+const buildModifiedAt = new Date().toISOString();
+
 export default defineConfig({
-  plugins: [
-    react(),
+  define: {
+    __SECSA_PUBLISHED_AT__: JSON.stringify(appPublishedAt),
+    __SECSA_BUILD_MODIFIED_AT__: JSON.stringify(buildModifiedAt),
+  },
+  plugins: [    react(),
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
@@ -21,6 +27,8 @@ export default defineConfig({
       manifest: {
         name: "SECSA Exam Platform",
         short_name: "SECSA",
+        description:
+          "SECSA Academic Quality Assurance Portal. Created by Josiah P. Ariston. Last updated at build time.",
         theme_color: "#1e3a5f",
         background_color: "#f8fafc",
         display: "standalone",

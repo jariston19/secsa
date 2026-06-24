@@ -274,12 +274,20 @@ function LayoutShell() {
         </div>
       </aside>
 
-      <div className="app-main">
+      <div
+        className="app-main"
+        onClick={() => {
+          if (open) close();
+        }}
+      >
         <header className="app-topbar">
           <button
             type="button"
             className="sidebar-toggle"
-            onClick={toggle}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggle();
+            }}
             aria-label={open ? "Close navigation" : "Open navigation"}
             aria-expanded={open}
           >

@@ -59,6 +59,22 @@ interface Props {
 
 export default function AddUserForm({ token, onCreated }: Props) {
   const programCourseOptions = useProgramCourseOptions();
+
+  function createEmptyForm() {
+    return {
+      email: "",
+      password: "",
+      firstName: "",
+      lastName: "",
+      role: "STUDENT" as UserRole,
+      yearLevel: "1",
+      programCourse: programCourseOptions[0]?.id ?? DEFAULT_PROGRAM_COURSE,
+      gender: "MALE" as GenderId,
+      schoolType: "PUBLIC" as SchoolTypeId,
+      qaUnlimited: false,
+    };
+  }
+
   const [submitting, setSubmitting] = useState(false);
   const [emailChecking, setEmailChecking] = useState(false);
   const [emailDuplicate, setEmailDuplicate] = useState<{
@@ -66,18 +82,17 @@ export default function AddUserForm({ token, onCreated }: Props) {
     firstName: string;
     lastName: string;
   } | null>(null);
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
-    firstName: "",
-    lastName: "",
-    role: "STUDENT" as UserRole,
-    yearLevel: "2",
-    programCourse: DEFAULT_PROGRAM_COURSE,
-    gender: "MALE" as GenderId,
-    schoolType: "PUBLIC" as SchoolTypeId,
-    qaUnlimited: false,
-  });
+  const [form, setForm] = useState(createEmptyForm);
+
+  useEffect(() => {
+    if (programCourseOptions.length === 0) return;
+    const first = programCourseOptions[0].id;
+    setForm((current) => {
+      const programValid = programCourseOptions.some((course) => course.id === current.programCourse);
+      if (programValid) return current;
+      return { ...current, programCourse: first };
+    });
+  }, [programCourseOptions]);
 
   useEffect(() => {
     const email = form.email.trim();
@@ -138,18 +153,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
       );
 
       const createdName = formatFullName(form.firstName.trim(), form.lastName.trim());
-      setForm({
-        email: "",
-        password: "",
-        firstName: "",
-        lastName: "",
-        role: "STUDENT",
-        yearLevel: "2",
-        programCourse: DEFAULT_PROGRAM_COURSE,
-        gender: "MALE",
-        schoolType: "PUBLIC",
-        qaUnlimited: false,
-      });
+      setForm(createEmptyForm());
       onCreated(toastCreated("user", createdName));
     } catch (error) {
       onCreated(error instanceof Error ? error.message : "Failed to create user", true);
@@ -258,7 +262,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
                   <input
                     type="text"
                     inputMode="numeric"
-                    placeholder="2"
+                    placeholder="1"
                     value={form.yearLevel}
                     onChange={(event) =>
                       setForm({

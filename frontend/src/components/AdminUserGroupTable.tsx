@@ -85,7 +85,8 @@ function UserEditFields({
   showRole,
   showYearFields,
   showCourseFields,
-  showDemographicsFields,
+  showGenderField,
+  showSchoolField,
   showQaFields,
 }: {
   editDraft: UserEditDraft;
@@ -93,7 +94,8 @@ function UserEditFields({
   showRole: boolean;
   showYearFields: boolean;
   showCourseFields: boolean;
-  showDemographicsFields: boolean;
+  showGenderField: boolean;
+  showSchoolField: boolean;
   showQaFields: boolean;
 }) {
   const programCourseOptions = useProgramCourseOptions();
@@ -177,51 +179,51 @@ function UserEditFields({
           </span>
         </label>
       )}
-      {showDemographicsFields && editDraft.role === "STUDENT" && (
-        <>
-          <label>
-            <span className="admin-user-edit-label">Gender</span>
-            <span className="admin-user-edit-control">
-              <select
-                className="table-input"
-                value={editDraft.gender}
-                onChange={(e) =>
-                  setEditDraft(
-                    (draft) =>
-                      draft && { ...draft, gender: e.target.value as GenderId }
-                  )
-                }
-              >
-                {GENDER_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </span>
-          </label>
-          <label>
-            <span className="admin-user-edit-label">School</span>
-            <span className="admin-user-edit-control">
-              <select
-                className="table-input"
-                value={editDraft.schoolType}
-                onChange={(e) =>
-                  setEditDraft(
-                    (draft) =>
-                      draft && { ...draft, schoolType: e.target.value as SchoolTypeId }
-                  )
-                }
-              >
-                {SCHOOL_TYPE_OPTIONS.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </span>
-          </label>
-        </>
+      {showGenderField && editDraft.role === "STUDENT" && (
+        <label>
+          <span className="admin-user-edit-label">Gender</span>
+          <span className="admin-user-edit-control">
+            <select
+              className="table-input"
+              value={editDraft.gender}
+              onChange={(e) =>
+                setEditDraft(
+                  (draft) =>
+                    draft && { ...draft, gender: e.target.value as GenderId }
+                )
+              }
+            >
+              {GENDER_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </span>
+        </label>
+      )}
+      {showSchoolField && editDraft.role === "STUDENT" && (
+        <label>
+          <span className="admin-user-edit-label">School</span>
+          <span className="admin-user-edit-control">
+            <select
+              className="table-input"
+              value={editDraft.schoolType}
+              onChange={(e) =>
+                setEditDraft(
+                  (draft) =>
+                    draft && { ...draft, schoolType: e.target.value as SchoolTypeId }
+                )
+              }
+            >
+              {SCHOOL_TYPE_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </span>
+        </label>
       )}
       {showQaFields && editDraft.role === "STUDENT" && (
         <label>
@@ -287,7 +289,8 @@ export default function AdminUserGroupTable({
   }, [allUsers, editDraft?.email, editingId]);
   const showYearColumn = group === "student" && !hideYearColumn;
   const showCourseColumn = group === "student";
-  const showDemographicsColumns = group === "student";
+  const showGenderCol = group === "student";
+  const showSchoolCol = group === "student";
   const showQaColumn = group === "student";
   const showRoleColumn = false;
   const showActiveColumn = group !== "admin";
@@ -296,7 +299,8 @@ export default function AdminUserGroupTable({
     (showRoleColumn ? 1 : 0) +
     (showYearColumn ? 1 : 0) +
     (showCourseColumn ? 1 : 0) +
-    (showDemographicsColumns ? 2 : 0) +
+    (showGenderCol ? 1 : 0) +
+    (showSchoolCol ? 1 : 0) +
     (showActiveColumn ? 1 : 0) +
     (showQaColumn ? 1 : 0) +
     1;
@@ -316,8 +320,8 @@ export default function AdminUserGroupTable({
             {showRoleColumn && <th>Role</th>}
             {showYearColumn && <th className="admin-users-year-cell">Year</th>}
             {showCourseColumn && <th className="admin-users-course-cell">Course</th>}
-            {showDemographicsColumns && <th className="admin-users-gender-cell">Gender</th>}
-            {showDemographicsColumns && <th className="admin-users-school-cell">School</th>}
+            {showGenderCol && <th className="admin-users-gender-cell">Gender</th>}
+            {showSchoolCol && <th className="admin-users-school-cell">School</th>}
             {showActiveColumn && <th className="admin-users-active-cell">Active</th>}
             {showQaColumn && <th className="admin-users-qa-cell">QA</th>}
             <th>Actions</th>
@@ -466,7 +470,7 @@ export default function AdminUserGroupTable({
                       )}
                     </td>
                   )}
-                  {showDemographicsColumns && (
+                  {showGenderCol && (
                     <td className="admin-users-gender-cell">
                       {isEditing && editingAsStudent ? (
                         <select
@@ -492,7 +496,7 @@ export default function AdminUserGroupTable({
                       )}
                     </td>
                   )}
-                  {showDemographicsColumns && (
+                  {showSchoolCol && (
                     <td className="admin-users-school-cell">
                       {isEditing && editingAsStudent ? (
                         <select
@@ -650,7 +654,8 @@ export default function AdminUserGroupTable({
                         showRole={!showRoleColumn}
                         showYearFields={editingAsStudent && !showYearColumn}
                         showCourseFields={editingAsStudent && !showCourseColumn}
-                        showDemographicsFields={editingAsStudent && !showDemographicsColumns}
+                        showGenderField={editingAsStudent && !showGenderCol}
+                        showSchoolField={editingAsStudent && !showSchoolCol}
                         showQaFields={!showQaColumn && editingAsStudent}
                       />
                     </td>
