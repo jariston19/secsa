@@ -1225,10 +1225,7 @@ async function upsertSubjectPrograms(subjectId: string) {
 async function seedSubjectContent(teacherId: string, plan: DemoSubject) {
   const subject = await prisma.subject.upsert({
     where: {
-      courseCode_yearLevel: {
-        courseCode: plan.courseCode,
-        yearLevel: plan.curriculumYear,
-      },
+      courseCode: plan.courseCode,
     },
     update: { courseTitle: plan.courseTitle },
     create: {

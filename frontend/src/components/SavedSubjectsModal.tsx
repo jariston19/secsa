@@ -19,6 +19,11 @@ import {
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
 import { useConfirm } from "../lib/confirm";
+import {
+  duplicateCourseCodeMessage,
+  findDuplicateCourseCode,
+  formatCourseCode,
+} from "../lib/subjectDuplicates";
 
 interface Subject {
   id: string;
@@ -84,6 +89,11 @@ export default function SavedSubjectsModal({
     totalItems,
   } = usePagination(filteredSubjects, { resetKey: programFilter });
 
+  const editCourseCodeDuplicate = useMemo(() => {
+    if (!editingId || !editDraft) return null;
+    return findDuplicateCourseCode(subjects, editDraft.courseCode, editingId);
+  }, [subjects, editingId, editDraft]);
+
   function handleProgramFilterChange(value: ProgramCourseFilter) {
     setProgramFilter(value);
     cancelEdit();
@@ -120,6 +130,13 @@ export default function SavedSubjectsModal({
   async function saveEdit(id: string) {
     if (!editDraft) return;
 
+    const courseCode = formatCourseCode(editDraft.courseCode);
+    const duplicate = findDuplicateCourseCode(subjects, courseCode, id);
+    if (duplicate) {
+      onUpdated(duplicateCourseCodeMessage(duplicate), true);
+      return;
+    }
+
     setSavingId(id);
 
     try {
@@ -128,7 +145,7 @@ export default function SavedSubjectsModal({
         {
           method: "PATCH",
           body: JSON.stringify({
-            courseCode: editDraft.courseCode,
+            courseCode,
             courseTitle: editDraft.courseTitle,
             yearLevel: parseYearLevel(editDraft.yearLevel),
             programCourses: editDraft.programCourses,
@@ -138,7 +155,7 @@ export default function SavedSubjectsModal({
       );
       const message = toastUpdated(
         "subject",
-        subjectLabel(editDraft.courseCode, editDraft.courseTitle)
+        subjectLabel(courseCode, editDraft.courseTitle)
       );
       setEditingId(null);
       setEditDraft(null);
@@ -269,13 +286,21 @@ export default function SavedSubjectsModal({
                   <tr key={s.id}>
                     <td>
                       {isEditing ? (
-                        <input
-                          className="table-input"
-                          value={editDraft?.courseCode ?? ""}
-                          onChange={(e) =>
-                            setEditDraft((d) => d && { ...d, courseCode: e.target.value })
-                          }
-                        />
+                        <div className="saved-subjects-code-edit">
+                          <input
+                            className="table-input"
+                            value={editDraft?.courseCode ?? ""}
+                            onChange={(e) =>
+                              setEditDraft((d) => d && { ...d, courseCode: e.target.value })
+                            }
+                            aria-invalid={editCourseCodeDuplicate && editingId === s.id ? true : undefined}
+                          />
+                          {editCourseCodeDuplicate && editingId === s.id && (
+                            <span className="field-hint field-hint-error" role="alert">
+                              {duplicateCourseCodeMessage(editCourseCodeDuplicate)}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         s.courseCode
                       )}
@@ -350,7 +375,10 @@ export default function SavedSubjectsModal({
                             <button
                               type="button"
                               className="btn btn-sm"
-                              disabled={savingId === s.id}
+                              disabled={
+                                savingId === s.id ||
+                                (editCourseCodeDuplicate !== null && editingId === s.id)
+                              }
                               onClick={() => saveEdit(s.id)}
                             >
                               {savingId === s.id ? "Saving..." : "Save"}

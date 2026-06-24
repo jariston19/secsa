@@ -18,6 +18,11 @@ import { useToast } from "../lib/toast";
 import { useConfirm } from "../lib/confirm";
 import { formatExamType, parseYearLevel, sanitizeYearInput, type QuestionSetExamType } from "../lib/constants";
 import {
+  duplicateCourseCodeMessage,
+  findDuplicateCourseCode,
+  formatCourseCode,
+} from "../lib/subjectDuplicates";
+import {
   subjectLabel,
   toastArchived,
   toastBatchCreated,
@@ -165,6 +170,11 @@ export default function TeacherDashboard() {
     programCourses: [] as ProgramCourseId[],
   });
 
+  const duplicateSubjectCourseCode = useMemo(
+    () => findDuplicateCourseCode(subjects, subjectForm.courseCode),
+    [subjects, subjectForm.courseCode]
+  );
+
   const [topicSubjectId, setTopicSubjectId] = useState("");
   const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraftRow[]>>({});
   const [savingTopics, setSavingTopics] = useState(false);
@@ -292,13 +302,20 @@ export default function TeacherDashboard() {
 
   async function createSubject(e: FormEvent) {
     e.preventDefault();
+    const courseCode = formatCourseCode(subjectForm.courseCode);
+    const duplicate = findDuplicateCourseCode(subjects, courseCode);
+    if (duplicate && duplicate.yearLevel !== parseYearLevel(subjectForm.yearLevel)) {
+      toast.error(duplicateCourseCodeMessage(duplicate));
+      return;
+    }
+
     try {
       const result = await api<{ subject: Subject; linkedPrograms?: boolean }>(
         "/subjects",
         {
           method: "POST",
           body: JSON.stringify({
-            courseCode: subjectForm.courseCode,
+            courseCode,
             courseTitle: subjectForm.courseTitle,
             yearLevel: parseYearLevel(subjectForm.yearLevel),
             programCourses: subjectForm.programCourses,
@@ -577,7 +594,16 @@ export default function TeacherDashboard() {
                     value={subjectForm.courseCode}
                     onChange={(e) => setSubjectForm({ ...subjectForm, courseCode: e.target.value })}
                     required
+                    aria-invalid={duplicateSubjectCourseCode ? true : undefined}
                   />
+                  {duplicateSubjectCourseCode && (
+                    <span className="field-hint field-hint-error" role="alert">
+                      {duplicateCourseCodeMessage(duplicateSubjectCourseCode)}
+                      {duplicateSubjectCourseCode.yearLevel === parseYearLevel(subjectForm.yearLevel)
+                        ? " Saving will link the selected program course(s) to the existing subject."
+                        : ""}
+                    </span>
+                  )}
                 </label>
                 <label>
                   Course title
@@ -642,7 +668,15 @@ export default function TeacherDashboard() {
                   />
                   <span className="field-hint">1–4 only (1 = 1st year subjects).</span>
                 </label>
-                <button className="btn" disabled={subjectForm.programCourses.length === 0}>
+                <button
+                  className="btn"
+                  disabled={
+                    subjectForm.programCourses.length === 0 ||
+                    (duplicateSubjectCourseCode !== null &&
+                      duplicateSubjectCourseCode.yearLevel !==
+                        parseYearLevel(subjectForm.yearLevel))
+                  }
+                >
                   Save subject
                 </button>
               </form>

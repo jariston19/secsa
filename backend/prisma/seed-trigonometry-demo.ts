@@ -338,10 +338,7 @@ export async function seedTrigonometryDemo({
 }) {
   const subject = await prisma.subject.upsert({
     where: {
-      courseCode_yearLevel: {
-        courseCode: "MATH 105",
-        yearLevel: 1,
-      },
+      courseCode: "MATH 105",
     },
     update: {
       courseTitle: "Trigonometry",

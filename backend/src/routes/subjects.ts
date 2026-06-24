@@ -12,6 +12,10 @@ import {
   subjectProgramCoursesInclude,
 } from "../lib/subjectPrograms.js";
 import { yearLevelSchema } from "../lib/yearLevel.js";
+import {
+  formatCourseCode,
+  findDuplicateCourseCode,
+} from "../services/subjectDuplicates.js";
 
 const subjectSchema = z.object({
   courseCode: z.string().min(1),
@@ -69,23 +73,30 @@ export async function subjectRoutes(app: FastifyInstance) {
 
     const body = subjectSchema.parse(request.body);
     await assertActiveProgramSlugs(body.programCourses);
-    const existing = await prisma.subject.findUnique({
-      where: {
-        courseCode_yearLevel: {
-          courseCode: body.courseCode,
-          yearLevel: body.yearLevel,
-        },
-      },
-      include: subjectProgramCoursesInclude,
-    });
+    const courseCode = formatCourseCode(body.courseCode);
+    if (!courseCode) {
+      return reply.code(400).send({ error: "Course code is required." });
+    }
 
-    if (existing) {
+    const duplicate = await findDuplicateCourseCode(prisma, courseCode);
+    if (duplicate) {
+      if (duplicate.yearLevel !== body.yearLevel) {
+        return reply.code(409).send({
+          error: `Course code "${duplicate.courseCode}" is already used by ${duplicate.courseTitle} (curriculum year ${duplicate.yearLevel}).`,
+        });
+      }
+
+      const existing = await loadSubject(duplicate.id);
+      if (!existing) {
+        return reply.code(500).send({ error: "Subject lookup failed." });
+      }
+
       const linked = new Set(existing.programCourses.map((item) => item.programCourse));
       const toAdd = body.programCourses.filter((course) => !linked.has(course));
 
       if (toAdd.length === 0) {
-        return reply.code(400).send({
-          error: "This subject already exists for the selected program course(s).",
+        return reply.code(409).send({
+          error: `Course code "${existing.courseCode}" is already used by ${existing.courseTitle}.`,
         });
       }
 
@@ -103,8 +114,8 @@ export async function subjectRoutes(app: FastifyInstance) {
     const subject = await prisma.$transaction(async (tx) => {
       const created = await tx.subject.create({
         data: {
-          courseCode: body.courseCode,
-          courseTitle: body.courseTitle,
+          courseCode,
+          courseTitle: body.courseTitle.trim(),
           yearLevel: body.yearLevel,
           createdById: user.id,
         },
@@ -137,17 +148,28 @@ export async function subjectRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const body = subjectSchema.parse(request.body);
     await assertActiveProgramSlugs(body.programCourses);
+    const courseCode = formatCourseCode(body.courseCode);
+    if (!courseCode) {
+      return reply.code(400).send({ error: "Course code is required." });
+    }
 
     const existing = await prisma.subject.findUnique({ where: { id } });
     if (!existing) return reply.code(404).send({ error: "Subject not found." });
+
+    const duplicate = await findDuplicateCourseCode(prisma, courseCode, id);
+    if (duplicate) {
+      return reply.code(409).send({
+        error: `Course code "${duplicate.courseCode}" is already used by ${duplicate.courseTitle} (curriculum year ${duplicate.yearLevel}).`,
+      });
+    }
 
     try {
       const subject = await prisma.$transaction(async (tx) => {
         await tx.subject.update({
           where: { id },
           data: {
-            courseCode: body.courseCode,
-            courseTitle: body.courseTitle,
+            courseCode,
+            courseTitle: body.courseTitle.trim(),
             yearLevel: body.yearLevel,
           },
         });
@@ -172,8 +194,8 @@ export async function subjectRoutes(app: FastifyInstance) {
 
       return { subject };
     } catch {
-      return reply.code(400).send({
-        error: "A subject with this course code and year level already exists.",
+      return reply.code(409).send({
+        error: `Course code "${courseCode}" is already in use.`,
       });
     }
   });

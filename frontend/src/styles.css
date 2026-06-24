@@ -1618,6 +1618,13 @@ body {
   gap: 0.35rem 0.5rem;
 }
 
+.saved-subjects-code-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 7rem;
+}
+
 .sets-filters {
   display: flex;
   flex-wrap: wrap;
@@ -2338,6 +2345,10 @@ label {
   margin: 0;
 }
 
+.field-hint-error {
+  color: var(--ios-red, #ff3b30);
+}
+
 .section-desc {
   margin: 0 0 1rem;
   font-size: 0.9375rem;
@@ -2368,11 +2379,16 @@ textarea::placeholder {
 }
 
 input:focus,
-select:focus,
 textarea:focus {
   outline: none;
   box-shadow: var(--ios-focus-ring);
   background: var(--ios-bg-elevated);
+}
+
+select:focus {
+  outline: none;
+  box-shadow: var(--ios-focus-ring);
+  background-color: var(--ios-bg-elevated);
 }
 
 select {
@@ -8191,12 +8207,17 @@ td:has(.action-buttons) {
 }
 
 .build-set-modal input:focus,
-.build-set-modal select:focus,
-.build-set-panel input:focus,
-.build-set-panel select:focus {
+.build-set-panel input:focus {
   outline: none;
   box-shadow: inset 0 0 0 2px rgba(0, 122, 255, 0.4);
   background: var(--ios-bg-elevated);
+}
+
+.build-set-modal select:focus,
+.build-set-panel select:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(0, 122, 255, 0.4);
+  background-color: var(--ios-bg-elevated);
 }
 
 [data-theme="dark"] .build-set-modal input:focus,

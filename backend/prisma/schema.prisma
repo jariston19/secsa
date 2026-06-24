@@ -115,7 +115,7 @@ model Subject {
   configs          QuestionSetConfig[]
   programCourses   SubjectProgramCourse[]
 
-  @@unique([courseCode, yearLevel])
+  @@unique([courseCode])
 }
 
 model SubjectProgramCourse {
