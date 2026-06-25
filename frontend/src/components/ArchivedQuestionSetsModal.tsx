@@ -5,7 +5,7 @@ import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
 import { formatExamType } from "../lib/constants";
-import { toastRestored } from "../lib/toastMessages";
+import { toastDeleted, toastRestored } from "../lib/toastMessages";
 import { formatProgramCourse, type ProgramCourseFilter, type ProgramCourseId } from "../lib/programCourse";
 import { useConfirm } from "../lib/confirm";
 import {
@@ -32,6 +32,7 @@ interface Props {
   embedded?: boolean;
   onUpdated: (message: string, isError?: boolean) => void;
   onPreview: (setId: string) => void;
+  onDeleted?: (setId: string) => void;
 }
 
 export default function ArchivedQuestionSetsModal({
@@ -41,11 +42,13 @@ export default function ArchivedQuestionSetsModal({
   embedded = false,
   onUpdated,
   onPreview,
+  onDeleted,
 }: Props) {
   const confirm = useConfirm();
   const [sets, setSets] = useState<QuestionSet[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [printingSetId, setPrintingSetId] = useState<string | null>(null);
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onClose ?? (() => {}));
 
@@ -104,6 +107,33 @@ export default function ArchivedQuestionSetsModal({
     }
   }
 
+  async function deleteSet(id: string, name: string, attemptCount: number) {
+    if (attemptCount > 0) {
+      onUpdated("Cannot delete a question set that students have already used for exams.", true);
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: "Delete question set?",
+      message: `Delete archived question set "${name}"?\n\nThis cannot be undone. Questions in the pool will not be deleted.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
+    if (!confirmed) return;
+
+    setDeletingId(id);
+    try {
+      await api(`/question-sets/${id}`, { method: "DELETE" }, token);
+      onDeleted?.(id);
+      onUpdated(toastDeleted("question set", name));
+      await loadArchived();
+    } catch (err) {
+      onUpdated(err instanceof Error ? err.message : "Failed to delete question set", true);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function printSet(id: string) {
     setPrintingSetId(id);
     try {
@@ -125,7 +155,7 @@ export default function ArchivedQuestionSetsModal({
             {programCourse === "ALL"
               ? "All program courses"
               : formatProgramCourse(programCourse)}{" "}
-            · restore sets to edit or deploy again
+            · restore or delete sets with no exam attempts
           </p>
         </div>
         {!embedded ? (
@@ -200,11 +230,23 @@ export default function ArchivedQuestionSetsModal({
                           <button
                             type="button"
                             className="btn"
-                            disabled={restoringId === set.id}
+                            disabled={restoringId === set.id || deletingId === set.id}
                             onClick={() => restoreSet(set.id, set.name)}
                           >
                             {restoringId === set.id ? "Restoring..." : "Restore"}
                           </button>
+                          {(set._count?.examAttempts ?? 0) === 0 ? (
+                            <button
+                              type="button"
+                              className="btn danger"
+                              disabled={deletingId === set.id || restoringId === set.id}
+                              onClick={() =>
+                                deleteSet(set.id, set.name, set._count?.examAttempts ?? 0)
+                              }
+                            >
+                              {deletingId === set.id ? "Deleting..." : "Delete"}
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

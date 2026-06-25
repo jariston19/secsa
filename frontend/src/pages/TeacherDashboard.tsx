@@ -970,26 +970,31 @@ export default function TeacherDashboard() {
                                 Deploy
                               </button>
                             )}
-                            {set.status !== "DEPLOYED" && (
-                              <>
-                                {(set._count?.examAttempts ?? 0) === 0 && (
-                                  <button
-                                    type="button"
-                                    className="btn danger"
-                                    onClick={() => deleteSet(set.id, set.name)}
-                                  >
-                                    Delete
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  className="btn secondary"
-                                  onClick={() => archiveSet(set.id, set.name)}
-                                >
-                                  Archive
-                                </button>
-                              </>
-                            )}
+                            <button
+                              type="button"
+                              className="btn danger"
+                              disabled={
+                                set.status === "DEPLOYED" ||
+                                (set._count?.examAttempts ?? 0) > 0
+                              }
+                              title={
+                                set.status === "DEPLOYED"
+                                  ? "Cancel deploy before deleting."
+                                  : (set._count?.examAttempts ?? 0) > 0
+                                    ? "Cannot delete a set that students have already used for exams."
+                                    : undefined
+                              }
+                              onClick={() => deleteSet(set.id, set.name)}
+                            >
+                              Delete
+                            </button>
+                            <button
+                              type="button"
+                              className="btn secondary"
+                              onClick={() => archiveSet(set.id, set.name)}
+                            >
+                              Archive
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1013,6 +1018,9 @@ export default function TeacherDashboard() {
             refresh().catch(() => {});
           }}
           onPreview={(setId) => setPreviewSetId(setId)}
+          onDeleted={(setId) => {
+            if (previewSetId === setId) setPreviewSetId(null);
+          }}
         />
       )}
 

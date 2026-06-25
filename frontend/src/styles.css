@@ -8805,7 +8805,7 @@ td:has(.action-buttons) {
 
 .sets-table td:has(.action-buttons) {
   width: auto;
-  min-width: 28rem;
+  min-width: 36rem;
 }
 
 @media (max-width: 768px) {
