@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import FieldInfoTip from "./FieldInfoTip";
 import { api } from "../lib/api";
-import { curriculumYearForStudentYear, formatExamType, parseYearLevel, sanitizeYearInput, type QuestionSetExamType, preboardMaxCurriculumYearForProgram, preboardStudentYearForProgram } from "../lib/constants";
+import { curriculumYearForStudentYear, formatExamType, MIN_YEAR_LEVEL, parseYearLevel, sanitizeYearInput, type QuestionSetExamType, preboardMaxCurriculumYearForProgram, preboardStudentYearForProgram } from "../lib/constants";
 import { difficultyCountsForTotal, expandTopicConfigsWithSubjectDifficulty, type ExamDifficultyCounts } from "../lib/examDifficultyDistribution";
 import { buildExamAllocations, type TopicAllocation } from "../lib/examItemDistribution";
 import { toastCreated, toastUpdated } from "../lib/toastMessages";
@@ -139,7 +140,7 @@ export default function BuildQuestionSetModal({
 }: Props) {
   const isEditing = Boolean(setId);
   const [name, setName] = useState("");
-  const [yearLevel, setYearLevel] = useState("2");
+  const [yearLevel, setYearLevel] = useState(String(MIN_YEAR_LEVEL));
   const [setProgramCourse, setSetProgramCourse] = useState<ProgramCourseId | "">("");
   const [type, setType] = useState<QuestionSetExamType>("COMPREHENSIVE");
   const [setStatus, setSetStatus] = useState<string | null>(null);
@@ -877,7 +878,13 @@ export default function BuildQuestionSetModal({
         <form className="build-set-form" onSubmit={handleSubmit}>
           <div className="build-set-form-body">
           <section className="build-set-details">
-            <h3 className="build-set-section-title">Set details</h3>
+            <h3 className="build-set-section-title">
+              Set details
+              <FieldInfoTip
+                label="Question set allocation help"
+                text="Items divide evenly across subjects by course code. Use Edit on each subject to transfer items between its topics, set easy, medium, and hard counts, or remove topics from the exam. Defaults use 30% easy, 50% medium, and 20% hard per subject."
+              />
+            </h3>
             <div className="build-set-meta">
               <label className="build-set-meta-name">
                 <span className="build-set-field-label">Set name</span>
@@ -996,11 +1003,6 @@ export default function BuildQuestionSetModal({
                 </div>
               </div>
             </div>
-            <p className="field-hint build-set-total-hint">
-              Items divide evenly across subjects by course code. Use Edit on each subject to
-              transfer items between its topics, set easy, medium, and hard counts, or remove
-              topics from the exam. Defaults use 30% easy, 50% medium, and 20% hard per subject.
-            </p>
             <div className="build-set-details-bar">
               <span className={`build-set-exam-badge build-set-exam-badge-${type.toLowerCase()}`}>
                 {formatExamType(type)}

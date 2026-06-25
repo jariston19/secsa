@@ -6,6 +6,8 @@ import {
   useState,
   type MutableRefObject,
 } from "react";
+import { AlertTriangle, Maximize2, ShieldAlert } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { MAX_EXAM_FOCUS_VIOLATIONS } from "../lib/constants";
 import {
   canRequestExamFullscreen,
@@ -200,6 +202,20 @@ function formatExamCountdown(totalSeconds: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function ExamLockCardIcon({
+  icon: Icon,
+  tone,
+}: {
+  icon: LucideIcon;
+  tone: "blue" | "warning" | "danger";
+}) {
+  return (
+    <div className={`exam-lock-card-icon exam-lock-card-icon-${tone}`} aria-hidden>
+      <Icon size={28} strokeWidth={2.25} />
+    </div>
+  );
+}
+
 export default function ExamSession({
   active,
   title = "Exam in Progress",
@@ -316,6 +332,7 @@ export default function ExamSession({
         <div className="exam-session-header-meta">
           {violationCount > 0 && (
             <span className="exam-session-warning">
+              <AlertTriangle size={14} strokeWidth={2.25} aria-hidden />
               Focus warnings: {violationCount}/{MAX_EXAM_FOCUS_VIOLATIONS}
             </span>
           )}
@@ -346,6 +363,7 @@ export default function ExamSession({
       {showFullscreenGate && (
         <div className="exam-lock-overlay">
           <div className="exam-lock-card card">
+            <ExamLockCardIcon icon={Maximize2} tone="blue" />
             <h2>Enter fullscreen</h2>
             {fullscreenApiAvailable ? (
               <p>
@@ -381,6 +399,7 @@ export default function ExamSession({
       {autoSubmitting && (
         <div className="exam-lock-overlay">
           <div className="exam-lock-card card">
+            <ExamLockCardIcon icon={ShieldAlert} tone="danger" />
             <h2>Exam auto-submitted</h2>
             <p>
               You left the exam view {MAX_EXAM_FOCUS_VIOLATIONS} times. Your exam is being submitted
@@ -393,6 +412,7 @@ export default function ExamSession({
       {lockedOut && !autoSubmitting && !showFullscreenGate && (
         <div className="exam-lock-overlay">
           <div className="exam-lock-card card">
+            <ExamLockCardIcon icon={AlertTriangle} tone="warning" />
             <h2>Exam paused</h2>
             <p>You switched tabs, minimized the window, or left the exam view.</p>
             <p className="muted">

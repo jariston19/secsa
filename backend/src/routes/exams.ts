@@ -873,13 +873,22 @@ export async function examRoutes(app: FastifyInstance) {
     }
 
     let score = 0;
+    const answerPatches: Array<{
+      id: string;
+      data: {
+        isCorrect: boolean;
+        selectedOption?: string;
+        timeSpentSeconds?: number;
+      };
+    }> = [];
+
     for (const answer of body.answers) {
       const existing = attempt.answers.find((a) => a.questionId === answer.questionId);
       if (!existing) continue;
 
       if (!answer.selectedOption) {
-        await prisma.examAnswer.update({
-          where: { id: existing.id },
+        answerPatches.push({
+          id: existing.id,
           data: {
             isCorrect: false,
             timeSpentSeconds: answer.timeSpentSeconds,
@@ -891,8 +900,8 @@ export async function examRoutes(app: FastifyInstance) {
       const isCorrect = existing.question.correctOption === answer.selectedOption;
       if (isCorrect) score += 1;
 
-      await prisma.examAnswer.update({
-        where: { id: existing.id },
+      answerPatches.push({
+        id: existing.id,
         data: {
           selectedOption: answer.selectedOption,
           isCorrect,
@@ -907,39 +916,75 @@ export async function examRoutes(app: FastifyInstance) {
       attempt.questionSet.passThreshold
     );
 
-    const updated = await prisma.examAttempt.update({
-      where: { id: attemptId },
-      data: {
-        score: result.score,
-        percentage: result.percentage,
-        passed: result.passed,
-        submittedAt: new Date(),
-        ...(body.focusWarningCount != null
-          ? { focusWarningCount: body.focusWarningCount }
-          : {}),
-      },
-    });
+    const isComprehensiveFirst =
+      attempt.questionSet.type === QuestionSetType.COMPREHENSIVE &&
+      attempt.attemptType === AttemptType.FIRST;
 
-    if (!result.passed && attempt.attemptType === AttemptType.FIRST) {
-      const student = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: { qaUnlimited: true },
-      });
+    const student =
+      !result.passed && attempt.attemptType === AttemptType.FIRST && isComprehensiveFirst
+        ? await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { qaUnlimited: true },
+          })
+        : null;
 
-      const isComprehensiveFirst =
-        attempt.questionSet.type === QuestionSetType.COMPREHENSIVE &&
-        attempt.attemptType === AttemptType.FIRST;
+    const shouldCreateRetakeApproval =
+      !result.passed &&
+      attempt.attemptType === AttemptType.FIRST &&
+      isComprehensiveFirst &&
+      !student?.qaUnlimited;
 
-      if (!student?.qaUnlimited && isComprehensiveFirst) {
-        await prisma.retakeApproval.create({
+    let updated;
+    try {
+      updated = await prisma.$transaction(async (tx) => {
+        const current = await tx.examAttempt.findUnique({
+          where: { id: attemptId },
+          select: { submittedAt: true },
+        });
+
+        if (current?.submittedAt) {
+          throw { statusCode: 400, message: "Attempt already submitted." };
+        }
+
+        for (const patch of answerPatches) {
+          await tx.examAnswer.update({
+            where: { id: patch.id },
+            data: patch.data,
+          });
+        }
+
+        const attemptRow = await tx.examAttempt.update({
+          where: { id: attemptId },
           data: {
-            studentId: user.id,
-            examAttemptId: attemptId,
-            yearLevel: user.yearLevel!,
-            status: ApprovalStatus.PENDING,
+            score: result.score,
+            percentage: result.percentage,
+            passed: result.passed,
+            submittedAt: new Date(),
+            ...(body.focusWarningCount != null
+              ? { focusWarningCount: body.focusWarningCount }
+              : {}),
           },
         });
+
+        if (shouldCreateRetakeApproval) {
+          await tx.retakeApproval.create({
+            data: {
+              studentId: user.id,
+              examAttemptId: attemptId,
+              yearLevel: user.yearLevel!,
+              status: ApprovalStatus.PENDING,
+            },
+          });
+        }
+
+        return attemptRow;
+      });
+    } catch (error) {
+      const err = error as { statusCode?: number; message?: string };
+      if (err.statusCode) {
+        return reply.code(err.statusCode).send({ error: err.message ?? "Request failed." });
       }
+      throw error;
     }
 
     if (attempt.questionSet.type === QuestionSetType.DIAGNOSTIC) {

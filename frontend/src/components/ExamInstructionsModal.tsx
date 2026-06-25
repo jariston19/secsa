@@ -22,7 +22,12 @@ export default function ExamInstructionsModal({
   error = "",
 }: Props) {
   const [acknowledged, setAcknowledged] = useState(false);
+  const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(onCancel);
+
+  const requiresPrivacyAcknowledgement = examType === "incoming_diagnostic";
+  const canBegin =
+    acknowledged && (!requiresPrivacyAcknowledgement || privacyAcknowledged) && !loading;
 
   const title =
     examType === "retake"
@@ -118,6 +123,39 @@ export default function ExamInstructionsModal({
                 <li>It is separate from the comprehensive exam and does not use your retake allowance.</li>
                 <li>Your result helps teachers identify strengths and topics to reinforce early.</li>
               </ul>
+
+              <h3>Privacy policy</h3>
+              <p className="instructions-lead">
+                SECSA collects and processes information needed to run diagnostic and comprehensive
+                exams, including your name, email, program, year level, exam responses, and exam session
+                activity.
+              </p>
+              <h4 className="instructions-subheading">What we collect</h4>
+              <ul className="instructions-list">
+                <li>Account details you use to sign in.</li>
+                <li>Exam answers, scores, and time spent on each question.</li>
+                <li>Technical signals during exams, such as tab switches and fullscreen status.</li>
+              </ul>
+              <h4 className="instructions-subheading">How we use it</h4>
+              <ul className="instructions-list">
+                <li>To deliver exams and show appropriate results or learning profiles.</li>
+                <li>To help teachers identify strengths, gaps, and retake eligibility.</li>
+                <li>To maintain exam integrity and platform security.</li>
+              </ul>
+              <h4 className="instructions-subheading">Who can see your data</h4>
+              <ul className="instructions-list">
+                <li>You can view your own exam history and results or profiles.</li>
+                <li>
+                  Authorized teachers and administrators can view student performance for their classes.
+                </li>
+                <li>Data is not sold to third parties.</li>
+              </ul>
+              <h4 className="instructions-subheading">Your responsibilities</h4>
+              <ul className="instructions-list">
+                <li>Keep your login credentials private.</li>
+                <li>Complete exams honestly and follow exam instructions.</li>
+                <li>Contact your teacher or administrator if you have privacy concerns.</li>
+              </ul>
             </>
           ) : examType === "preboard" ? (
             <>
@@ -169,14 +207,27 @@ export default function ExamInstructionsModal({
           </ul>
         </div>
 
-        <label className="acknowledge-label">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(e) => setAcknowledged(e.target.checked)}
-          />
-          I have read and understood the instructions above, and I agree to follow the exam rules.
-        </label>
+        <div className="acknowledge-labels">
+          <label className="acknowledge-label">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+            />
+            I have read and understood the instructions above, and I agree to follow the exam rules.
+          </label>
+
+          {requiresPrivacyAcknowledgement ? (
+            <label className="acknowledge-label">
+              <input
+                type="checkbox"
+                checked={privacyAcknowledged}
+                onChange={(e) => setPrivacyAcknowledged(e.target.checked)}
+              />
+              I have read and understand this privacy policy.
+            </label>
+          ) : null}
+        </div>
 
         {error && <p className="error">{error}</p>}
 
@@ -184,12 +235,7 @@ export default function ExamInstructionsModal({
           <button type="button" className="btn secondary" onClick={requestClose} disabled={loading}>
             Cancel
           </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={onConfirm}
-            disabled={!acknowledged || loading}
-          >
+          <button type="button" className="btn" onClick={onConfirm} disabled={!canBegin}>
             {loading ? "Starting..." : "Begin Exam"}
           </button>
         </div>

@@ -3,9 +3,6 @@ import DiagnosticResultProfile, { type DiagnosticProfile } from "../components/D
 import ExamInstructionsModal from "../components/ExamInstructionsModal";
 import ExamSession from "../components/ExamSession";
 import QuestionImage from "../components/QuestionImage";
-import StudentPrivacyPolicyModal, {
-  hasAcceptedPrivacyPolicy,
-} from "../components/StudentPrivacyPolicyModal";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { resetBodyScrollLock } from "../lib/scrollLock";
@@ -131,8 +128,6 @@ export default function StudentDashboard() {
     focusViolationLimit?: boolean;
   } | null>(null);
   const [loadingComprehensiveProfile, setLoadingComprehensiveProfile] = useState(false);
-  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
-  const [privacyPolicyRequired, setPrivacyPolicyRequired] = useState(false);
   const [error, setError] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
   const [startingExam, setStartingExam] = useState(false);
@@ -236,32 +231,19 @@ export default function StudentDashboard() {
     void loadComprehensiveProfile();
   }, [status?.showComprehensiveProfile, status?.comprehensiveAttemptId, loadComprehensiveProfile]);
 
-  const openPrivacyPolicy = useCallback((required: boolean) => {
-    setPrivacyPolicyRequired(required);
-    setShowPrivacyPolicy(true);
-  }, []);
-
   const handlePageNavChange = useCallback(
     (id: string) => {
       if (id === "start-exam") {
         setPageNavValue("start-exam");
         examSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-
-      if (id === "privacy-policy" && user?.id) {
-        openPrivacyPolicy(!hasAcceptedPrivacyPolicy(user.id));
       }
     },
-    [openPrivacyPolicy, setPageNavValue, user?.id]
+    [setPageNavValue]
   );
 
   useEffect(() => {
     setPageNav({
-      segments: [
-        { id: "start-exam", label: "Start Exam" },
-        { id: "privacy-policy", label: "Privacy Policy" },
-      ],
+      segments: [{ id: "start-exam", label: "Start Exam" }],
       value: "start-exam",
       onChange: handlePageNavChange,
     });
@@ -1090,13 +1072,6 @@ export default function StudentDashboard() {
         />
       )}
 
-      {showPrivacyPolicy && user?.id ? (
-        <StudentPrivacyPolicyModal
-          userId={user.id}
-          requireAcknowledgement={privacyPolicyRequired}
-          onClose={() => setShowPrivacyPolicy(false)}
-        />
-      ) : null}
     </div>
   );
 }

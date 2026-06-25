@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState, type ReactNode } from "react";
+import { FormEvent, useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import { formatFullName } from "../lib/names";
@@ -59,6 +59,7 @@ interface Props {
 
 export default function AddUserForm({ token, onCreated }: Props) {
   const programCourseOptions = useProgramCourseOptions();
+  const programCourseInitialized = useRef(false);
 
   function createEmptyForm() {
     return {
@@ -86,11 +87,19 @@ export default function AddUserForm({ token, onCreated }: Props) {
 
   useEffect(() => {
     if (programCourseOptions.length === 0) return;
+
     const first = programCourseOptions[0].id;
     setForm((current) => {
-      const programValid = programCourseOptions.some((course) => course.id === current.programCourse);
-      if (programValid) return current;
-      return { ...current, programCourse: first };
+      if (!programCourseInitialized.current) {
+        programCourseInitialized.current = true;
+        return { ...current, programCourse: first };
+      }
+
+      if (!programCourseOptions.some((course) => course.id === current.programCourse)) {
+        return { ...current, programCourse: first };
+      }
+
+      return current;
     });
   }, [programCourseOptions]);
 
@@ -205,7 +214,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
                     ? duplicateUserEmailMessage(emailDuplicate)
                     : emailChecking
                       ? "Checking email availability..."
-                      : "Used for sign-in."
+                      : undefined
                 }
               >
                 <input
@@ -255,10 +264,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
             <fieldset className="add-user-section add-user-student-panel">
               <legend>Student settings</legend>
               <div className="add-user-fields add-user-fields-2">
-                <FormField
-                  label="Year level"
-                  hint="Incoming year for this program (Architecture allows up to year 5)."
-                >
+                <FormField label="Year level" reserveHintSpace>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -279,10 +285,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
                     required
                   />
                 </FormField>
-                <FormField
-                  label="Program course"
-                  hint="Question pool and exam set for this program."
-                >
+                <FormField label="Program course" reserveHintSpace>
                   <select
                     value={form.programCourse}
                     onChange={(event) =>
@@ -304,7 +307,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
                     ))}
                   </select>
                 </FormField>
-                <FormField label="Gender" hint="Used for demographic cohort analytics.">
+                <FormField label="Gender" reserveHintSpace>
                   <select
                     value={form.gender}
                     onChange={(event) =>
@@ -319,7 +322,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
                     ))}
                   </select>
                 </FormField>
-                <FormField label="School" hint="Public or private senior high school.">
+                <FormField label="School" reserveHintSpace>
                   <select
                     value={form.schoolType}
                     onChange={(event) =>
@@ -339,7 +342,6 @@ export default function AddUserForm({ token, onCreated }: Props) {
               <div className="add-user-toggle-row">
                 <div>
                   <span className="add-user-toggle-title">QA profile</span>
-                  <p className="muted add-user-toggle-desc">Unlimited exam takes for testing.</p>
                 </div>
                 <label className="ios-toggle ios-toggle-inline" title="QA profile (unlimited exam takes)">
                   <input

@@ -1,4 +1,4 @@
-import { ChangeEvent, Fragment, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
 import {
@@ -110,6 +110,23 @@ export default function SavedQuestionsModal({
     !inline
   );
 
+  const cancelEdit = useCallback(() => {
+    setEditDraft((draft) => {
+      if (draft?.imagePreview?.startsWith("blob:")) {
+        URL.revokeObjectURL(draft.imagePreview);
+      }
+      return null;
+    });
+    setEditingId(null);
+  }, []);
+
+  const {
+    requestClose: requestCloseEdit,
+    overlayClass: editOverlayClass,
+    panelClass: editPanelClass,
+    portal: editPortal,
+  } = useAnimatedModal(cancelEdit, Boolean(editingId && editDraft));
+
   const totalQuestions = useMemo(
     () => subjects.reduce((sum, subject) => sum + (subject._count?.questions ?? 0), 0),
     [subjects]
@@ -209,16 +226,10 @@ export default function SavedQuestionsModal({
     totalItems,
   } = usePagination(questions, { resetKey: questionsResetKey });
 
-  function cancelEdit() {
+  function startEdit(question: Question) {
     if (editDraft?.imagePreview?.startsWith("blob:")) {
       URL.revokeObjectURL(editDraft.imagePreview);
     }
-    setEditingId(null);
-    setEditDraft(null);
-  }
-
-  function startEdit(question: Question) {
-    cancelEdit();
     setEditingId(question.id);
     setEditDraft({
       difficulty: question.difficulty,
@@ -340,6 +351,120 @@ export default function SavedQuestionsModal({
   }
 
   const selectedSubject = courseSubjects.find((s) => s.id === selectedSubjectId);
+  const editingQuestion = useMemo(
+    () => questions.find((question) => question.id === editingId) ?? null,
+    [questions, editingId]
+  );
+
+  function renderEditForm() {
+    if (!editDraft) return null;
+
+    return (
+      <div className="saved-questions-edit-form encoder-form-grid">
+        <div className="encoder-question-meta-row encoder-field-full">
+          <label>
+            Difficulty
+            <select
+              value={editDraft.difficulty}
+              onChange={(e) => {
+                const difficulty = e.target.value;
+                setEditDraft({
+                  ...editDraft,
+                  difficulty,
+                  bloomLevel: defaultBloomLevelForDifficulty(difficulty),
+                });
+              }}
+            >
+              <option value="EASY">Easy</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HARD">Hard</option>
+            </select>
+          </label>
+          <label>
+            Domain
+            <select
+              value={editDraft.bloomLevel}
+              onChange={(e) => setEditDraft({ ...editDraft, bloomLevel: e.target.value })}
+            >
+              {bloomOptionsForDifficulty(editDraft.difficulty).map((level) => (
+                <option key={level} value={level}>
+                  {BLOOM_LEVEL_LABELS[level]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Correct answer
+            <select
+              value={editDraft.correctOption}
+              onChange={(e) =>
+                setEditDraft({
+                  ...editDraft,
+                  correctOption: e.target.value,
+                })
+              }
+            >
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+            </select>
+          </label>
+        </div>
+        <label className="encoder-field-full">
+          Question
+          <textarea
+            value={editDraft.text}
+            onChange={(e) => setEditDraft({ ...editDraft, text: e.target.value })}
+          />
+        </label>
+        <label>
+          Option A
+          <input
+            value={editDraft.optionA}
+            onChange={(e) => setEditDraft({ ...editDraft, optionA: e.target.value })}
+          />
+        </label>
+        <label>
+          Option B
+          <input
+            value={editDraft.optionB}
+            onChange={(e) => setEditDraft({ ...editDraft, optionB: e.target.value })}
+          />
+        </label>
+        <label>
+          Option C
+          <input
+            value={editDraft.optionC}
+            onChange={(e) => setEditDraft({ ...editDraft, optionC: e.target.value })}
+          />
+        </label>
+        <label>
+          Option D
+          <input
+            value={editDraft.optionD}
+            onChange={(e) => setEditDraft({ ...editDraft, optionD: e.target.value })}
+          />
+        </label>
+        <label className="encoder-field-full">
+          Replace image (optional)
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onChange={handleImageChange}
+          />
+        </label>
+        {editDraft.imagePreview && (
+          <div className="image-preview-block encoder-field-full">
+            <img src={editDraft.imagePreview} alt="Question" className="image-preview" />
+            <button type="button" className="btn secondary btn-sm" onClick={removeExistingImage}>
+              Remove image
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const panel = (
     <>
@@ -480,212 +605,53 @@ export default function SavedQuestionsModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedQuestions.map((question) => {
-                      const isEditing = editingId === question.id;
-
-                      return (
-                        <Fragment key={question.id}>
-                          <tr className={isEditing ? "saved-questions-row-active" : undefined}>
-                            <td>
-                              <span
-                                className={`difficulty-badge ${question.difficulty.toLowerCase()}`}
-                              >
-                                {formatDifficulty(question.difficulty)}
-                              </span>
-                              <span className="muted saved-questions-bloom-tag">
-                                {BLOOM_LEVEL_LABELS[question.bloomLevel as BloomLevelId] ??
-                                  question.bloomLevel}
-                              </span>
-                            </td>
-                            <td className="saved-questions-topic-col">
-                              {question.topic?.name ?? "—"}
-                            </td>
-                            <td className="saved-questions-text-col">
-                              <span className="saved-questions-preview">{truncate(question.text)}</span>
-                              {question.imagePath && (
-                                <span className="saved-questions-image-tag">Image</span>
-                              )}
-                            </td>
-                            <td className="saved-questions-answer-col">{question.correctOption}</td>
-                            <td>
-                              <div className="action-buttons">
-                                {isEditing ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm"
-                                      disabled={savingId === question.id}
-                                      onClick={() => saveEdit(question.id, question)}
-                                    >
-                                      {savingId === question.id ? "Saving..." : "Save"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn secondary btn-sm"
-                                      onClick={cancelEdit}
-                                    >
-                                      Cancel
-                                    </button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="btn secondary btn-sm"
-                                      onClick={() => startEdit(question)}
-                                    >
-                                      Edit
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn danger btn-sm"
-                                      disabled={deletingId === question.id}
-                                      onClick={() => deleteQuestion(question.id, question.text)}
-                                    >
-                                      {deletingId === question.id ? "Deleting..." : "Delete"}
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                          {isEditing && editDraft && (
-                            <tr className="saved-questions-edit-row">
-                              <td colSpan={5}>
-                                <div className="saved-questions-edit-card">
-                                  <div className="saved-questions-edit-header">
-                                    <h3>Edit question</h3>
-                                  </div>
-                                  <div className="saved-questions-edit-form encoder-form-grid">
-                                    <div className="encoder-question-meta-row encoder-field-full">
-                                      <label>
-                                        Difficulty
-                                        <select
-                                          value={editDraft.difficulty}
-                                          onChange={(e) => {
-                                            const difficulty = e.target.value;
-                                            setEditDraft({
-                                              ...editDraft,
-                                              difficulty,
-                                              bloomLevel: defaultBloomLevelForDifficulty(difficulty),
-                                            });
-                                          }}
-                                        >
-                                          <option value="EASY">Easy</option>
-                                          <option value="MEDIUM">Medium</option>
-                                          <option value="HARD">Hard</option>
-                                        </select>
-                                      </label>
-                                      <label>
-                                        Domain
-                                        <select
-                                          value={editDraft.bloomLevel}
-                                          onChange={(e) =>
-                                            setEditDraft({ ...editDraft, bloomLevel: e.target.value })
-                                          }
-                                        >
-                                          {bloomOptionsForDifficulty(editDraft.difficulty).map((level) => (
-                                            <option key={level} value={level}>
-                                              {BLOOM_LEVEL_LABELS[level]}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </label>
-                                      <label>
-                                        Correct answer
-                                        <select
-                                          value={editDraft.correctOption}
-                                          onChange={(e) =>
-                                            setEditDraft({
-                                              ...editDraft,
-                                              correctOption: e.target.value,
-                                            })
-                                          }
-                                        >
-                                          <option value="A">A</option>
-                                          <option value="B">B</option>
-                                          <option value="C">C</option>
-                                          <option value="D">D</option>
-                                        </select>
-                                      </label>
-                                    </div>
-                                    <label className="encoder-field-full">
-                                      Question
-                                      <textarea
-                                        value={editDraft.text}
-                                        onChange={(e) =>
-                                          setEditDraft({ ...editDraft, text: e.target.value })
-                                        }
-                                      />
-                                    </label>
-                                    <label>
-                                      Option A
-                                      <input
-                                        value={editDraft.optionA}
-                                        onChange={(e) =>
-                                          setEditDraft({ ...editDraft, optionA: e.target.value })
-                                        }
-                                      />
-                                    </label>
-                                    <label>
-                                      Option B
-                                      <input
-                                        value={editDraft.optionB}
-                                        onChange={(e) =>
-                                          setEditDraft({ ...editDraft, optionB: e.target.value })
-                                        }
-                                      />
-                                    </label>
-                                    <label>
-                                      Option C
-                                      <input
-                                        value={editDraft.optionC}
-                                        onChange={(e) =>
-                                          setEditDraft({ ...editDraft, optionC: e.target.value })
-                                        }
-                                      />
-                                    </label>
-                                    <label>
-                                      Option D
-                                      <input
-                                        value={editDraft.optionD}
-                                        onChange={(e) =>
-                                          setEditDraft({ ...editDraft, optionD: e.target.value })
-                                        }
-                                      />
-                                    </label>
-                                    <label className="encoder-field-full">
-                                      Replace image (optional)
-                                      <input
-                                        type="file"
-                                        accept="image/jpeg,image/png,image/webp,image/gif"
-                                        onChange={handleImageChange}
-                                      />
-                                    </label>
-                                    {editDraft.imagePreview && (
-                                      <div className="image-preview-block encoder-field-full">
-                                        <img
-                                          src={editDraft.imagePreview}
-                                          alt="Question"
-                                          className="image-preview"
-                                        />
-                                        <button
-                                          type="button"
-                                          className="btn secondary btn-sm"
-                                          onClick={removeExistingImage}
-                                        >
-                                          Remove image
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
+                    {paginatedQuestions.map((question) => (
+                      <tr
+                        key={question.id}
+                        className={editingId === question.id ? "saved-questions-row-active" : undefined}
+                      >
+                        <td>
+                          <span
+                            className={`difficulty-badge ${question.difficulty.toLowerCase()}`}
+                          >
+                            {formatDifficulty(question.difficulty)}
+                          </span>
+                          <span className="muted saved-questions-bloom-tag">
+                            {BLOOM_LEVEL_LABELS[question.bloomLevel as BloomLevelId] ??
+                              question.bloomLevel}
+                          </span>
+                        </td>
+                        <td className="saved-questions-topic-col">
+                          {question.topic?.name ?? "—"}
+                        </td>
+                        <td className="saved-questions-text-col">
+                          <span className="saved-questions-preview">{truncate(question.text)}</span>
+                          {question.imagePath && (
+                            <span className="saved-questions-image-tag">Image</span>
                           )}
-                        </Fragment>
-                      );
-                    })}
+                        </td>
+                        <td className="saved-questions-answer-col">{question.correctOption}</td>
+                        <td>
+                          <div className="action-buttons">
+                            <button
+                              type="button"
+                              className="btn secondary btn-sm"
+                              onClick={() => startEdit(question)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn danger btn-sm"
+                              disabled={deletingId === question.id}
+                              onClick={() => deleteQuestion(question.id, question.text)}
+                            >
+                              {deletingId === question.id ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -697,15 +663,67 @@ export default function SavedQuestionsModal({
     </>
   );
 
+  const editModal =
+    editingId && editDraft && editingQuestion
+      ? editPortal(
+          <div
+            className={`${editOverlayClass} saved-question-edit-overlay`}
+            onClick={requestCloseEdit}
+          >
+            <div
+              className={editPanelClass("saved-question-edit-modal")}
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="saved-question-edit-title"
+            >
+              <div className="modal-header">
+                <div>
+                  <h2 id="saved-question-edit-title">Edit question</h2>
+                  <p className="muted section-desc">{truncate(editingQuestion.text, 120)}</p>
+                </div>
+                <button type="button" className="btn secondary" onClick={requestCloseEdit}>
+                  Close
+                </button>
+              </div>
+              <div className="modal-scroll-area">{renderEditForm()}</div>
+              <div className="modal-footer">
+                <button type="button" className="btn secondary" onClick={requestCloseEdit}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={savingId === editingId}
+                  onClick={() => void saveEdit(editingQuestion.id, editingQuestion)}
+                >
+                  {savingId === editingId ? "Saving..." : "Save changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      : null;
+
   if (inline) {
-    return <section className="card saved-panel saved-questions-modal">{panel}</section>;
+    return (
+      <>
+        <section className="card saved-panel saved-questions-modal">{panel}</section>
+        {editModal}
+      </>
+    );
   }
 
-  return portal(
-    <div className={overlayClass} onClick={requestClose}>
-      <div className={panelClass("saved-questions-modal")} onClick={(e) => e.stopPropagation()}>
-        {panel}
-      </div>
-    </div>
+  return (
+    <>
+      {portal(
+        <div className={overlayClass} onClick={requestClose}>
+          <div className={panelClass("saved-questions-modal")} onClick={(e) => e.stopPropagation()}>
+            {panel}
+          </div>
+        </div>
+      )}
+      {editModal}
+    </>
   );
 }

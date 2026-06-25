@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import {
   BLOOM_LEVEL_LABELS,
@@ -40,7 +40,6 @@ interface Topic {
 interface Props {
   subjects: Subject[];
   topics: Topic[];
-  programCourse: ProgramCourseId;
   token: string | null;
   onSaved: (message: string) => void;
 }
@@ -85,9 +84,10 @@ function isComplete(q: QuestionDraft) {
   return q.text.trim() && q.optionA.trim() && q.optionB.trim() && q.optionC.trim() && q.optionD.trim();
 }
 
-export default function QuestionEncoder({ subjects, topics, programCourse, token, onSaved }: Props) {
+export default function QuestionEncoder({ subjects, topics, token, onSaved }: Props) {
   const programCourseOptions = useProgramCourseOptions();
-  const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>(programCourse);
+  const programFilterInitialized = useRef(false);
+  const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearLevel, setYearLevel] = useState("1");
   const [subjectId, setSubjectId] = useState("");
   const [topicId, setTopicId] = useState("");
@@ -96,6 +96,12 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
   const [importing, setImporting] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (programFilterInitialized.current || programCourseOptions.length === 0) return;
+    programFilterInitialized.current = true;
+    setProgramFilter(programCourseOptions[0].id);
+  }, [programCourseOptions]);
 
   function updateQuestion(id: string, patch: Partial<QuestionDraft>) {
     setQuestions((prev) => prev.map((q) => (q.id === id ? { ...q, ...patch } : q)));
@@ -259,10 +265,6 @@ export default function QuestionEncoder({ subjects, topics, programCourse, token
   );
 
   const filteredTopics = topics.filter((t) => t.subjectId === subjectId);
-
-  useEffect(() => {
-    setProgramFilter(programCourse);
-  }, [programCourse]);
 
   useEffect(() => {
     const subjectStillValid = filteredSubjects.some((s) => s.id === subjectId);

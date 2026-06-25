@@ -802,7 +802,6 @@ export default function TeacherDashboard() {
         <QuestionEncoder
           subjects={subjects}
           topics={topics}
-          programCourse={activeProgramCourse}
           token={token}
           onSaved={(msg) => {
             toast.success(msg);
