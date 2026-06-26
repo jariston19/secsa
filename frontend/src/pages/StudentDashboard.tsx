@@ -501,6 +501,27 @@ export default function StudentDashboard() {
     [attemptId, token]
   );
 
+  const syncExamProgress = useCallback(
+    async (index: number) => {
+      if (!attemptId || !token) return;
+      try {
+        await api(
+          `/exams/${attemptId}/progress`,
+          { method: "PATCH", body: JSON.stringify({ currentQuestionIndex: index }) },
+          token
+        );
+      } catch {
+        // Best-effort sync for proctor live monitor.
+      }
+    },
+    [attemptId, token]
+  );
+
+  useEffect(() => {
+    if (!attemptId || questions.length === 0 || submittingExam) return;
+    void syncExamProgress(currentIndex);
+  }, [attemptId, currentIndex, questions.length, submittingExam, syncExamProgress]);
+
   const submitExam = useCallback(
     async (options?: { timedOut?: boolean; focusViolationLimit?: boolean }) => {
       if (!attemptId || submittingExamRef.current) return;

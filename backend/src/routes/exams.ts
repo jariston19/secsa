@@ -23,6 +23,7 @@ import {
   incomingDiagnosticAttemptFilter,
 } from "../lib/incomingDiagnostic.js";
 import { isPreboardQuestionSetType, preboardStudentYearForProgram } from "../lib/questionSetType.js";
+import { buildLiveExamMonitor } from "../services/liveExamMonitor.js";
 
 const submitSchema = z.object({
   answers: z.array(
@@ -37,6 +38,10 @@ const submitSchema = z.object({
 
 const focusWarningSchema = z.object({
   count: z.number().int().min(0),
+});
+
+const examProgressSchema = z.object({
+  currentQuestionIndex: z.number().int().min(0),
 });
 
 const saveAnswerSchema = z.object({
@@ -765,6 +770,21 @@ export async function examRoutes(app: FastifyInstance) {
     );
   });
 
+  app.get("/live-monitor", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const query = request.query as { programCourse?: string; yearLevel?: string };
+    const yearLevelRaw = query.yearLevel;
+    const yearLevel =
+      yearLevelRaw && Number.isFinite(Number(yearLevelRaw)) ? Number(yearLevelRaw) : undefined;
+
+    return buildLiveExamMonitor({
+      programCourse: query.programCourse,
+      yearLevel,
+    });
+  });
+
   app.patch("/:attemptId/answers/:questionId", async (request, reply) => {
     const user = getUser(request);
     requireRoles(user, [Role.STUDENT]);
@@ -845,6 +865,40 @@ export async function examRoutes(app: FastifyInstance) {
       where: { id: attemptId },
       data: { focusWarningCount: body.count },
       select: { id: true, focusWarningCount: true },
+    });
+
+    return { attempt: updated };
+  });
+
+  app.patch("/:attemptId/progress", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.STUDENT]);
+
+    const { attemptId } = request.params as { attemptId: string };
+    const body = examProgressSchema.parse(request.body);
+
+    const attempt = await prisma.examAttempt.findUnique({
+      where: { id: attemptId },
+      select: { id: true, studentId: true, submittedAt: true, totalItems: true },
+    });
+
+    if (!attempt || attempt.studentId !== user.id) {
+      return reply.code(404).send({ error: "Attempt not found." });
+    }
+
+    if (attempt.submittedAt) {
+      return reply.code(400).send({ error: "Attempt already submitted." });
+    }
+
+    const currentQuestionIndex = Math.min(
+      body.currentQuestionIndex,
+      Math.max(attempt.totalItems - 1, 0)
+    );
+
+    const updated = await prisma.examAttempt.update({
+      where: { id: attemptId },
+      data: { currentQuestionIndex },
+      select: { id: true, currentQuestionIndex: true },
     });
 
     return { attempt: updated };

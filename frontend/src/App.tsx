@@ -4,6 +4,7 @@ import LoginPage from "./pages/LoginPage";
 import StudentDashboard from "./pages/StudentDashboard";
 import TeacherDashboard from "./pages/TeacherDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import LiveMonitorPage from "./pages/LiveMonitorPage";
 import Layout from "./components/Layout";
 
 function ProtectedRoute({
@@ -60,6 +61,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={["SUPERADMIN"]}>
               <AdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="live"
+          element={
+            <ProtectedRoute roles={["SUPERADMIN"]}>
+              <LiveMonitorPage />
             </ProtectedRoute>
           }
         />

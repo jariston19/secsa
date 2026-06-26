@@ -2259,26 +2259,34 @@ body {
   min-height: 100dvh;
   width: 100%;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   padding:
     max(1rem, env(safe-area-inset-top))
     max(1rem, env(safe-area-inset-right))
-    max(5rem, calc(2.5rem + env(safe-area-inset-bottom, 0px)))
+    max(1.25rem, env(safe-area-inset-bottom, 0px))
     max(1rem, env(safe-area-inset-left));
   position: relative;
   overflow: hidden;
   background: linear-gradient(155deg, #e8ecf2 0%, #c5ced9 38%, #a86bb8 72%, #812294 100%);
 }
 
-.login-page-content {
+.login-page-shell {
   position: relative;
   z-index: 1;
-  width: min(420px, 100%);
-  margin-inline: auto;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  width: min(420px, 100%);
+  margin-inline: auto;
+  min-height: 0;
+}
+
+.login-page-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
   gap: 1rem;
 }
 
@@ -2295,10 +2303,10 @@ body {
 }
 
 .login-page-toolbar {
-  position: absolute;
-  top: max(1rem, env(safe-area-inset-top));
-  right: 1rem;
-  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  margin-bottom: 0.75rem;
 }
 
 .login-card {
@@ -8195,6 +8203,96 @@ td:has(.action-buttons) {
 
 .retake-approvals-row-selected {
   background: color-mix(in srgb, var(--ios-blue) 6%, transparent);
+}
+
+.live-exam-monitor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.live-exam-monitor-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.live-exam-monitor-stat strong {
+  font-size: 1.25rem;
+}
+
+.live-exam-monitor-updated {
+  font-size: 0.85rem;
+}
+
+.live-exam-monitor-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.live-exam-monitor-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 10rem;
+}
+
+.live-exam-monitor-table-wrap {
+  margin-top: 0.5rem;
+}
+
+.live-exam-monitor-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.live-exam-monitor-table th,
+.live-exam-monitor-table td {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.live-exam-monitor-table th {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.live-exam-monitor-student,
+.live-exam-monitor-exam {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.live-exam-monitor-focus-count {
+  font-weight: 700;
+  color: var(--ios-orange);
+}
+
+.live-exam-monitor-focus-warn {
+  background: color-mix(in srgb, var(--ios-orange) 8%, transparent);
+}
+
+.live-exam-monitor-focus-high {
+  background: color-mix(in srgb, var(--ios-red) 10%, transparent);
+}
+
+.live-exam-monitor-focus-high .live-exam-monitor-focus-count {
+  color: var(--ios-red);
+}
+
+.live-exam-monitor-footnote {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
 }
 
 @media (max-width: 768px) {

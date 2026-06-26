@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "../lib/auth";
+import { api } from "../lib/api";
 import { formatFullName } from "../lib/names";
 import { formatProgramCourse } from "../lib/programCourse";
 import { SidebarProvider, useSidebar } from "../lib/sidebar";
@@ -9,7 +10,14 @@ import { SidebarProvider, useSidebar } from "../lib/sidebar";
 const SUPERADMIN_SECTIONS = [
   { id: "admin", label: "Admin", path: "/admin" },
   { id: "teach", label: "Teacher Tools", path: "/teach" },
+  { id: "live", label: "Live", path: "/live" },
 ] as const;
+
+function superadminSectionFromPath(pathname: string) {
+  if (pathname.startsWith("/teach")) return "teach";
+  if (pathname.startsWith("/live")) return "live";
+  return "admin";
+}
 
 const EXPANDED_MENUS_KEY = "secsa-sidebar-expanded-menus";
 
@@ -44,11 +52,12 @@ function SidebarToggleIcon() {
 }
 
 function LayoutShell() {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const { open, toggle, close, pageNav } = useSidebar();
   const [expandedMenus, setExpandedMenus] = useState<Set<string>>(readExpandedMenus);
+  const [activeLiveExams, setActiveLiveExams] = useState(0);
   const navRef = useRef<HTMLElement>(null);
   const navScrollTopRef = useRef(0);
 
@@ -91,7 +100,32 @@ function LayoutShell() {
     nav.scrollTop = navScrollTopRef.current;
   }, [open]);
 
-  const superadminSection = location.pathname.startsWith("/teach") ? "teach" : "admin";
+  const superadminSection = superadminSectionFromPath(location.pathname);
+
+  useEffect(() => {
+    if (user?.role !== "SUPERADMIN" || !token) return;
+
+    let cancelled = false;
+
+    async function refreshLiveCount() {
+      try {
+        const live = await api<{ activeCount: number }>("/exams/live-monitor", {}, token);
+        if (!cancelled) setActiveLiveExams(live.activeCount);
+      } catch {
+        // Badge is optional.
+      }
+    }
+
+    void refreshLiveCount();
+    const timer = window.setInterval(() => {
+      void refreshLiveCount();
+    }, 30000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [user?.role, token]);
 
   function formatRole(role: string) {
     if (role === "SUPERADMIN") return "Superadmin";
@@ -231,16 +265,24 @@ function LayoutShell() {
           {user?.role === "SUPERADMIN" && (
             <div className="sidebar-section">
               <p className="sidebar-section-label">Workspace</p>
-              {SUPERADMIN_SECTIONS.map((section) => (
-                <button
-                  key={section.id}
-                  type="button"
-                  className={`sidebar-link${superadminSection === section.id ? " active" : ""}`}
-                  onClick={() => navigateSection(section.path)}
-                >
-                  {section.label}
-                </button>
-              ))}
+              {SUPERADMIN_SECTIONS.map((section) => {
+                const badge = section.id === "live" ? activeLiveExams : 0;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className={`sidebar-link sidebar-link-row${
+                      superadminSection === section.id ? " active" : ""
+                    }${badge > 0 ? " sidebar-link-has-badge" : ""}`}
+                    onClick={() => navigateSection(section.path)}
+                  >
+                    <span>{section.label}</span>
+                    {badge > 0 ? (
+                      <span className="sidebar-nav-badge sidebar-nav-badge-alert">{badge}</span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
           )}
 

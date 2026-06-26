@@ -31,11 +31,12 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <LoginBackground />
-      <div className="login-page-toolbar">
-        <ThemeToggle />
-      </div>
-      <div className="login-page-content">
-        <Card className="login-card border-white/40 bg-card/80 shadow-2xl backdrop-blur-xl">
+      <div className="login-page-shell">
+        <div className="login-page-toolbar">
+          <ThemeToggle />
+        </div>
+        <div className="login-page-content">
+          <Card className="login-card border-white/40 bg-card/80 shadow-2xl backdrop-blur-xl">
           <CardHeader className="items-center space-y-4 text-center">
             <img className="login-logo" src="/logo.png" alt="SECSA" />
             <div className="space-y-2">
@@ -81,6 +82,7 @@ export default function LoginPage() {
           </CardContent>
         </Card>
         <p className="login-credit">Created by {APP_AUTHOR}</p>
+        </div>
       </div>
     </div>
   );

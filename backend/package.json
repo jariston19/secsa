@@ -16,6 +16,7 @@
     "db:reset-qa-diagnostics": "tsx prisma/reset-qa-diagnostics.ts",
     "db:seed-trial-students": "tsx prisma/seed-trial-students.ts",
     "db:remove-trial-students": "tsx prisma/remove-trial-students.ts",
+    "db:reset-trial-student": "tsx prisma/reset-trial-student.ts",
     "db:remove-intake-batches": "tsx prisma/remove-intake-batches.ts",
     "db:generate": "prisma generate"
   },

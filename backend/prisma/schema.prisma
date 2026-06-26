@@ -215,6 +215,7 @@ model ExamAttempt {
   percentage     Float?
   passed         Boolean?
   focusWarningCount Int       @default(0)
+  currentQuestionIndex Int    @default(0)
   startedAt      DateTime    @default(now())
   submittedAt    DateTime?
   createdAt      DateTime    @default(now())
