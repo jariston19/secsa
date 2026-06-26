@@ -2,12 +2,13 @@ import { prisma } from "../lib/prisma.js";
 import { submittedAtFilter } from "../lib/analyticsSeason.js";
 import { nonQaStudentWhere } from "../lib/studentFilters.js";
 import {
-  STUDENT_MILESTONES,
   buildMilestoneMap,
   inferIntakeYear,
+  studentMilestonesForTrendsScope,
+  type MilestoneDef,
   type MilestoneAttemptRow,
 } from "../lib/studentMilestones.js";
-import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/yearLevel.js";
+import { MIN_YEAR_LEVEL } from "../lib/yearLevel.js";
 
 type AttemptRow = MilestoneAttemptRow;
 
@@ -61,7 +62,8 @@ function passRate(attempts: Array<{ passed: boolean | null }>) {
 }
 
 function buildBatchJourney(
-  studentMilestones: Map<string, Map<number, AttemptRow>>
+  studentMilestones: Map<string, Map<number, AttemptRow>>,
+  milestoneDefs: MilestoneDef[]
 ): Omit<BatchJourney, "intakeYear" | "studentCount"> & {
   correlations: Array<{
     fromYear: number;
@@ -72,7 +74,7 @@ function buildBatchJourney(
     points: Array<{ studentId: string; fromScore: number; toScore: number }>;
   }>;
 } {
-  const milestones = STUDENT_MILESTONES.map((milestone) => {
+  const milestones = milestoneDefs.map((milestone) => {
     const rows = [...studentMilestones.values()]
       .map((map) => map.get(milestone.yearLevel))
       .filter((row): row is AttemptRow => Boolean(row));
@@ -97,9 +99,9 @@ function buildBatchJourney(
     points: Array<{ studentId: string; fromScore: number; toScore: number }>;
   }> = [];
 
-  for (let index = 0; index < STUDENT_MILESTONES.length - 1; index += 1) {
-    const from = STUDENT_MILESTONES[index];
-    const to = STUDENT_MILESTONES[index + 1];
+  for (let index = 0; index < milestoneDefs.length - 1; index += 1) {
+    const from = milestoneDefs[index];
+    const to = milestoneDefs[index + 1];
     const pairs: Array<{
       studentId: string;
       fromScore: number;
@@ -217,6 +219,8 @@ export async function buildCohortTrends(filters: {
     studentsByIntake.set(intakeYear, list);
   }
 
+  const milestoneDefs = studentMilestonesForTrendsScope(filters.programCourse, students);
+  const studentsById = new Map(students.map((student) => [student.id, student]));
   const batchJourneys: BatchJourney[] = [];
 
   for (const [intakeYear, batchStudentIds] of [...studentsByIntake.entries()].sort(
@@ -225,8 +229,9 @@ export async function buildCohortTrends(filters: {
     const studentMilestones = new Map<string, Map<number, AttemptRow>>();
 
     for (const studentId of batchStudentIds) {
+      const student = studentsById.get(studentId);
       const studentAttempts = attemptsByStudent.get(studentId) ?? [];
-      const milestoneMap = buildMilestoneMap(studentAttempts);
+      const milestoneMap = buildMilestoneMap(studentAttempts, student?.programCourse);
       if (milestoneMap.size > 0) {
         studentMilestones.set(studentId, milestoneMap);
       }
@@ -235,7 +240,7 @@ export async function buildCohortTrends(filters: {
     batchJourneys.push({
       intakeYear,
       studentCount: batchStudentIds.length,
-      ...buildBatchJourney(studentMilestones),
+      ...buildBatchJourney(studentMilestones, milestoneDefs),
     });
   }
 
@@ -254,6 +259,9 @@ export async function buildCohortTrends(filters: {
     availableBatches,
     batchJourneys: filters.intakeYear != null && selectedBatch ? [selectedBatch] : batchJourneys,
     selectedBatch,
-    yearRange: { min: MIN_YEAR_LEVEL, max: MAX_YEAR_LEVEL },
+    yearRange: {
+      min: MIN_YEAR_LEVEL,
+      max: milestoneDefs[milestoneDefs.length - 1]?.yearLevel ?? MIN_YEAR_LEVEL,
+    },
   };
 }

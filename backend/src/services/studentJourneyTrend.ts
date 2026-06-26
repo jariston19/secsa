@@ -1,15 +1,15 @@
 import { prisma } from "../lib/prisma.js";
 import {
-  STUDENT_MILESTONES,
   buildMilestoneMap,
   inferIntakeYear,
+  studentMilestonesForProgram,
   type MilestoneAttemptRow,
 } from "../lib/studentMilestones.js";
 
 export async function buildStudentJourneyTrend(studentId: string) {
   const student = await prisma.user.findUnique({
     where: { id: studentId },
-    select: { id: true, createdAt: true, yearLevel: true },
+    select: { id: true, createdAt: true, yearLevel: true, programCourse: true },
   });
 
   if (!student) {
@@ -38,10 +38,11 @@ export async function buildStudentJourneyTrend(studentId: string) {
       questionSet: attempt.questionSet,
     }));
 
-  const milestoneMap = buildMilestoneMap(rows);
+  const milestoneMap = buildMilestoneMap(rows, student.programCourse);
   const intakeYear = inferIntakeYear(rows, student);
+  const milestoneDefs = studentMilestonesForProgram(student.programCourse);
 
-  const milestones = STUDENT_MILESTONES.map((milestone) => {
+  const milestones = milestoneDefs.map((milestone) => {
     const attempt = milestoneMap.get(milestone.yearLevel);
     if (!attempt) {
       return {
@@ -77,9 +78,9 @@ export async function buildStudentJourneyTrend(studentId: string) {
     direction: "improved" | "declined" | "stable";
   }> = [];
 
-  for (let index = 0; index < STUDENT_MILESTONES.length - 1; index += 1) {
-    const from = STUDENT_MILESTONES[index];
-    const to = STUDENT_MILESTONES[index + 1];
+  for (let index = 0; index < milestoneDefs.length - 1; index += 1) {
+    const from = milestoneDefs[index];
+    const to = milestoneDefs[index + 1];
     const fromAttempt = milestoneMap.get(from.yearLevel);
     const toAttempt = milestoneMap.get(to.yearLevel);
     if (!fromAttempt || !toAttempt) continue;

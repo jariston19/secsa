@@ -31,6 +31,11 @@ export function maxYearLevelForProgram(programCourse?: string | null) {
   return PROGRAM_MAX_YEAR_LEVELS[programCourse] ?? 4;
 }
 
+/** Highest incoming-year milestone shown in cohort journey analytics. */
+export function studentMilestoneMaxYear(programCourse?: string | null) {
+  return maxYearLevelForProgram(programCourse === "ALL" ? null : programCourse);
+}
+
 export function toProgramSlug(label: string) {
   const slug = label
     .trim()

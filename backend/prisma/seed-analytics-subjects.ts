@@ -1524,7 +1524,9 @@ export async function ensureAnalyticsSubjects(teacher: Pick<User, "id">) {
 
   for (const programCourse of DEMO_PROGRAM_COURSES) {
     const comprehensiveByYear = [];
-    for (const yearLevel of [2, 3, 4] as const) {
+    const comprehensiveYears =
+      programCourse === "ARCHITECTURE" ? ([2, 3, 4, 5] as const) : ([2, 3, 4] as const);
+    for (const yearLevel of comprehensiveYears) {
       const comprehensive = await upsertComprehensiveQuestionSet({
         teacherId: teacher.id,
         programCourse,

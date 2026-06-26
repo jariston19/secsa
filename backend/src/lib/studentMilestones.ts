@@ -1,4 +1,5 @@
 import { QuestionSetType } from "@prisma/client";
+import { maxYearLevelForProgram } from "./yearLevel.js";
 
 export type MilestoneKind = "diagnostic" | "comprehensive";
 
@@ -8,12 +9,41 @@ export interface MilestoneDef {
   label: string;
 }
 
-export const STUDENT_MILESTONES: MilestoneDef[] = [
+const FOUR_YEAR_MILESTONES: MilestoneDef[] = [
   { yearLevel: 1, kind: "diagnostic", label: "Incoming Y1 — Diagnostic" },
   { yearLevel: 2, kind: "comprehensive", label: "Incoming Y2 — Comprehensive" },
   { yearLevel: 3, kind: "comprehensive", label: "Incoming Y3 — Comprehensive" },
   { yearLevel: 4, kind: "comprehensive", label: "Incoming Y4 — Comprehensive" },
 ];
+
+const ARCHITECTURE_Y5_MILESTONE: MilestoneDef = {
+  yearLevel: 5,
+  kind: "comprehensive",
+  label: "Incoming Y5 — Comprehensive",
+};
+
+/** Default four-year milestone track (IT, CE, ME, EE). */
+export const STUDENT_MILESTONES: MilestoneDef[] = FOUR_YEAR_MILESTONES;
+
+export function studentMilestonesForProgram(programCourse?: string | null) {
+  const milestones = [...FOUR_YEAR_MILESTONES];
+  if (maxYearLevelForProgram(programCourse) > FOUR_YEAR_MILESTONES.length) {
+    milestones.push(ARCHITECTURE_Y5_MILESTONE);
+  }
+  return milestones;
+}
+
+/** Milestone columns for cohort trends when multiple programs are in scope. */
+export function studentMilestonesForTrendsScope(
+  programCourse?: string | null,
+  students?: Array<{ programCourse: string | null }>
+) {
+  if (programCourse) return studentMilestonesForProgram(programCourse);
+  const hasArchitecture = students?.some((student) => student.programCourse === "ARCHITECTURE");
+  return hasArchitecture
+    ? studentMilestonesForProgram("ARCHITECTURE")
+    : studentMilestonesForProgram(null);
+}
 
 export type MilestoneAttemptRow = {
   percentage: number | null;
@@ -86,9 +116,12 @@ export function inferIntakeYear(
   return null;
 }
 
-export function buildMilestoneMap(attempts: MilestoneAttemptRow[]) {
+export function buildMilestoneMap(
+  attempts: MilestoneAttemptRow[],
+  programCourse?: string | null
+) {
   const milestoneMap = new Map<number, MilestoneAttemptRow>();
-  for (const milestone of STUDENT_MILESTONES) {
+  for (const milestone of studentMilestonesForProgram(programCourse)) {
     const picked = pickMilestoneAttempt(attempts, milestone);
     if (picked) milestoneMap.set(milestone.yearLevel, picked);
   }

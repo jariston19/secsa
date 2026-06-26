@@ -16,7 +16,7 @@ import {
   findInProgressAttempt,
   type InProgressExamAttempt,
 } from "../services/inProgressExam.js";
-import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, yearLevelSchema } from "../lib/yearLevel.js";
+import { maxYearLevelForProgram, MIN_YEAR_LEVEL, yearLevelSchema } from "../lib/yearLevel.js";
 import {
   findDeployedIncomingDiagnostic,
   findDeployedIncomingDiagnosticWithConfigs,
@@ -155,7 +155,8 @@ async function getQaExamOptions(programCourse: string) {
     comprehensiveSets.map((set) => [set.yearLevel, set.name])
   );
 
-  return Array.from({ length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 }, (_, i) => {
+  const maxYearLevel = maxYearLevelForProgram(programCourse);
+  return Array.from({ length: maxYearLevel - MIN_YEAR_LEVEL + 1 }, (_, i) => {
     const yearLevel = MIN_YEAR_LEVEL + i;
 
     if (yearLevel === MIN_YEAR_LEVEL) {

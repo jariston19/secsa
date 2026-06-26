@@ -13,27 +13,38 @@ import { useAnalyticsSeason } from "../lib/analyticsSeason";
 import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
 import {
   formatProgramCourse,
+  studentMilestoneMaxYear,
   type ProgramCourseFilter,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
 
 type IntakeBatchFilter = "ALL" | string;
-type TransitionFilter = "1-2" | "2-3" | "3-4";
+type TransitionFilter = `${number}-${number}`;
 
-const TRANSITION_OPTIONS: Array<{
-  id: TransitionFilter;
-  fromYear: number;
-  toYear: number;
-  label: string;
-}> = [
-  { id: "1-2", fromYear: 1, toYear: 2, label: "Y1 Diagnostic → Y2 Comprehensive" },
-  { id: "2-3", fromYear: 2, toYear: 3, label: "Y2 → Y3 Comprehensive" },
-  { id: "3-4", fromYear: 3, toYear: 4, label: "Y3 → Y4 Comprehensive" },
-];
+function buildTransitionOptions(milestoneYears: number[]) {
+  return milestoneYears.slice(0, -1).map((fromYear, index) => {
+    const toYear = milestoneYears[index + 1];
+    const id = `${fromYear}-${toYear}` as TransitionFilter;
+    if (fromYear === 1) {
+      return {
+        id,
+        fromYear,
+        toYear,
+        label: "Y1 Diagnostic → Y2 Comprehensive",
+      };
+    }
+    return {
+      id,
+      fromYear,
+      toYear,
+      label: `Y${fromYear} → Y${toYear} Comprehensive`,
+    };
+  });
+}
 
 const TRANSITION_FROM_COLOR = "#007AFF";
 const TRANSITION_TO_COLOR = "#34C759";
-const MILESTONE_COLORS = ["#007AFF", "#34C759", "#FF9500", "#AF52DE"];
+const MILESTONE_COLORS = ["#007AFF", "#34C759", "#FF9500", "#AF52DE", "#5856D6"];
 
 function shortMilestoneLabel(fullLabel: string) {
   if (fullLabel.includes("Diagnostic")) {
@@ -118,9 +129,28 @@ export default function AnalyticsTrends({ token }: Props) {
     return null;
   }, [data, intakeBatchFilter]);
 
+  const milestoneYears = useMemo(() => {
+    const fromData = data?.batchJourneys[0]?.milestones.map((milestone) => milestone.yearLevel) ?? [];
+    if (fromData.length > 0) return fromData;
+    const maxYear =
+      courseFilter === "ALL" ? 4 : studentMilestoneMaxYear(courseFilter);
+    return Array.from({ length: maxYear }, (_, index) => index + 1);
+  }, [data, courseFilter]);
+
+  const transitionOptions = useMemo(
+    () => buildTransitionOptions(milestoneYears),
+    [milestoneYears]
+  );
+
+  useEffect(() => {
+    if (!transitionOptions.some((option) => option.id === transitionFilter)) {
+      setTransitionFilter(transitionOptions[0]?.id ?? "1-2");
+    }
+  }, [transitionOptions, transitionFilter]);
+
   const activeTransitionMeta = useMemo(
-    () => TRANSITION_OPTIONS.find((option) => option.id === transitionFilter) ?? TRANSITION_OPTIONS[0],
-    [transitionFilter]
+    () => transitionOptions.find((option) => option.id === transitionFilter) ?? transitionOptions[0],
+    [transitionFilter, transitionOptions]
   );
 
   const activeTransition = useMemo(() => {
@@ -238,7 +268,7 @@ export default function AnalyticsTrends({ token }: Props) {
                     setTransitionFilter(event.target.value as TransitionFilter)
                   }
                 >
-                  {TRANSITION_OPTIONS.map((option) => (
+                  {transitionOptions.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.label}
                     </option>
@@ -308,10 +338,9 @@ export default function AnalyticsTrends({ token }: Props) {
                     <tr>
                       <th>Batch</th>
                       <th>Students</th>
-                      <th>Y1 avg</th>
-                      <th>Y2 avg</th>
-                      <th>Y3 avg</th>
-                      <th>Y4 avg</th>
+                      {milestoneYears.map((yearLevel) => (
+                        <th key={yearLevel}>Y{yearLevel} avg</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>

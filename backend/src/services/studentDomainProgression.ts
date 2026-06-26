@@ -5,13 +5,18 @@ import {
   BLOOM_LEVEL_SHORT_LABELS,
 } from "../lib/bloomLevel.js";
 import { prisma } from "../lib/prisma.js";
-import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/yearLevel.js";
+import { maxYearLevelForProgram, MIN_YEAR_LEVEL } from "../lib/yearLevel.js";
 
 function pct(correct: number, total: number) {
   return total > 0 ? (correct / total) * 100 : 0;
 }
 
 export async function buildStudentDomainProgression(studentId: string) {
+  const student = await prisma.user.findUnique({
+    where: { id: studentId },
+    select: { programCourse: true },
+  });
+
   const attempts = await prisma.examAttempt.findMany({
     where: { studentId, submittedAt: { not: null } },
     include: {
@@ -29,8 +34,9 @@ export async function buildStudentDomainProgression(studentId: string) {
     latestByYear.set(attempt.questionSet.yearLevel, attempt);
   }
 
+  const maxYearLevel = maxYearLevelForProgram(student?.programCourse);
   const yearLevels = Array.from(
-    { length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 },
+    { length: maxYearLevel - MIN_YEAR_LEVEL + 1 },
     (_, index) => MIN_YEAR_LEVEL + index
   );
 

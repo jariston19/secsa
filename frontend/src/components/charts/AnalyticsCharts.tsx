@@ -1630,6 +1630,12 @@ export function StudentJourneyLineChart({
     return <p className="muted">No multi-year exam history yet for this student.</p>;
   }
 
+  const maxMilestoneYear = Math.max(...milestones.map((milestone) => milestone.yearLevel));
+  const milestoneFootnote =
+    maxMilestoneYear >= 5
+      ? "Y1 diagnostic, Y2–Y5 comprehensive"
+      : "Y1 diagnostic, Y2–Y4 comprehensive";
+
   const width = compact ? 280 : 360;
   const height = compact ? 140 : 200;
   const pad = compact
@@ -1717,11 +1723,11 @@ export function StudentJourneyLineChart({
       {!compact ? (
         intakeYear != null ? (
           <p className="muted chart-progression-note">
-            Intake batch {intakeYear} · score at each incoming-year milestone (Y1 diagnostic, Y2–Y4 comprehensive).
+            Intake batch {intakeYear} · score at each incoming-year milestone ({milestoneFootnote}).
           </p>
         ) : (
           <p className="muted chart-progression-note">
-            Score at each incoming-year milestone (Y1 diagnostic, Y2–Y4 comprehensive).
+            Score at each incoming-year milestone ({milestoneFootnote}).
           </p>
         )
       ) : null}
