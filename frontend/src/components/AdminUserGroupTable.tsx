@@ -1,22 +1,12 @@
-import { Fragment, useMemo } from "react";
-import { parseYearLevel, sanitizeYearInput } from "../lib/constants";
+import { useMemo } from "react";
+import { formatDisplayNamePart } from "../lib/names";
 import {
-  DEFAULT_PROGRAM_COURSE,
   abbreviateProgramCourse,
   formatProgramCourse,
 } from "../lib/programCourse";
-import { useProgramCourseOptions } from "../lib/programs";
 import {
-  duplicateUserEmailMessage,
-  findDuplicateUserEmail,
-} from "../lib/userEmailDuplicates";
-import {
-  GENDER_OPTIONS,
-  SCHOOL_TYPE_OPTIONS,
   formatGender,
   formatSchoolType,
-  type GenderId,
-  type SchoolTypeId,
 } from "../lib/studentDemographics";
 
 export interface UserRow {
@@ -27,8 +17,8 @@ export interface UserRow {
   role: "STUDENT" | "TEACHER" | "SUPERADMIN";
   yearLevel: number | null;
   programCourse: string | null;
-  gender: GenderId | null;
-  schoolType: SchoolTypeId | null;
+  gender: import("../lib/studentDemographics").GenderId | null;
+  schoolType: import("../lib/studentDemographics").SchoolTypeId | null;
   isActive: boolean;
   qaUnlimited: boolean;
 }
@@ -40,8 +30,8 @@ export interface UserEditDraft {
   role: string;
   yearLevel: string;
   programCourse: string;
-  gender: GenderId;
-  schoolType: SchoolTypeId;
+  gender: import("../lib/studentDemographics").GenderId;
+  schoolType: import("../lib/studentDemographics").SchoolTypeId;
   isActive: boolean;
   qaUnlimited: boolean;
   password: string;
@@ -51,25 +41,15 @@ type UserGroup = "student" | "teacher" | "admin";
 
 interface Props {
   users: UserRow[];
-  allUsers: UserRow[];
   group: UserGroup;
   hideYearColumn?: boolean;
-  archiveMode?: boolean;
-  editingId: string | null;
-  editDraft: UserEditDraft | null;
-  savingId: string | null;
-  deletingId: string | null;
+  selectedIds: Set<string>;
   togglingId: string | null;
-  restoringId?: string | null;
   currentUserId: string | null;
   emptyMessage?: string;
-  onStartEdit: (user: UserRow) => void;
-  onCancelEdit: () => void;
-  onSaveEdit: (id: string) => void;
-  onDelete: (user: UserRow) => void;
+  onToggleSelect: (userId: string, selected: boolean) => void;
+  onToggleSelectAll: (userIds: string[], selected: boolean) => void;
   onToggleActive: (user: UserRow, isActive: boolean) => void;
-  onRestore?: (user: UserRow) => void;
-  setEditDraft: React.Dispatch<React.SetStateAction<UserEditDraft | null>>;
 }
 
 function formatRole(role: string) {
@@ -79,231 +59,31 @@ function formatRole(role: string) {
   return role;
 }
 
-function UserEditFields({
-  editDraft,
-  setEditDraft,
-  showRole,
-  showYearFields,
-  showCourseFields,
-  showGenderField,
-  showSchoolField,
-  showQaFields,
-}: {
-  editDraft: UserEditDraft;
-  setEditDraft: React.Dispatch<React.SetStateAction<UserEditDraft | null>>;
-  showRole: boolean;
-  showYearFields: boolean;
-  showCourseFields: boolean;
-  showGenderField: boolean;
-  showSchoolField: boolean;
-  showQaFields: boolean;
-}) {
-  const programCourseOptions = useProgramCourseOptions();
-
-  return (
-    <div className="admin-user-edit-fields">
-      {showRole && (
-        <label>
-          <span className="admin-user-edit-label">Role</span>
-          <span className="admin-user-edit-control">
-            <select
-              className="table-input"
-              value={editDraft.role}
-              onChange={(e) =>
-                setEditDraft((draft) => draft && { ...draft, role: e.target.value })
-              }
-            >
-              <option value="STUDENT">Student</option>
-              <option value="TEACHER">Teacher</option>
-              <option value="SUPERADMIN">Superadmin</option>
-            </select>
-          </span>
-        </label>
-      )}
-      {showYearFields && editDraft.role === "STUDENT" && (
-        <label className="admin-user-edit-field-narrow">
-          <span className="admin-user-edit-label">Year level</span>
-          <span className="admin-user-edit-control">
-            <input
-              className="table-input table-input-narrow"
-              type="text"
-              inputMode="numeric"
-              value={editDraft.yearLevel}
-              onChange={(e) =>
-                setEditDraft(
-                  (draft) =>
-                    draft && {
-                      ...draft,
-                      yearLevel: sanitizeYearInput(e.target.value),
-                    }
-                )
-              }
-              onBlur={() =>
-                setEditDraft(
-                  (draft) =>
-                    draft && {
-                      ...draft,
-                      yearLevel: String(parseYearLevel(draft.yearLevel, draft.programCourse)),
-                    }
-                )
-              }
-            />
-          </span>
-        </label>
-      )}
-      {showCourseFields && editDraft.role === "STUDENT" && (
-        <label>
-          <span className="admin-user-edit-label">Program course</span>
-          <span className="admin-user-edit-control">
-            <select
-              className="table-input"
-              value={editDraft.programCourse}
-              onChange={(e) =>
-                setEditDraft((draft) => {
-                  if (!draft) return draft;
-                  const programCourse = e.target.value;
-                  return {
-                    ...draft,
-                    programCourse,
-                    yearLevel: String(parseYearLevel(draft.yearLevel, programCourse)),
-                  };
-                })
-              }
-            >
-              {programCourseOptions.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.label}
-                </option>
-              ))}
-            </select>
-          </span>
-        </label>
-      )}
-      {showGenderField && editDraft.role === "STUDENT" && (
-        <label>
-          <span className="admin-user-edit-label">Gender</span>
-          <span className="admin-user-edit-control">
-            <select
-              className="table-input"
-              value={editDraft.gender}
-              onChange={(e) =>
-                setEditDraft(
-                  (draft) =>
-                    draft && { ...draft, gender: e.target.value as GenderId }
-                )
-              }
-            >
-              {GENDER_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </span>
-        </label>
-      )}
-      {showSchoolField && editDraft.role === "STUDENT" && (
-        <label>
-          <span className="admin-user-edit-label">School</span>
-          <span className="admin-user-edit-control">
-            <select
-              className="table-input"
-              value={editDraft.schoolType}
-              onChange={(e) =>
-                setEditDraft(
-                  (draft) =>
-                    draft && { ...draft, schoolType: e.target.value as SchoolTypeId }
-                )
-              }
-            >
-              {SCHOOL_TYPE_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </span>
-        </label>
-      )}
-      {showQaFields && editDraft.role === "STUDENT" && (
-        <label>
-          <span className="admin-user-edit-label">QA profile</span>
-          <span className="admin-user-edit-control">
-            <input
-              type="checkbox"
-              checked={editDraft.qaUnlimited}
-              onChange={(e) =>
-                setEditDraft(
-                  (draft) => draft && { ...draft, qaUnlimited: e.target.checked }
-                )
-              }
-            />
-          </span>
-        </label>
-      )}
-      <label>
-        <span className="admin-user-edit-label">New password</span>
-        <span className="admin-user-edit-control">
-          <input
-            className="table-input"
-            type="password"
-            placeholder="Leave blank to keep current"
-            value={editDraft.password}
-            onChange={(e) =>
-              setEditDraft((draft) => draft && { ...draft, password: e.target.value })
-            }
-            minLength={6}
-          />
-        </span>
-      </label>
-    </div>
-  );
-}
-
 export default function AdminUserGroupTable({
   users,
-  allUsers,
   group,
   hideYearColumn = false,
-  archiveMode = false,
-  editingId,
-  editDraft,
-  savingId,
-  deletingId,
+  selectedIds,
   togglingId,
-  restoringId = null,
   currentUserId,
   emptyMessage = "No accounts found.",
-  onStartEdit,
-  onCancelEdit,
-  onSaveEdit,
-  onDelete,
+  onToggleSelect,
+  onToggleSelectAll,
   onToggleActive,
-  onRestore,
-  setEditDraft,
 }: Props) {
-  const programCourseOptions = useProgramCourseOptions();
-  const editingEmailDuplicate = useMemo(() => {
-    if (!editingId || !editDraft?.email.trim()) return null;
-    return findDuplicateUserEmail(allUsers, editDraft.email, editingId);
-  }, [allUsers, editDraft?.email, editingId]);
   const showYearColumn = group === "student" && !hideYearColumn;
   const showCourseColumn = group === "student";
   const showGenderCol = group === "student";
   const showSchoolCol = group === "student";
   const showQaColumn = group === "student";
-  const showRoleColumn = false;
   const showActiveColumn = group !== "admin";
-  const colSpan =
-    3 +
-    (showRoleColumn ? 1 : 0) +
-    (showYearColumn ? 1 : 0) +
-    (showCourseColumn ? 1 : 0) +
-    (showGenderCol ? 1 : 0) +
-    (showSchoolCol ? 1 : 0) +
-    (showActiveColumn ? 1 : 0) +
-    (showQaColumn ? 1 : 0) +
-    1;
+  const showEnabledColumn = group === "admin";
+
+  const pageUserIds = useMemo(() => users.map((user) => user.id), [users]);
+  const allPageSelected =
+    pageUserIds.length > 0 && pageUserIds.every((id) => selectedIds.has(id));
+  const somePageSelected =
+    !allPageSelected && pageUserIds.some((id) => selectedIds.has(id));
 
   if (users.length === 0) {
     return <p className="muted admin-user-group-empty">{emptyMessage}</p>;
@@ -314,354 +94,117 @@ export default function AdminUserGroupTable({
       <table className="admin-users-table">
         <thead>
           <tr>
+            <th className="admin-users-select-cell">
+              <input
+                type="checkbox"
+                checked={allPageSelected}
+                ref={(input) => {
+                  if (input) input.indeterminate = somePageSelected;
+                }}
+                onChange={(e) => onToggleSelectAll(pageUserIds, e.target.checked)}
+                aria-label="Select all on this page"
+              />
+            </th>
             <th>First name</th>
             <th>Last name</th>
             <th>Email</th>
-            {showRoleColumn && <th>Role</th>}
             {showYearColumn && <th className="admin-users-year-cell">Year</th>}
             {showCourseColumn && <th className="admin-users-course-cell">Course</th>}
             {showGenderCol && <th className="admin-users-gender-cell">Gender</th>}
             {showSchoolCol && <th className="admin-users-school-cell">School</th>}
             {showActiveColumn && <th className="admin-users-active-cell">Active</th>}
             {showQaColumn && <th className="admin-users-qa-cell">QA</th>}
-            <th>Actions</th>
+            {showEnabledColumn && <th className="admin-users-enabled-cell">Enabled</th>}
           </tr>
         </thead>
         <tbody>
           {users.map((user) => {
-            const isEditing = editingId === user.id;
             const isStudentRow = user.role === "STUDENT";
             const isAdminRow = user.role === "SUPERADMIN";
-            const editingAsStudent = editDraft?.role === "STUDENT";
+            const isSelected = selectedIds.has(user.id);
 
             return (
-              <Fragment key={user.id}>
-                <tr className={isEditing ? "admin-users-editing-row" : undefined}>
-                  <td>
-                    {isEditing ? (
-                      <input
-                        className="table-input"
-                        value={editDraft?.firstName ?? ""}
-                        onChange={(e) =>
-                          setEditDraft(
-                            (draft) => draft && { ...draft, firstName: e.target.value }
-                          )
-                        }
-                      />
-                    ) : (
-                      user.firstName
-                    )}
+              <tr key={user.id} className={isSelected ? "admin-users-selected-row" : undefined}>
+                <td className="admin-users-select-cell">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => onToggleSelect(user.id, e.target.checked)}
+                    aria-label={`Select ${formatDisplayNamePart(user.firstName)} ${formatDisplayNamePart(user.lastName)}`}
+                  />
+                </td>
+                <td>{formatDisplayNamePart(user.firstName)}</td>
+                <td>{formatDisplayNamePart(user.lastName)}</td>
+                <td>{user.email}</td>
+                {showYearColumn && (
+                  <td className="admin-users-year-cell">
+                    {isStudentRow ? user.yearLevel ?? "—" : "—"}
                   </td>
-                  <td>
-                    {isEditing ? (
-                      <input
-                        className="table-input"
-                        value={editDraft?.lastName ?? ""}
-                        onChange={(e) =>
-                          setEditDraft(
-                            (draft) => draft && { ...draft, lastName: e.target.value }
-                          )
-                        }
-                      />
-                    ) : (
-                      user.lastName
-                    )}
-                  </td>
-                  <td>
-                    {isEditing ? (
-                      <div className="admin-user-email-edit">
-                        <input
-                          className="table-input"
-                          type="email"
-                          value={editDraft?.email ?? ""}
-                          onChange={(e) =>
-                            setEditDraft((draft) => draft && { ...draft, email: e.target.value })
-                          }
-                          aria-invalid={editingEmailDuplicate ? true : undefined}
-                        />
-                        {editingEmailDuplicate && (
-                          <span className="field-hint field-hint-error" role="alert">
-                            {duplicateUserEmailMessage(editingEmailDuplicate)}
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      user.email
-                    )}
-                  </td>
-                  {showRoleColumn && (
-                    <td>
-                      {isEditing ? (
-                        <select
-                          className="table-input"
-                          value={editDraft?.role ?? "STUDENT"}
-                          onChange={(e) =>
-                            setEditDraft((draft) => draft && { ...draft, role: e.target.value })
-                          }
-                        >
-                          <option value="STUDENT">Student</option>
-                          <option value="TEACHER">Teacher</option>
-                          <option value="SUPERADMIN">Superadmin</option>
-                        </select>
-                      ) : (
-                        formatRole(user.role)
-                      )}
-                    </td>
-                  )}
-                  {showYearColumn && (
-                    <td className="admin-users-year-cell">
-                      {isEditing && editingAsStudent ? (
-                        <input
-                          className="table-input table-input-narrow"
-                          type="text"
-                          inputMode="numeric"
-                          value={editDraft.yearLevel}
-                          onChange={(e) =>
-                            setEditDraft(
-                              (draft) =>
-                                draft && {
-                                  ...draft,
-                                  yearLevel: sanitizeYearInput(e.target.value),
-                                }
-                            )
-                          }
-                          onBlur={() =>
-                            setEditDraft(
-                              (draft) =>
-                                draft && {
-                                  ...draft,
-                                  yearLevel: String(parseYearLevel(draft.yearLevel, draft.programCourse)),
-                                }
-                            )
-                          }
-                        />
-                      ) : isStudentRow ? (
-                        user.yearLevel ?? "—"
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  )}
-                  {showCourseColumn && (
-                    <td className="admin-users-course-cell">
-                      {isEditing && editingAsStudent ? (
-                        <select
-                          className="table-input table-input-narrow"
-                          value={editDraft.programCourse}
-                          onChange={(e) =>
-                            setEditDraft(
-                              (draft) =>
-                                draft && { ...draft, programCourse: e.target.value }
-                            )
-                          }
-                        >
-                          {programCourseOptions.map((course) => (
-                            <option key={course.id} value={course.id}>
-                              {course.abbr}
-                            </option>
-                          ))}
-                        </select>
-                      ) : isStudentRow ? (
-                        <span title={formatProgramCourse(user.programCourse)}>
-                          {abbreviateProgramCourse(user.programCourse)}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  )}
-                  {showGenderCol && (
-                    <td className="admin-users-gender-cell">
-                      {isEditing && editingAsStudent ? (
-                        <select
-                          className="table-input table-input-narrow"
-                          value={editDraft.gender}
-                          onChange={(e) =>
-                            setEditDraft(
-                              (draft) =>
-                                draft && { ...draft, gender: e.target.value as GenderId }
-                            )
-                          }
-                        >
-                          {GENDER_OPTIONS.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : isStudentRow ? (
-                        formatGender(user.gender)
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  )}
-                  {showSchoolCol && (
-                    <td className="admin-users-school-cell">
-                      {isEditing && editingAsStudent ? (
-                        <select
-                          className="table-input table-input-narrow"
-                          value={editDraft.schoolType}
-                          onChange={(e) =>
-                            setEditDraft(
-                              (draft) =>
-                                draft && {
-                                  ...draft,
-                                  schoolType: e.target.value as SchoolTypeId,
-                                }
-                            )
-                          }
-                        >
-                          {SCHOOL_TYPE_OPTIONS.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : isStudentRow ? (
-                        formatSchoolType(user.schoolType)
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  )}
-                  {showActiveColumn && (
-                    <td className="admin-users-active-cell">
-                      {isAdminRow ? (
-                        "—"
-                      ) : isEditing ? (
-                        <input
-                          type="checkbox"
-                          checked={editDraft?.isActive ?? true}
-                          onChange={(e) =>
-                            setEditDraft(
-                              (draft) => draft && { ...draft, isActive: e.target.checked }
-                            )
-                          }
-                        />
-                      ) : user.isActive ? (
-                        <span title="Active">Y</span>
-                      ) : (
-                        <span title="Inactive">N</span>
-                      )}
-                    </td>
-                  )}
-                  {showQaColumn && (
-                    <td className="admin-users-qa-cell">
-                      {isEditing && editingAsStudent ? (
-                        <input
-                          type="checkbox"
-                          checked={editDraft.qaUnlimited}
-                          onChange={(e) =>
-                            setEditDraft(
-                              (draft) => draft && { ...draft, qaUnlimited: e.target.checked }
-                            )
-                          }
-                        />
-                      ) : user.qaUnlimited ? (
-                        "Y"
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  )}
-                  <td className="admin-users-actions-cell">
-                    <div className="action-buttons">
-                      {isEditing ? (
-                        <>
-                          <button
-                            type="button"
-                            className="btn btn-sm"
-                            disabled={savingId === user.id || Boolean(editingEmailDuplicate)}
-                            onClick={() => onSaveEdit(user.id)}
-                          >
-                            {savingId === user.id ? "Saving..." : "Save"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn secondary btn-sm"
-                            onClick={onCancelEdit}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          {!archiveMode ? (
-                            <button
-                              type="button"
-                              className="btn secondary btn-sm"
-                              onClick={() => onStartEdit(user)}
-                            >
-                              Edit
-                            </button>
-                          ) : null}
-                          {archiveMode && onRestore ? (
-                            <button
-                              type="button"
-                              className="btn btn-sm"
-                              disabled={restoringId === user.id}
-                              onClick={() => onRestore(user)}
-                            >
-                              {restoringId === user.id ? "Restoring…" : "Restore"}
-                            </button>
-                          ) : isAdminRow ? (
-                            <label
-                              className="ios-toggle ios-toggle-inline"
-                              title={
-                                currentUserId === user.id
-                                  ? "Cannot disable your own account"
-                                  : user.isActive
-                                    ? "Enabled — click to disable"
-                                    : "Disabled — click to enable"
-                              }
-                            >
-                              <input
-                                type="checkbox"
-                                checked={user.isActive}
-                                disabled={togglingId === user.id || currentUserId === user.id}
-                                onChange={(e) => onToggleActive(user, e.target.checked)}
-                              />
-                              <span className="ios-toggle-slider" aria-hidden="true" />
-                              <span className="sr-only">
-                                {user.isActive ? "Disable" : "Enable"} {user.firstName}{" "}
-                                {user.lastName}
-                              </span>
-                            </label>
-                          ) : (
-                            currentUserId !== user.id && (
-                              <button
-                                type="button"
-                                className="btn danger btn-sm"
-                                disabled={deletingId === user.id}
-                                onClick={() => onDelete(user)}
-                              >
-                                {deletingId === user.id ? "Deleting..." : "Delete"}
-                              </button>
-                            )
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-                {isEditing && editDraft && (
-                  <tr className="admin-user-edit-row">
-                    <td colSpan={colSpan}>
-                      <UserEditFields
-                        editDraft={editDraft}
-                        setEditDraft={setEditDraft}
-                        showRole={!showRoleColumn}
-                        showYearFields={editingAsStudent && !showYearColumn}
-                        showCourseFields={editingAsStudent && !showCourseColumn}
-                        showGenderField={editingAsStudent && !showGenderCol}
-                        showSchoolField={editingAsStudent && !showSchoolCol}
-                        showQaFields={!showQaColumn && editingAsStudent}
-                      />
-                    </td>
-                  </tr>
                 )}
-              </Fragment>
+                {showCourseColumn && (
+                  <td className="admin-users-course-cell">
+                    {isStudentRow ? (
+                      <span title={formatProgramCourse(user.programCourse)}>
+                        {abbreviateProgramCourse(user.programCourse)}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                )}
+                {showGenderCol && (
+                  <td className="admin-users-gender-cell">
+                    {isStudentRow ? formatGender(user.gender) : "—"}
+                  </td>
+                )}
+                {showSchoolCol && (
+                  <td className="admin-users-school-cell">
+                    {isStudentRow ? formatSchoolType(user.schoolType) : "—"}
+                  </td>
+                )}
+                {showActiveColumn && (
+                  <td className="admin-users-active-cell">
+                    {isAdminRow ? (
+                      "—"
+                    ) : user.isActive ? (
+                      <span title="Active">Y</span>
+                    ) : (
+                      <span title="Inactive">N</span>
+                    )}
+                  </td>
+                )}
+                {showQaColumn && (
+                  <td className="admin-users-qa-cell">
+                    {user.qaUnlimited ? "Y" : "—"}
+                  </td>
+                )}
+                {showEnabledColumn && (
+                  <td className="admin-users-enabled-cell">
+                    <label
+                      className="ios-toggle ios-toggle-inline"
+                      title={
+                        currentUserId === user.id
+                          ? "Cannot disable your own account"
+                          : user.isActive
+                            ? "Enabled — click to disable"
+                            : "Disabled — click to enable"
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={user.isActive}
+                        disabled={togglingId === user.id || currentUserId === user.id}
+                        onChange={(e) => onToggleActive(user, e.target.checked)}
+                      />
+                      <span className="ios-toggle-slider" aria-hidden="true" />
+                      <span className="sr-only">
+                        {user.isActive ? "Disable" : "Enable"} {formatDisplayNamePart(user.firstName)}{" "}
+                        {formatDisplayNamePart(user.lastName)}
+                      </span>
+                    </label>
+                  </td>
+                )}
+              </tr>
             );
           })}
         </tbody>

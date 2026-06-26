@@ -13,6 +13,7 @@ import QuestionPerformanceModal from "../components/QuestionPerformanceModal";
 import StudentSubmissionDetailModal from "../components/StudentSubmissionDetailModal";
 import StudentSubmissionsSection from "../components/StudentSubmissionsSection";
 import { useAuth } from "../lib/auth";
+import { AnalyticsSeasonProvider } from "../lib/analyticsSeason";
 import { useSidebar } from "../lib/sidebar";
 import { useToast } from "../lib/toast";
 
@@ -104,9 +105,10 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="admin-dashboard">
-      <div className="tab-panel">
-      <TabPanel activeTab={activeTab}>
+    <AnalyticsSeasonProvider token={token}>
+      <div className="admin-dashboard">
+        <div className="tab-panel">
+        <TabPanel activeTab={activeTab}>
       {activeTab === "users-add" && <AddUserForm token={token} onCreated={showMessage} />}
 
       {activeTab === "users-manage" && (
@@ -160,6 +162,7 @@ export default function AdminDashboard() {
           onClose={() => setSelectedSubmissionId(null)}
         />
       )}
-    </div>
+      </div>
+    </AnalyticsSeasonProvider>
   );
 }

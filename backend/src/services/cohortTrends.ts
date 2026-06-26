@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { submittedAtFilter } from "../lib/analyticsSeason.js";
 import { nonQaStudentWhere } from "../lib/studentFilters.js";
 import {
   STUDENT_MILESTONES,
@@ -157,6 +158,7 @@ function buildBatchJourney(
 export async function buildCohortTrends(filters: {
   programCourse?: string;
   intakeYear?: number;
+  examYear?: number;
 }) {
   const students = await prisma.user.findMany({
     where: nonQaStudentWhere(undefined, filters.programCourse),
@@ -177,7 +179,7 @@ export async function buildCohortTrends(filters: {
   const attempts = await prisma.examAttempt.findMany({
     where: {
       studentId: { in: studentIds },
-      submittedAt: { not: null },
+      submittedAt: submittedAtFilter(filters.examYear),
     },
     select: {
       studentId: true,

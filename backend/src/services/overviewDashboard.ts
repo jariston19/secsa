@@ -1,6 +1,7 @@
 import { AttemptType, ApprovalStatus, QuestionSetType } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { nonQaExamAttemptWhere, nonQaStudentWhere } from "../lib/studentFilters.js";
+import { submittedAtFilter } from "../lib/analyticsSeason.js";
 import { countStudentsInScoreBuckets } from "../lib/scoreBuckets.js";
 
 const MAX_RETAKES = 2;
@@ -52,8 +53,15 @@ function inPeriod(date: Date, start: Date, end: Date) {
   return date >= start && date < end;
 }
 
-export async function buildOverviewDashboard(yearLevel?: number, programCourse?: string) {
-  const attemptFilter = nonQaExamAttemptWhere(yearLevel, programCourse);
+export async function buildOverviewDashboard(
+  yearLevel?: number,
+  programCourse?: string,
+  examYear?: number
+) {
+  const attemptFilter = {
+    ...nonQaExamAttemptWhere(yearLevel, programCourse),
+    submittedAt: submittedAtFilter(examYear),
+  };
 
   const [students, attempts, pendingApprovals, latestSubmission] = await Promise.all([
     prisma.user.findMany({
@@ -61,7 +69,7 @@ export async function buildOverviewDashboard(yearLevel?: number, programCourse?:
       select: { id: true, yearLevel: true },
     }),
     prisma.examAttempt.findMany({
-      where: { ...attemptFilter, submittedAt: { not: null } },
+      where: attemptFilter,
       select: {
         id: true,
         studentId: true,
@@ -278,8 +286,13 @@ export async function buildOverviewDashboard(yearLevel?: number, programCourse?:
   const average = (values: number[]) =>
     values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 
+  const studentsAssessed =
+    Number.isFinite(examYear) && submittedAttempts.length > 0
+      ? new Set(submittedAttempts.map((attempt) => attempt.studentId)).size
+      : students.length;
+
   return {
-    students: students.length,
+    students: studentsAssessed,
     examsTaken: submittedAttempts.length,
     passRate: overallPassRate,
     averageScore: average(submittedAttempts.map((attempt) => attempt.percentage ?? 0)),

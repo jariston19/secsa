@@ -22,6 +22,7 @@ type YearFilter = number | undefined;
 export interface AnalyticsReportFilters {
   yearLevel?: YearFilter;
   programCourse?: string;
+  examYear?: number;
 }
 
 export interface CohortSummary {
@@ -39,10 +40,10 @@ function cohortKey(programCourse: string, yearLevel: number) {
 }
 
 async function buildCohortSummaries(filters: AnalyticsReportFilters = {}): Promise<CohortSummary[]> {
-  const { yearLevel, programCourse } = filters;
+  const { yearLevel, programCourse, examYear } = filters;
   const attempts = await prisma.examAttempt.findMany({
     where: {
-      submittedAt: { not: null },
+      ...nonQaSubmittedExamWhere(yearLevel, programCourse, examYear),
       student: {
         role: Role.STUDENT,
         qaUnlimited: false,
@@ -168,7 +169,7 @@ function pct(correct: number, total: number) {
 }
 
 export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}) {
-  const { yearLevel, programCourse } = filters;
+  const { yearLevel, programCourse, examYear } = filters;
   const studentFilter = nonQaStudentWhere(yearLevel, programCourse);
 
   const [answers, attempts, questions, students, startedAttempts, cohortSummaries] =
@@ -176,7 +177,7 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     prisma.examAnswer.findMany({
       where: {
         examAttempt: {
-          ...nonQaSubmittedExamWhere(yearLevel, programCourse),
+          ...nonQaSubmittedExamWhere(yearLevel, programCourse, examYear),
           ...(Number.isFinite(yearLevel) ? { questionSet: { yearLevel } } : {}),
         },
       },
@@ -199,7 +200,7 @@ export async function buildAnalyticsReports(filters: AnalyticsReportFilters = {}
     }),
     prisma.examAttempt.findMany({
       where: {
-        ...nonQaSubmittedExamWhere(yearLevel, programCourse),
+        ...nonQaSubmittedExamWhere(yearLevel, programCourse, examYear),
         ...(Number.isFinite(yearLevel) ? { questionSet: { yearLevel } } : {}),
       },
       include: {

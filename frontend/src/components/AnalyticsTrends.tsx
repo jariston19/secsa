@@ -9,6 +9,8 @@ import {
   ScoreCorrelationScatter,
 } from "./charts/AnalyticsCharts";
 import { api } from "../lib/api";
+import { useAnalyticsSeason } from "../lib/analyticsSeason";
+import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
 import {
   formatProgramCourse,
   type ProgramCourseFilter,
@@ -89,6 +91,7 @@ interface Props {
 
 export default function AnalyticsTrends({ token }: Props) {
   const programCourseOptions = useProgramCourseOptions();
+  const { appendExamYear, seasonLabel } = useAnalyticsSeason();
   const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
   const [intakeBatchFilter, setIntakeBatchFilter] = useState<IntakeBatchFilter>("ALL");
   const [transitionFilter, setTransitionFilter] = useState<TransitionFilter>("1-2");
@@ -102,9 +105,10 @@ export default function AnalyticsTrends({ token }: Props) {
     const params = new URLSearchParams();
     if (courseFilter !== "ALL") params.set("programCourse", courseFilter);
     if (intakeBatchFilter !== "ALL") params.set("intakeYear", intakeBatchFilter);
+    appendExamYear(params);
     const serialized = params.toString();
     return serialized ? `?${serialized}` : "";
-  }, [courseFilter, intakeBatchFilter]);
+  }, [courseFilter, intakeBatchFilter, appendExamYear]);
 
   const selectedBatch = useMemo(() => {
     if (!data) return null;
@@ -147,10 +151,11 @@ export default function AnalyticsTrends({ token }: Props) {
       intakeBatchFilter === "ALL"
         ? "All intake batches"
         : `Batch ${intakeBatchFilter}`,
+      seasonLabel,
     ];
     if (selectedBatch) parts.push(activeTransitionMeta.label);
     return parts.join(" · ");
-  }, [courseFilter, intakeBatchFilter, selectedBatch, activeTransitionMeta.label]);
+  }, [courseFilter, intakeBatchFilter, selectedBatch, activeTransitionMeta.label, seasonLabel]);
 
   useEffect(() => {
     setError("");
@@ -189,6 +194,7 @@ export default function AnalyticsTrends({ token }: Props) {
   return (
     <AnalyticsPrintArea id="analytics-print-trends" title="Analytics — Trends" subtitle={filterSubtitle}>
       <div className={`analytics-trends${refreshing ? " is-refreshing" : ""}`}>
+        <AnalyticsSeasonControl />
         <div className="analytics-reports-filter analytics-no-print">
           <div className="analytics-reports-filters">
             <label className="analytics-reports-filter-field">

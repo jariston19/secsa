@@ -13,6 +13,8 @@ import {
 } from "./charts/AnalyticsCharts";
 import { DIFFICULTY_LABELS } from "../lib/analyticsChartUtils";
 import { api } from "../lib/api";
+import { useAnalyticsSeason } from "../lib/analyticsSeason";
+import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import { resetBodyScrollLock } from "../lib/scrollLock";
 import { MODAL_PAGE_SIZE, usePagination } from "../hooks/usePagination";
@@ -404,6 +406,7 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
 }
 
 export default function IndividualStudentAnalytics({ token }: Props) {
+  const { appendExamYear } = useAnalyticsSeason();
   const programCourseOptions = useProgramCourseOptions();
   const [query, setQuery] = useState("");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
@@ -437,8 +440,9 @@ export default function IndividualStudentAnalytics({ token }: Props) {
     if (trimmed.length >= 2) params.set("q", trimmed);
     if (yearFilter !== "ALL") params.set("yearLevel", yearFilter);
     if (courseFilter !== "ALL") params.set("programCourse", courseFilter);
+    appendExamYear(params);
     return params;
-  }, [query, yearFilter, courseFilter]);
+  }, [query, yearFilter, courseFilter, appendExamYear]);
 
   const canSearch = true;
 
@@ -560,6 +564,7 @@ export default function IndividualStudentAnalytics({ token }: Props) {
 
   return (
     <div className="individual-student-analytics">
+      <AnalyticsSeasonControl />
       {showBrowseTable ? (
         <section className="card individual-student-browser">
           <div className="individual-student-browser-header">

@@ -1,6 +1,7 @@
 import { BloomLevel, Difficulty, Gender, QuestionSetType, SchoolType } from "@prisma/client";
 import { BLOOM_LEVEL_ORDER, BLOOM_LEVEL_SHORT_LABELS } from "../lib/bloomLevel.js";
 import { prisma } from "../lib/prisma.js";
+import { submittedAtFilter } from "../lib/analyticsSeason.js";
 import { nonQaStudentWhere } from "../lib/studentFilters.js";
 
 const AT_RISK_THRESHOLD = 60;
@@ -135,6 +136,7 @@ function higherOrderReadiness(map: Map<BloomLevel, { correct: number; total: num
 export async function buildDemographicAnalytics(filters: {
   yearLevel?: number;
   programCourse?: string;
+  examYear?: number;
 }) {
   const students = await prisma.user.findMany({
     where: nonQaStudentWhere(filters.yearLevel, filters.programCourse),
@@ -153,7 +155,7 @@ export async function buildDemographicAnalytics(filters: {
   const attempts = await prisma.examAttempt.findMany({
     where: {
       studentId: { in: studentIds },
-      submittedAt: { not: null },
+      submittedAt: submittedAtFilter(filters.examYear),
       questionSet: { type: QuestionSetType.DIAGNOSTIC },
     },
     include: {

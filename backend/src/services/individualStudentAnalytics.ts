@@ -3,6 +3,7 @@ import { BLOOM_LEVEL_ORDER, buildBloomCognitiveProfile, buildDifficultyDomainSco
 import { formatFullName } from "../lib/names.js";
 import { prisma } from "../lib/prisma.js";
 import { nonQaStudentWhere, nonQaSubmittedExamWhere } from "../lib/studentFilters.js";
+import { submittedAtFilter } from "../lib/analyticsSeason.js";
 import { buildStudentJourneyTrend } from "./studentJourneyTrend.js";
 
 const WEAK_THRESHOLD = 50;
@@ -28,6 +29,7 @@ function bucketKey(parts: string[]) {
 export interface StudentAnalyticsSearchFilters {
   yearLevel?: number;
   programCourse?: string;
+  examYear?: number;
 }
 
 export async function searchStudentsForAnalytics(
@@ -57,7 +59,9 @@ export async function searchStudentsForAnalytics(
       programCourse: true,
       email: true,
       examAttempts: {
-        where: { submittedAt: { not: null } },
+        where: Number.isFinite(filters.examYear)
+          ? { submittedAt: submittedAtFilter(filters.examYear) }
+          : { submittedAt: { not: null } },
         select: { id: true },
         take: 1,
       },

@@ -3,6 +3,8 @@ import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import { AnalyticsReportBody } from "./AnalyticsReports";
 import PreparednessInterpretationPanel from "./PreparednessInterpretationPanel";
 import { api } from "../lib/api";
+import { useAnalyticsSeason } from "../lib/analyticsSeason";
+import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import {
   formatProgramCourse,
@@ -163,6 +165,7 @@ function readinessTone(level: string) {
 
 export default function GroupAnalytics({ token }: Props) {
   const programCourseOptions = useProgramCourseOptions();
+  const { appendExamYear, seasonLabel } = useAnalyticsSeason();
   const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
   const [selectedCohort, setSelectedCohort] = useState<SelectedCohort | null>(null);
@@ -182,9 +185,10 @@ export default function GroupAnalytics({ token }: Props) {
       if (courseFilter !== "ALL") params.set("programCourse", courseFilter);
       if (yearFilter !== "ALL") params.set("yearLevel", yearFilter);
     }
+    appendExamYear(params);
     const serialized = params.toString();
     return serialized ? `?${serialized}` : "";
-  }, [selectedCohort, courseFilter, yearFilter]);
+  }, [selectedCohort, courseFilter, yearFilter, appendExamYear]);
 
   useEffect(() => {
     setError("");
@@ -213,10 +217,11 @@ export default function GroupAnalytics({ token }: Props) {
   const printAreaId = "analytics-print-group";
   const printTitle = "Analytics — Group";
   const printSubtitle = selectedCohort
-    ? `${formatProgramCourse(selectedCohort.programCourse)} · Year ${selectedCohort.yearLevel}`
+    ? `${formatProgramCourse(selectedCohort.programCourse)} · Incoming year ${selectedCohort.yearLevel} · ${seasonLabel}`
     : [
         courseFilter === "ALL" ? "All" : formatProgramCourse(courseFilter),
-        yearFilter === "ALL" ? "All" : `Year ${yearFilter}`,
+        yearFilter === "ALL" ? "All incoming years" : `Incoming year ${yearFilter}`,
+        seasonLabel,
       ].join(" · ");
 
   const cohortSummaries = reports?.cohortSummaries ?? [];
@@ -224,6 +229,7 @@ export default function GroupAnalytics({ token }: Props) {
   return (
     <AnalyticsPrintArea id={printAreaId} title={printTitle} subtitle={printSubtitle}>
       <div className="analytics-reports group-analytics">
+        <AnalyticsSeasonControl />
         <div className="analytics-reports-filter analytics-no-print">
           <div className="analytics-reports-filter-primary">
             {selectedCohort ? (

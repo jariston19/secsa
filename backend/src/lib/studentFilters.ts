@@ -1,4 +1,5 @@
 import { Role } from "@prisma/client";
+import { submittedAtFilter } from "./analyticsSeason.js";
 
 export function nonQaStudentWhere(yearLevel?: number, programCourse?: string) {
   return {
@@ -15,15 +16,23 @@ export function nonQaExamAttemptWhere(yearLevel?: number, programCourse?: string
   };
 }
 
-export function nonQaSubmittedExamWhere(yearLevel?: number, programCourse?: string) {
+export function nonQaSubmittedExamWhere(
+  yearLevel?: number,
+  programCourse?: string,
+  examYear?: number
+) {
   return {
-    submittedAt: { not: null as Date | null },
+    submittedAt: submittedAtFilter(examYear),
     ...nonQaExamAttemptWhere(yearLevel, programCourse),
   };
 }
 
-export function nonQaAnswerWhere(yearLevel?: number, programCourse?: string) {
+export function nonQaAnswerWhere(
+  yearLevel?: number,
+  programCourse?: string,
+  examYear?: number
+) {
   return {
-    examAttempt: nonQaSubmittedExamWhere(yearLevel, programCourse),
+    examAttempt: nonQaSubmittedExamWhere(yearLevel, programCourse, examYear),
   };
 }

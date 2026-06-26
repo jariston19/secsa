@@ -3,6 +3,7 @@ import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
 import ModalPagination from "./ModalPagination";
 import { api } from "../lib/api";
+import { useOptionalAnalyticsSeason } from "../lib/analyticsSeason";
 
 interface QuestionRow {
   questionId: string;
@@ -21,6 +22,7 @@ interface Props {
 const QUESTION_PERFORMANCE_PAGE_ROWS = 10;
 
 export default function QuestionPerformanceModal({ token, onClose }: Props) {
+  const analyticsSeason = useOptionalAnalyticsSeason();
   const [questions, setQuestions] = useState<QuestionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -30,11 +32,15 @@ export default function QuestionPerformanceModal({ token, onClose }: Props) {
     setLoading(true);
     setError("");
 
-    api<{ questions: QuestionRow[] }>("/analytics/questions", {}, token)
+    const params = new URLSearchParams();
+    analyticsSeason?.appendExamYear(params);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+
+    api<{ questions: QuestionRow[] }>(`/analytics/questions${suffix}`, {}, token)
       .then((data) => setQuestions(data.questions))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load questions"))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, analyticsSeason?.examYear, analyticsSeason]);
 
   const {
     paginatedItems: paginatedQuestions,

@@ -11,6 +11,8 @@ import {
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
 import { api } from "../lib/api";
+import { useAnalyticsSeason } from "../lib/analyticsSeason";
+import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
 
 export interface OverviewCohortPassStats {
   count: number;
@@ -417,6 +419,7 @@ function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): 
 
 export default function AnalyticsOverview({ token }: Props) {
   const programCourseOptions = useProgramCourseOptions();
+  const { appendExamYear, seasonLabel } = useAnalyticsSeason();
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
   const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
   const [data, setData] = useState<OverviewDashboardData | null>(null);
@@ -439,17 +442,19 @@ export default function AnalyticsOverview({ token }: Props) {
     const params = new URLSearchParams();
     if (yearFilter !== "ALL") params.set("yearLevel", yearFilter);
     if (courseFilter !== "ALL") params.set("programCourse", courseFilter);
+    appendExamYear(params);
     const serialized = params.toString();
     return serialized ? `?${serialized}` : "";
-  }, [yearFilter, courseFilter]);
+  }, [yearFilter, courseFilter, appendExamYear]);
 
   const filterSubtitle = useMemo(() => {
     const parts = [
       courseFilter === "ALL" ? "All courses" : formatProgramCourse(courseFilter),
-      yearFilter === "ALL" ? "All years" : `Year ${yearFilter}`,
+      yearFilter === "ALL" ? "All incoming years" : `Incoming year ${yearFilter}`,
+      seasonLabel,
     ];
     return parts.join(" · ");
-  }, [courseFilter, yearFilter]);
+  }, [courseFilter, yearFilter, seasonLabel]);
 
   useEffect(() => {
     setError("");
@@ -486,6 +491,8 @@ export default function AnalyticsOverview({ token }: Props) {
       subtitle={filterSubtitle}
     >
       <div className={`analytics-overview${refreshing ? " is-refreshing" : ""}`}>
+        <AnalyticsSeasonControl variant="overview" />
+
         <div className="analytics-reports-filter analytics-no-print">
           <div className="analytics-reports-filters">
             <label className="analytics-reports-filter-field">
@@ -505,7 +512,7 @@ export default function AnalyticsOverview({ token }: Props) {
               </select>
             </label>
             <label className="analytics-reports-filter-field">
-              Year
+              Incoming year
               <select
                 value={yearFilter}
                 onChange={(event) =>

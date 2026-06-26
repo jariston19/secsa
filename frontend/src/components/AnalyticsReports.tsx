@@ -21,6 +21,8 @@ import {
 import DistractorAnalysisCarousel from "./charts/DistractorAnalysisCarousel";
 import { GROUP_CHART_LAYOUT, QUESTION_CHART_LAYOUT } from "../lib/analyticsLayout";
 import { api } from "../lib/api";
+import { useAnalyticsSeason } from "../lib/analyticsSeason";
+import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import { formatFullName } from "../lib/names";
 import { DIFFICULTY_LABELS } from "../lib/analyticsChartUtils";
@@ -256,6 +258,7 @@ function buildTopicDifficultyRows(matrix: ReportsData["topicDifficultyMatrix"]) 
 
 export default function AnalyticsReports({ token, lens, onOpenQuestionPerformance }: Props) {
   const programCourseOptions = useProgramCourseOptions();
+  const { appendExamYear, seasonLabel } = useAnalyticsSeason();
   const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
   const [reports, setReports] = useState<ReportsData | null>(null);
@@ -268,9 +271,10 @@ export default function AnalyticsReports({ token, lens, onOpenQuestionPerformanc
     const params = new URLSearchParams();
     if (courseFilter !== "ALL") params.set("programCourse", courseFilter);
     if (yearFilter !== "ALL") params.set("yearLevel", yearFilter);
+    appendExamYear(params);
     const serialized = params.toString();
     return serialized ? `?${serialized}` : "";
-  }, [courseFilter, yearFilter]);
+  }, [courseFilter, yearFilter, appendExamYear]);
 
   useEffect(() => {
     setError("");
@@ -303,7 +307,8 @@ export default function AnalyticsReports({ token, lens, onOpenQuestionPerformanc
   const printTitle = LENS_PRINT_TITLES[lens];
   const printSubtitle = [
     courseFilter === "ALL" ? "All" : formatProgramCourse(courseFilter),
-    yearFilter === "ALL" ? "All" : `Year ${yearFilter}`,
+    yearFilter === "ALL" ? "All incoming years" : `Incoming year ${yearFilter}`,
+    seasonLabel,
   ].join(" · ");
 
   const filterKey = `${courseFilter}|${yearFilter}`;
@@ -315,6 +320,7 @@ export default function AnalyticsReports({ token, lens, onOpenQuestionPerformanc
       subtitle={printSubtitle}
     >
       <div className="analytics-reports">
+        <AnalyticsSeasonControl />
         <div className="analytics-reports-filter analytics-no-print">
           <div className="analytics-reports-filter-primary">
             <div className="analytics-reports-filters">

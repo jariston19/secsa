@@ -12,6 +12,8 @@ import SwappableChartGrid from "./SwappableChartGrid";
 import { useChartOrder } from "../hooks/useChartOrder";
 import { DEMOGRAPHICS_CHART_LAYOUT } from "../lib/analyticsLayout";
 import { api } from "../lib/api";
+import { useAnalyticsSeason } from "../lib/analyticsSeason";
+import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import {
   formatProgramCourse,
@@ -460,6 +462,7 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
 
 export default function AnalyticsDemographics({ token }: Props) {
   const programCourseOptions = useProgramCourseOptions();
+  const { appendExamYear, seasonLabel } = useAnalyticsSeason();
   const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<string>("ALL");
   const [data, setData] = useState<DemographicsData | null>(null);
@@ -476,17 +479,19 @@ export default function AnalyticsDemographics({ token }: Props) {
     const params = new URLSearchParams();
     if (courseFilter !== "ALL") params.set("programCourse", courseFilter);
     if (yearFilter !== "ALL") params.set("yearLevel", yearFilter);
+    appendExamYear(params);
     const serialized = params.toString();
     return serialized ? `?${serialized}` : "";
-  }, [courseFilter, yearFilter]);
+  }, [courseFilter, yearFilter, appendExamYear]);
 
   const filterSubtitle = useMemo(() => {
     const parts = [
       courseFilter === "ALL" ? "All courses" : formatProgramCourse(courseFilter),
       yearFilter === "ALL" ? "All year levels" : `Incoming year ${yearFilter}`,
+      seasonLabel,
     ];
     return parts.join(" · ");
-  }, [courseFilter, yearFilter]);
+  }, [courseFilter, yearFilter, seasonLabel]);
 
   useEffect(() => {
     setError("");
@@ -544,6 +549,7 @@ export default function AnalyticsDemographics({ token }: Props) {
       subtitle={filterSubtitle}
     >
       <div className={`analytics-demographics${refreshing ? " is-refreshing" : ""}`}>
+        <AnalyticsSeasonControl />
         <div className="analytics-reports-filter analytics-no-print">
           <div className="analytics-reports-filters">
             <label className="analytics-reports-filter-field">

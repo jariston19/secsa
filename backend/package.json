@@ -14,6 +14,9 @@
     "db:seed-demo": "tsx prisma/seed.ts && tsx prisma/seed-analytics-demo.ts",
     "db:reset-content": "tsx prisma/reset-content.ts",
     "db:reset-qa-diagnostics": "tsx prisma/reset-qa-diagnostics.ts",
+    "db:seed-trial-students": "tsx prisma/seed-trial-students.ts",
+    "db:remove-trial-students": "tsx prisma/remove-trial-students.ts",
+    "db:remove-intake-batches": "tsx prisma/remove-intake-batches.ts",
     "db:generate": "prisma generate"
   },
   "dependencies": {

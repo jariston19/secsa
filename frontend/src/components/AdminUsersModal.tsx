@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import AdminUserEditModal from "./AdminUserEditModal";
 import AdminUserGroupTable, { type UserEditDraft, type UserRow } from "./AdminUserGroupTable";
 import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
@@ -8,7 +9,7 @@ import { usePagination } from "../hooks/usePagination";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { parseYearLevel } from "../lib/constants";
-import { compareByName, formatFullName } from "../lib/names";
+import { compareByName, formatDisplayFullName, formatFullName } from "../lib/names";
 import { formatProgramCourse, maxYearLevelForProgram, type ProgramCourseId } from "../lib/programCourse";
 import { duplicateUserEmailMessage, findDuplicateUserEmail } from "../lib/userEmailDuplicates";
 import { toastDeleted, toastRestored, toastUpdated } from "../lib/toastMessages";
@@ -63,8 +64,9 @@ export default function AdminUsersModal({
   const [loading, setLoading] = useState(true);
   const [roleTab, setRoleTab] = useState<RoleTab>("students");
   const [studentYearTab, setStudentYearTab] = useState("1");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [editDraft, setEditDraft] = useState<UserEditDraft | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -204,17 +206,61 @@ export default function AdminUsersModal({
 
   const countLabel = `${visibleUsers.length} account${visibleUsers.length === 1 ? "" : "s"}`;
 
+  const selectedUsers = useMemo(
+    () => visibleUsers.filter((user) => selectedIds.has(user.id)),
+    [visibleUsers, selectedIds]
+  );
+
+  const selectedCount = selectedUsers.length;
+
+  const deletableSelected = useMemo(
+    () =>
+      selectedUsers.filter(
+        (user) => user.id !== currentUser?.id && user.role !== "SUPERADMIN"
+      ),
+    [selectedUsers, currentUser?.id]
+  );
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelect(userId: string, selected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (selected) next.add(userId);
+      else next.delete(userId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(userIds: string[], selected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const userId of userIds) {
+        if (selected) next.add(userId);
+        else next.delete(userId);
+      }
+      return next;
+    });
+  }
+
   function cancelEditIfHidden(nextUsers: UserRow[]) {
-    if (!editingId) return;
-    if (!nextUsers.some((user) => user.id === editingId)) {
-      setEditingId(null);
-      setEditDraft(null);
+    if (!editingUser) return;
+    if (!nextUsers.some((user) => user.id === editingUser.id)) {
+      cancelEdit();
     }
+  }
+
+  function handleSelectionContextChange() {
+    clearSelection();
+    cancelEdit();
   }
 
   function handleRoleTabChange(next: string) {
     const tab = next as RoleTab;
     setRoleTab(tab);
+    handleSelectionContextChange();
     if (tab === "teachers") cancelEditIfHidden(teachers);
     else if (tab === "admins") cancelEditIfHidden(admins);
     else {
@@ -228,6 +274,7 @@ export default function AdminUsersModal({
 
   function handleStudentYearChange(next: string) {
     setStudentYearTab(next);
+    handleSelectionContextChange();
     if (next === "archive") {
       cancelEditIfHidden(archivedStudentsForView());
       return;
@@ -237,6 +284,7 @@ export default function AdminUsersModal({
 
   function handleBulkProgramCourseChange(next: string) {
     setBulkProgramCourse(next);
+    handleSelectionContextChange();
     if (isArchiveView) {
       cancelEditIfHidden(archivedStudentsForView(next));
       return;
@@ -247,6 +295,7 @@ export default function AdminUsersModal({
   function handleGenderFilterChange(next: GenderFilter) {
     setGenderFilter(next);
     localStorage.setItem(GENDER_FILTER_KEY, next);
+    handleSelectionContextChange();
     if (isArchiveView) {
       cancelEditIfHidden(archivedStudentsForView());
       return;
@@ -259,6 +308,7 @@ export default function AdminUsersModal({
   function handleSchoolFilterChange(next: SchoolFilter) {
     setSchoolFilter(next);
     localStorage.setItem(SCHOOL_FILTER_KEY, next);
+    handleSelectionContextChange();
     if (isArchiveView) {
       cancelEditIfHidden(archivedStudentsForView());
       return;
@@ -268,32 +318,8 @@ export default function AdminUsersModal({
     }
   }
 
-  async function restoreStudent(user: UserRow) {
-    const label = formatFullName(user.firstName, user.lastName);
-    const confirmed = await confirm({
-      title: "Restore student?",
-      message: `Restore "${label}" (${user.email})?\n\nThey will be able to sign in again at incoming year ${user.yearLevel ?? "—"}.`,
-      confirmLabel: "Restore",
-    });
-    if (!confirmed) return;
-
-    setRestoringId(user.id);
-    if (editingId === user.id) cancelEdit();
-
-    try {
-      await api(`/users/${user.id}`, { method: "PATCH", body: JSON.stringify({ isActive: true }) }, token);
-      onUpdated(toastRestored("student", label), false);
-      await loadUsers();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to restore student";
-      onUpdated(message, true);
-    } finally {
-      setRestoringId(null);
-    }
-  }
-
   function startEdit(user: UserRow) {
-    setEditingId(user.id);
+    setEditingUser(user);
     setEditDraft({
       email: user.email,
       firstName: user.firstName,
@@ -310,24 +336,29 @@ export default function AdminUsersModal({
   }
 
   function cancelEdit() {
-    setEditingId(null);
+    setEditingUser(null);
     setEditDraft(null);
   }
 
-  async function saveEdit(id: string) {
-    if (!editDraft) return;
+  function handleToolbarEdit() {
+    if (selectedUsers.length !== 1) return;
+    startEdit(selectedUsers[0]);
+  }
 
-    const duplicate = findDuplicateUserEmail(users, editDraft.email, id);
+  async function saveEdit() {
+    if (!editDraft || !editingUser) return;
+
+    const duplicate = findDuplicateUserEmail(users, editDraft.email, editingUser.id);
     if (duplicate) {
       onUpdated(duplicateUserEmailMessage(duplicate), true);
       return;
     }
 
-    setSavingId(id);
+    setSavingId(editingUser.id);
 
     try {
       await api(
-        `/users/${id}`,
+        `/users/${editingUser.id}`,
         {
           method: "PATCH",
           body: JSON.stringify({
@@ -355,6 +386,7 @@ export default function AdminUsersModal({
       );
       onUpdated(message, false);
       cancelEdit();
+      clearSelection();
       await loadUsers();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update user";
@@ -503,32 +535,93 @@ export default function AdminUsersModal({
     }
   }
 
-  async function deleteUser(user: UserRow) {
-    if (currentUser?.id === user.id || user.role === "SUPERADMIN") return;
+  async function deleteSelectedUsers() {
+    if (deletableSelected.length === 0) return;
 
-    const label = formatFullName(user.firstName, user.lastName);
+    const preview =
+      deletableSelected.length === 1
+        ? `"${formatDisplayFullName(deletableSelected[0].firstName, deletableSelected[0].lastName)}" (${deletableSelected[0].email})`
+        : `${deletableSelected.length} selected accounts`;
+
     const confirmed = await confirm({
-      title: "Delete user?",
-      message: `Delete user "${label}" (${user.email})?\n\nThis cannot be undone. Exam and retake records for this account will also be removed.`,
+      title: deletableSelected.length === 1 ? "Delete user?" : "Delete selected users?",
+      message: `Delete ${preview}?\n\nThis cannot be undone. Exam and retake records for these accounts will also be removed.`,
       tone: "danger",
       confirmLabel: "Delete",
     });
     if (!confirmed) return;
 
-    setDeletingId(user.id);
-    if (editingId === user.id) cancelEdit();
-
-    try {
-      await api(`/users/${user.id}`, { method: "DELETE" }, token);
-      const message = toastDeleted("user", formatFullName(user.firstName, user.lastName));
-      onUpdated(message, false);
-      await loadUsers();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to delete user";
-      onUpdated(message, true);
-    } finally {
-      setDeletingId(null);
+    for (const user of deletableSelected) {
+      setDeletingId(user.id);
+      try {
+        await api(`/users/${user.id}`, { method: "DELETE" }, token);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to delete user";
+        onUpdated(message, true);
+        setDeletingId(null);
+        return;
+      }
     }
+
+    onUpdated(
+      toastDeleted(
+        "user",
+        deletableSelected.length === 1
+          ? formatDisplayFullName(deletableSelected[0].firstName, deletableSelected[0].lastName)
+          : `${deletableSelected.length} accounts`
+      ),
+      false
+    );
+    clearSelection();
+    cancelEdit();
+    setDeletingId(null);
+    await loadUsers();
+  }
+
+  async function restoreSelectedUsers() {
+    if (selectedUsers.length === 0) return;
+
+    const preview =
+      selectedUsers.length === 1
+        ? `"${formatDisplayFullName(selectedUsers[0].firstName, selectedUsers[0].lastName)}" (${selectedUsers[0].email})`
+        : `${selectedUsers.length} selected students`;
+
+    const confirmed = await confirm({
+      title: selectedUsers.length === 1 ? "Restore student?" : "Restore selected students?",
+      message: `Restore ${preview}?\n\nThey will be able to sign in again.`,
+      confirmLabel: "Restore",
+    });
+    if (!confirmed) return;
+
+    for (const user of selectedUsers) {
+      setRestoringId(user.id);
+      try {
+        await api(
+          `/users/${user.id}`,
+          { method: "PATCH", body: JSON.stringify({ isActive: true }) },
+          token
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to restore student";
+        onUpdated(message, true);
+        setRestoringId(null);
+        return;
+      }
+    }
+
+    onUpdated(
+      toastRestored(
+        "student",
+        selectedUsers.length === 1
+          ? formatDisplayFullName(selectedUsers[0].firstName, selectedUsers[0].lastName)
+          : `${selectedUsers.length} students`
+      ),
+      false
+    );
+    clearSelection();
+    cancelEdit();
+    setRestoringId(null);
+    await loadUsers();
   }
 
   const emptyMessage =
@@ -650,11 +743,31 @@ export default function AdminUsersModal({
               </button>
             </div>
           </div>
+          <div className="admin-users-row-actions">
+            {!isArchiveView ? (
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={selectedCount !== 1}
+                onClick={handleToolbarEdit}
+              >
+                Edit
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn danger"
+              disabled={deletableSelected.length === 0 || deletingId != null}
+              onClick={() => deleteSelectedUsers().catch(() => {})}
+            >
+              {deletingId ? "Deleting…" : "Delete"}
+            </button>
+          </div>
         </div>
       ) : null}
 
       {isArchiveView && currentUser?.role === "SUPERADMIN" ? (
-        <div className="admin-users-archive-panel card">
+        <div className="admin-users-bulk-panel card">
           <label className="admin-users-bulk-field">
             Program
             <select
@@ -668,6 +781,49 @@ export default function AdminUsersModal({
               ))}
             </select>
           </label>
+          <div className="admin-users-row-actions">
+            <button
+              type="button"
+              className="btn"
+              disabled={selectedCount === 0 || restoringId != null}
+              onClick={() => restoreSelectedUsers().catch(() => {})}
+            >
+              {restoringId ? "Restoring…" : "Restore"}
+            </button>
+            <button
+              type="button"
+              className="btn danger"
+              disabled={deletableSelected.length === 0 || deletingId != null}
+              onClick={() => deleteSelectedUsers().catch(() => {})}
+            >
+              {deletingId ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {roleTab !== "students" || currentUser?.role !== "SUPERADMIN" ? (
+        <div className="admin-users-bulk-panel card admin-users-bulk-panel-row-actions-only">
+          <div className="admin-users-row-actions">
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={selectedCount !== 1}
+              onClick={handleToolbarEdit}
+            >
+              Edit
+            </button>
+            {roleTab !== "admins" ? (
+              <button
+                type="button"
+                className="btn danger"
+                disabled={deletableSelected.length === 0 || deletingId != null}
+                onClick={() => deleteSelectedUsers().catch(() => {})}
+              >
+                {deletingId ? "Deleting…" : "Delete"}
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -690,27 +846,27 @@ export default function AdminUsersModal({
             >
               <AdminUserGroupTable
                 users={paginatedUsers}
-                allUsers={users}
                 group={tableGroup}
                 hideYearColumn={roleTab === "students" && !isArchiveView}
-                archiveMode={isArchiveView}
                 emptyMessage={emptyMessage}
-                editingId={editingId}
-                editDraft={editDraft}
-                savingId={savingId}
-                deletingId={deletingId}
+                selectedIds={selectedIds}
                 togglingId={togglingId}
-                restoringId={restoringId}
                 currentUserId={currentUser?.id ?? null}
-                onStartEdit={startEdit}
-                onCancelEdit={cancelEdit}
-                onSaveEdit={saveEdit}
-                onDelete={deleteUser}
+                onToggleSelect={toggleSelect}
+                onToggleSelectAll={toggleSelectAll}
                 onToggleActive={toggleActive}
-                onRestore={restoreStudent}
-                setEditDraft={setEditDraft}
               />
             </ListPanel>
+            <AdminUserEditModal
+              user={editingUser}
+              allUsers={users}
+              editDraft={editDraft}
+              saving={savingId === editingUser?.id}
+              group={tableGroup}
+              onClose={cancelEdit}
+              onSave={() => saveEdit().catch(() => {})}
+              setEditDraft={setEditDraft}
+            />
           </>
         )}
       </div>

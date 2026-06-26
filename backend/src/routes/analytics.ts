@@ -18,6 +18,8 @@ import { buildAnalyticsReports } from "../services/analyticsReports.js";
 import { buildOverviewDashboard } from "../services/overviewDashboard.js";
 import { buildCohortTrends } from "../services/cohortTrends.js";
 import { buildDemographicAnalytics } from "../services/demographicAnalytics.js";
+import { listAvailableExamYears, parseExamYearQuery } from "../lib/analyticsSeason.js";
+
 export async function analyticsRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate);
 
@@ -26,22 +28,36 @@ export async function analyticsRoutes(app: FastifyInstance) {
     return Number.isFinite(yearLevel) ? yearLevel : undefined;
   }
 
+  function parseExamYear(value?: string) {
+    return parseExamYearQuery(value);
+  }
+
+  app.get("/seasons", async (request) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
+    const years = await listAvailableExamYears();
+    return { years };
+  });
+
   app.get("/overview", async (request) => {
     const user = getUser(request);
     requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
 
-    const yearLevel = parseYearLevelQuery((request.query as { yearLevel?: string }).yearLevel);
-    const programCourse = await parseProgramCourseQuery(
-      (request.query as { programCourse?: string }).programCourse
-    );
-    return buildOverviewDashboard(yearLevel, programCourse);
+    const query = request.query as { yearLevel?: string; programCourse?: string; examYear?: string };
+    const yearLevel = parseYearLevelQuery(query.yearLevel);
+    const programCourse = await parseProgramCourseQuery(query.programCourse);
+    return buildOverviewDashboard(yearLevel, programCourse, parseExamYear(query.examYear));
   });
 
   app.get("/trends", async (request) => {
     const user = getUser(request);
     requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
 
-    const query = request.query as { intakeYear?: string; programCourse?: string };
+    const query = request.query as {
+      intakeYear?: string;
+      programCourse?: string;
+      examYear?: string;
+    };
     const intakeYearRaw = query.intakeYear;
     const intakeYear =
       intakeYearRaw && Number.isFinite(Number(intakeYearRaw))
@@ -51,6 +67,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     return buildCohortTrends({
       intakeYear,
       programCourse: await parseProgramCourseQuery(query.programCourse),
+      examYear: parseExamYear(query.examYear),
     });
   });
 
@@ -58,10 +75,15 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const user = getUser(request);
     requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
 
-    const query = request.query as { yearLevel?: string; programCourse?: string };
+    const query = request.query as {
+      yearLevel?: string;
+      programCourse?: string;
+      examYear?: string;
+    };
     return buildDemographicAnalytics({
       yearLevel: parseYearLevelQuery(query.yearLevel),
       programCourse: await parseProgramCourseQuery(query.programCourse),
+      examYear: parseExamYear(query.examYear),
     });
   });
 
@@ -69,12 +91,13 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const user = getUser(request);
     requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
 
-    const topicId = (request.query as { topicId?: string }).topicId;
+    const query = request.query as { topicId?: string; examYear?: string };
+    const examYear = parseExamYear(query.examYear);
     const answers = await prisma.examAnswer.findMany({
       where: {
         selectedOption: { not: null },
-        ...nonQaAnswerWhere(),
-        question: topicId ? { topicId } : undefined,
+        ...nonQaAnswerWhere(undefined, undefined, examYear),
+        question: query.topicId ? { topicId: query.topicId } : undefined,
       },
       include: {
         question: {
@@ -339,13 +362,16 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const user = getUser(request);
     requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
 
-    const { yearLevel: yearLevelRaw, programCourse: programCourseRaw } = request.query as {
-      yearLevel?: string;
-      programCourse?: string;
-    };
+    const { yearLevel: yearLevelRaw, programCourse: programCourseRaw, examYear: examYearRaw } =
+      request.query as {
+        yearLevel?: string;
+        programCourse?: string;
+        examYear?: string;
+      };
     return buildAnalyticsReports({
       yearLevel: parseYearLevelQuery(yearLevelRaw),
       programCourse: await parseProgramCourseQuery(programCourseRaw),
+      examYear: parseExamYear(examYearRaw),
     });
   });
 
@@ -353,14 +379,17 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const user = getUser(request);
     requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
 
-    const { q = "", yearLevel: yearLevelRaw, programCourse: programCourseRaw } = request.query as {
-      q?: string;
-      yearLevel?: string;
-      programCourse?: string;
-    };
+    const { q = "", yearLevel: yearLevelRaw, programCourse: programCourseRaw, examYear: examYearRaw } =
+      request.query as {
+        q?: string;
+        yearLevel?: string;
+        programCourse?: string;
+        examYear?: string;
+      };
     const students = await searchStudentsForAnalytics(q, {
       yearLevel: parseYearLevelQuery(yearLevelRaw),
       programCourse: await parseProgramCourseQuery(programCourseRaw),
+      examYear: parseExamYear(examYearRaw),
     });
     return { students };
   });
