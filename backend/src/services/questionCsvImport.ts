@@ -246,7 +246,7 @@ export async function importQuestionsFromCsv(
       select: { id: true, name: true, subjectId: true },
     }),
     prisma.question.findMany({
-      select: { subjectId: true, topicId: true, text: true },
+      select: { subjectId: true, topicId: true, text: true, imageHash: true },
     }),
   ]);
 

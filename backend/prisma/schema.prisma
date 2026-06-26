@@ -157,6 +157,7 @@ model Question {
   optionD       String
   correctOption String
   imagePath     String?
+  imageHash     String?
   createdById   String
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt

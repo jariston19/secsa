@@ -45,6 +45,14 @@ function readStoredFilter<T extends string>(key: string, allowed: readonly T[], 
   return stored && allowed.includes(stored as T) ? (stored as T) : defaultValue;
 }
 
+function matchesUserSearch(user: UserRow, query: string) {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return true;
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  const haystack = `${user.firstName} ${user.lastName} ${user.email}`.toLowerCase();
+  return tokens.every((token) => haystack.includes(token));
+}
+
 interface Props {
   token: string | null;
   onClose?: () => void;
@@ -80,6 +88,7 @@ export default function AdminUsersModal({
   const [schoolFilter, setSchoolFilter] = useState<SchoolFilter>(() =>
     readStoredFilter(SCHOOL_FILTER_KEY, ["all", "PUBLIC", "PRIVATE"] as const, "all")
   );
+  const [searchQuery, setSearchQuery] = useState("");
   const { requestClose, overlayClass, panelClass, portal } = useAnimatedModal(
     onClose ?? (() => {}),
     !inline
@@ -174,7 +183,12 @@ export default function AdminUsersModal({
     schoolFilter,
   ]);
 
-  const usersResetKey = `${roleTab}-${studentYearTab}-${bulkProgramCourse}-${genderFilter}-${schoolFilter}-${visibleUsers.length}`;
+  const filteredUsers = useMemo(
+    () => visibleUsers.filter((user) => matchesUserSearch(user, searchQuery)),
+    [visibleUsers, searchQuery]
+  );
+
+  const usersResetKey = `${roleTab}-${studentYearTab}-${bulkProgramCourse}-${genderFilter}-${schoolFilter}-${searchQuery}-${filteredUsers.length}`;
   const {
     paginatedItems: paginatedUsers,
     page,
@@ -183,7 +197,7 @@ export default function AdminUsersModal({
     pageStart,
     pageEnd,
     totalItems,
-  } = usePagination(visibleUsers, { resetKey: usersResetKey });
+  } = usePagination(filteredUsers, { resetKey: usersResetKey });
 
   const tableGroup = useMemo(() => {
     if (roleTab === "students") return "student" as const;
@@ -204,7 +218,9 @@ export default function AdminUsersModal({
   const activeYearLabel =
     STUDENT_YEAR_SEGMENTS.find((segment) => segment.id === studentYearTab)?.label ?? "year";
 
-  const countLabel = `${visibleUsers.length} account${visibleUsers.length === 1 ? "" : "s"}`;
+  const countLabel = searchQuery.trim()
+    ? `${filteredUsers.length} of ${visibleUsers.length} account${visibleUsers.length === 1 ? "" : "s"}`
+    : `${visibleUsers.length} account${visibleUsers.length === 1 ? "" : "s"}`;
 
   const selectedUsers = useMemo(
     () => visibleUsers.filter((user) => selectedIds.has(user.id)),
@@ -260,6 +276,7 @@ export default function AdminUsersModal({
   function handleRoleTabChange(next: string) {
     const tab = next as RoleTab;
     setRoleTab(tab);
+    setSearchQuery("");
     handleSelectionContextChange();
     if (tab === "teachers") cancelEditIfHidden(teachers);
     else if (tab === "admins") cancelEditIfHidden(admins);
@@ -626,7 +643,9 @@ export default function AdminUsersModal({
 
   const emptyMessage =
     roleTab === "students"
-      ? isArchiveView
+      ? searchQuery.trim()
+        ? "No students match your search."
+        : isArchiveView
         ? currentUser?.role === "SUPERADMIN"
           ? `No archived ${formatProgramCourse(bulkProgramCourse)} students.`
           : "No archived students."
@@ -634,9 +653,13 @@ export default function AdminUsersModal({
           ? `No ${formatProgramCourse(bulkProgramCourse)} students in ${activeYearLabel.toLowerCase()}.`
           : `No students in ${activeYearLabel.toLowerCase()}.`
       : roleTab === "teachers"
-        ? "No teacher accounts."
+        ? searchQuery.trim()
+          ? "No teachers match your search."
+          : "No teacher accounts."
         : roleTab === "admins"
-          ? "No admin accounts."
+          ? searchQuery.trim()
+            ? "No admins match your search."
+            : "No admin accounts."
           : "No accounts found.";
 
   const panel = (
@@ -660,7 +683,19 @@ export default function AdminUsersModal({
       </div>
 
       <div className="admin-users-modal-nav">
-        <SegmentedControl segments={[...ROLE_SEGMENTS]} value={roleTab} onChange={handleRoleTabChange} />
+        <div className="admin-users-modal-nav-row">
+          <SegmentedControl segments={[...ROLE_SEGMENTS]} value={roleTab} onChange={handleRoleTabChange} />
+          <label className="admin-users-search">
+            Search
+            <input
+              type="search"
+              placeholder="Name or email…"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              autoComplete="off"
+            />
+          </label>
+        </div>
         {roleTab === "students" && (
           <div className="admin-users-modal-subnav">
             <SegmentedControl

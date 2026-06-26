@@ -17,7 +17,7 @@ import { useAnalyticsSeason } from "../lib/analyticsSeason";
 import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
 import { resetBodyScrollLock } from "../lib/scrollLock";
-import { MODAL_PAGE_SIZE, usePagination } from "../hooks/usePagination";
+import { usePagination } from "../hooks/usePagination";
 import { useChartOrder } from "../hooks/useChartOrder";
 import { formatFullName } from "../lib/names";
 import {
@@ -538,13 +538,12 @@ export default function IndividualStudentAnalytics({ token }: Props) {
     currentStudentIndex >= 0 && currentStudentIndex < studentRoster.length - 1;
 
   const studentTablePagination = usePagination(results, {
-    pageSize: MODAL_PAGE_SIZE,
     resetKey: results.map((student) => student.id).join("|"),
   });
 
   const studentTablePlaceholderCount = Math.max(
     0,
-    MODAL_PAGE_SIZE - studentTablePagination.paginatedItems.length
+    studentTablePagination.pageSize - studentTablePagination.paginatedItems.length
   );
 
   const studentCountLabel = useMemo(() => {

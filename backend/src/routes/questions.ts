@@ -81,22 +81,29 @@ export async function questionRoutes(app: FastifyInstance) {
       topicId: fields.topicId || null,
     });
 
-    const duplicate = await findDuplicateQuestion(prisma, body);
-    if (duplicate) {
-      return reply.code(409).send({
-        error: "A question with the same text already exists for this subject and topic.",
-      });
+    let imagePath: string | undefined;
+    let imageHash: string | null = null;
+    if (imageBuffer) {
+      const saved = await saveOptimizedImage(imageBuffer, uploadDir);
+      imagePath = saved.filename;
+      imageHash = saved.imageHash;
     }
 
-    let imagePath: string | undefined;
-    if (imageBuffer) {
-      imagePath = await saveOptimizedImage(imageBuffer, uploadDir);
+    const duplicate = await findDuplicateQuestion(prisma, { ...body, imageHash });
+    if (duplicate) {
+      if (imagePath) {
+        await unlink(path.join(uploadDir, imagePath)).catch(() => {});
+      }
+      return reply.code(409).send({
+        error: "A question with the same text and image already exists for this subject and topic.",
+      });
     }
 
     const question = await prisma.question.create({
       data: {
         ...body,
         imagePath,
+        imageHash,
         createdById: user.id,
       },
     });
@@ -185,24 +192,40 @@ export async function questionRoutes(app: FastifyInstance) {
       topicId: fields.topicId || null,
     });
 
-    const duplicate = await findDuplicateQuestion(prisma, { ...body, excludeId: id });
+    let imagePath = existing.imagePath;
+    let imageHash: string | null = existing.imageHash;
+    let pendingImagePath: string | null = null;
+
+    if (fields.removeImage === "true") {
+      imagePath = null;
+      imageHash = null;
+    } else if (imageBuffer) {
+      const saved = await saveOptimizedImage(imageBuffer, uploadDir);
+      pendingImagePath = saved.filename;
+      imageHash = saved.imageHash;
+    }
+
+    const duplicate = await findDuplicateQuestion(prisma, { ...body, imageHash, excludeId: id });
     if (duplicate) {
+      if (pendingImagePath) {
+        await unlink(path.join(uploadDir, pendingImagePath)).catch(() => {});
+      }
       return reply.code(409).send({
-        error: "A question with the same text already exists for this subject and topic.",
+        error: "A question with the same text and image already exists for this subject and topic.",
       });
     }
 
-    let imagePath = existing.imagePath;
     if (fields.removeImage === "true") {
       if (existing.imagePath) {
         await unlink(path.join(uploadDir, existing.imagePath)).catch(() => {});
       }
       imagePath = null;
-    } else if (imageBuffer) {
+      imageHash = null;
+    } else if (pendingImagePath) {
       if (existing.imagePath) {
         await unlink(path.join(uploadDir, existing.imagePath)).catch(() => {});
       }
-      imagePath = await saveOptimizedImage(imageBuffer, uploadDir);
+      imagePath = pendingImagePath;
     }
 
     const question = await prisma.question.update({
@@ -210,6 +233,7 @@ export async function questionRoutes(app: FastifyInstance) {
       data: {
         ...body,
         imagePath,
+        imageHash,
       },
     });
 

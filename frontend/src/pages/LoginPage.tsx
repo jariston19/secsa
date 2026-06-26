@@ -31,10 +31,10 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <LoginBackground />
+      <div className="login-page-toolbar">
+        <ThemeToggle />
+      </div>
       <div className="login-page-shell">
-        <div className="login-page-toolbar">
-          <ThemeToggle />
-        </div>
         <div className="login-page-content">
           <Card className="login-card border-white/40 bg-card/80 shadow-2xl backdrop-blur-xl">
           <CardHeader className="items-center space-y-4 text-center">
