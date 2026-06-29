@@ -1,13 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
 import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
+import PasswordConfirmDialog from "./PasswordConfirmDialog";
 import { api } from "../lib/api";
+import { formatBulkDeleteMessage } from "../lib/bulkDeleteMessage";
 import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL, parseYearLevel, sanitizeYearInput } from "../lib/constants";
 import {
   subjectLabel,
-  toastDeleted,
   toastUpdated,
 } from "../lib/toastMessages";
 import {
@@ -19,6 +20,7 @@ import {
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
 import { useConfirm } from "../lib/confirm";
+import { matchesSubjectSearch, matchesTopicSearch } from "../lib/savedListSearch";
 import {
   duplicateCourseCodeMessage,
   findDuplicateCourseCode,
@@ -63,7 +65,14 @@ export default function SavedSubjectsModal({
   const programCourseOptions = useProgramCourseOptions();
   const [programFilter, setProgramFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [passwordPrompt, setPasswordPrompt] = useState<{
+    title: string;
+    message: string;
+    onConfirm: (password: string) => Promise<void>;
+  } | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<SubjectEditDraft | null>(null);
@@ -72,7 +81,12 @@ export default function SavedSubjectsModal({
     !inline
   );
 
-  const filteredSubjects = useMemo(
+  const programLabelById = useMemo(
+    () => Object.fromEntries(programCourseOptions.map((course) => [course.id, course.label])),
+    [programCourseOptions]
+  );
+
+  const filterMatchedSubjects = useMemo(
     () =>
       subjects.filter((subject) => {
         const programMatch =
@@ -83,6 +97,14 @@ export default function SavedSubjectsModal({
     [subjects, programFilter, yearFilter]
   );
 
+  const filteredSubjects = useMemo(
+    () =>
+      filterMatchedSubjects.filter((subject) =>
+        matchesSubjectSearch(subject, searchQuery, programLabelById)
+      ),
+    [filterMatchedSubjects, searchQuery, programLabelById]
+  );
+
   const {
     paginatedItems: paginatedSubjects,
     page,
@@ -91,21 +113,68 @@ export default function SavedSubjectsModal({
     pageStart,
     pageEnd,
     totalItems,
-  } = usePagination(filteredSubjects, { resetKey: `${programFilter}-${yearFilter}` });
+  } = usePagination(filteredSubjects, { resetKey: `${programFilter}-${yearFilter}-${searchQuery}` });
 
   const editCourseCodeDuplicate = useMemo(() => {
     if (!editingId || !editDraft) return null;
     return findDuplicateCourseCode(subjects, editDraft.courseCode, editingId);
   }, [subjects, editingId, editDraft]);
 
+  const selectedSubjects = useMemo(
+    () => filteredSubjects.filter((subject) => selectedIds.has(subject.id)),
+    [filteredSubjects, selectedIds]
+  );
+
+  const selectedCount = selectedSubjects.length;
+  const pageSubjectIds = useMemo(
+    () => paginatedSubjects.map((subject) => subject.id),
+    [paginatedSubjects]
+  );
+  const allPageSelected =
+    pageSubjectIds.length > 0 && pageSubjectIds.every((id) => selectedIds.has(id));
+  const somePageSelected =
+    !allPageSelected && pageSubjectIds.some((id) => selectedIds.has(id));
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    cancelEdit();
+  }, [programFilter, yearFilter, searchQuery]);
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelect(subjectId: string, selected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (selected) next.add(subjectId);
+      else next.delete(subjectId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(subjectIds: string[], selected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const subjectId of subjectIds) {
+        if (selected) next.add(subjectId);
+        else next.delete(subjectId);
+      }
+      return next;
+    });
+  }
+
+  function handleToolbarEdit() {
+    if (selectedSubjects.length !== 1) return;
+    startEdit(selectedSubjects[0]);
+  }
+
   function handleProgramFilterChange(value: ProgramCourseFilter) {
     setProgramFilter(value);
-    cancelEdit();
   }
 
   function handleYearFilterChange(value: YearLevelFilter) {
     setYearFilter(value);
-    cancelEdit();
   }
 
   function startEdit(subject: Subject) {
@@ -168,6 +237,7 @@ export default function SavedSubjectsModal({
       );
       setEditingId(null);
       setEditDraft(null);
+      clearSelection();
       onUpdated(message, false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update subject";
@@ -177,42 +247,112 @@ export default function SavedSubjectsModal({
     }
   }
 
-  async function deleteSubject(
-    id: string,
-    label: string,
-    topicCount: number,
-    questionCount: number
-  ) {
+  async function deleteSelectedSubjects() {
+    if (selectedSubjects.length === 0) return;
+
+    const topicCount = selectedSubjects.reduce((sum, subject) => sum + (subject.topics?.length ?? 0), 0);
+    const questionCount = selectedSubjects.reduce(
+      (sum, subject) => sum + (subject._count?.questions ?? 0),
+      0
+    );
+
+    const preview =
+      selectedSubjects.length === 1
+        ? `"${selectedSubjects[0].courseCode} — ${selectedSubjects[0].courseTitle}"`
+        : `${selectedSubjects.length} selected subjects`;
+
     const confirmed = await confirm({
-      title: "Delete subject?",
-      message: `Delete subject "${label}"?\n\nThis will also remove ${topicCount} topic(s) and ${questionCount} question(s). This cannot be undone.`,
+      title: selectedSubjects.length === 1 ? "Delete subject?" : "Delete selected subjects?",
+      message: `Delete ${preview}?\n\nThis will also remove ${topicCount} topic(s) and ${questionCount} question(s). This cannot be undone.`,
       tone: "danger",
       confirmLabel: "Delete",
     });
     if (!confirmed) return;
 
-    setDeletingId(id);
-    if (editingId === id) cancelEdit();
-
+    setBulkBusy(true);
     try {
-      const result = await api<{ success: boolean; archivedSets?: number }>(
-        `/subjects/${id}`,
-        { method: "DELETE" },
+      const result = await api<{
+        deleted: number;
+        archivedSets: number;
+        failed: Array<{ id: string; error: string }>;
+      }>(
+        "/subjects/bulk-delete",
+        {
+          method: "POST",
+          body: JSON.stringify({ ids: selectedSubjects.map((subject) => subject.id) }),
+        },
         token
       );
 
-      let message = toastDeleted("subject", label);
-      if (result.archivedSets && result.archivedSets > 0) {
-        message += ` ${result.archivedSets} deployed question set(s) were archived.`;
-      }
-
-      onUpdated(message, false);
+      onUpdated(
+        formatBulkDeleteMessage("subject", result),
+        Boolean(result.failed?.length)
+      );
+      clearSelection();
+      cancelEdit();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to delete subject";
+      const message = err instanceof Error ? err.message : "Failed to delete subjects";
       onUpdated(message, true);
     } finally {
-      setDeletingId(null);
+      setBulkBusy(false);
     }
+  }
+
+  function requestDeleteAllFiltered() {
+    if (filteredSubjects.length === 0) return;
+
+    const filterParts: string[] = [];
+    if (searchQuery.trim()) {
+      filterParts.push(`search "${searchQuery.trim()}"`);
+    }
+    if (programFilter !== "ALL") {
+      filterParts.push(
+        programCourseOptions.find((course) => course.id === programFilter)?.label ?? programFilter
+      );
+    }
+    if (yearFilter !== "ALL") {
+      filterParts.push(`year ${yearFilter}`);
+    }
+    const scopeLabel = filterParts.length > 0 ? filterParts.join(", ") : "the current view";
+
+    setPasswordPrompt({
+      title: "Delete all filtered subjects?",
+      message: `Delete all ${filteredSubjects.length} subject(s) matching ${scopeLabel}?\n\nThis removes their topics and questions. Enter your password to confirm.`,
+      onConfirm: async (password) => {
+        setBulkBusy(true);
+        try {
+          const result = await api<{
+            deleted: number;
+            archivedSets: number;
+            failed: Array<{ id: string; error: string }>;
+          }>(
+            "/subjects/delete-all",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                password,
+                ids: filteredSubjects.map((subject) => subject.id),
+                ...(programFilter !== "ALL" ? { programCourse: programFilter } : {}),
+                ...(yearFilter !== "ALL" ? { yearLevel: Number(yearFilter) } : {}),
+              }),
+            },
+            token
+          );
+
+          onUpdated(
+            formatBulkDeleteMessage("subject", result, scopeLabel),
+            Boolean(result.failed?.length)
+          );
+          clearSelection();
+          cancelEdit();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Failed to delete subjects";
+          onUpdated(message, true);
+        } finally {
+          setBulkBusy(false);
+        }
+      },
+    });
   }
 
   const panel = (
@@ -221,8 +361,7 @@ export default function SavedSubjectsModal({
         <div>
           <h2>Saved Subjects</h2>
           <p className="muted section-desc">
-            Filter by program course and curriculum year, then edit or delete subjects. Subjects
-            already used in student exams cannot be deleted.
+            Filter by program course and curriculum year. Search by course code or title. Select rows to edit or delete.
           </p>
         </div>
         <div className="saved-panel-header-end">
@@ -273,12 +412,82 @@ export default function SavedSubjectsModal({
                 ))}
               </select>
             </label>
+            <label className="saved-list-search">
+              Search
+              <input
+                type="search"
+                placeholder="Course code or title…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoComplete="off"
+              />
+            </label>
           </div>
 
           {filteredSubjects.length === 0 ? (
-            <p className="muted">No subjects match these filters.</p>
+            <p className="muted">
+              {searchQuery.trim()
+                ? "No subjects match your search."
+                : "No subjects match these filters."}
+            </p>
           ) : (
             <>
+              <div className="saved-list-bulk-panel card">
+                <span className="muted saved-list-selection-count">
+                  {selectedCount > 0
+                    ? `${selectedCount} selected`
+                    : searchQuery.trim()
+                      ? `${filteredSubjects.length} of ${filterMatchedSubjects.length} subject${filterMatchedSubjects.length === 1 ? "" : "s"}`
+                      : `${filteredSubjects.length} subject${filteredSubjects.length === 1 ? "" : "s"} shown`}
+                </span>
+                <div className="saved-list-bulk-actions">
+                  {editingId ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={
+                          savingId === editingId ||
+                          (editCourseCodeDuplicate !== null && editingId !== null)
+                        }
+                        onClick={() => saveEdit(editingId)}
+                      >
+                        {savingId === editingId ? "Saving..." : "Save"}
+                      </button>
+                      <button type="button" className="btn secondary btn-sm" onClick={cancelEdit}>
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn secondary btn-sm"
+                        disabled={selectedCount !== 1 || bulkBusy}
+                        onClick={handleToolbarEdit}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="btn danger btn-sm"
+                        disabled={selectedCount === 0 || bulkBusy}
+                        onClick={() => deleteSelectedSubjects().catch(() => {})}
+                      >
+                        {bulkBusy ? "Deleting..." : "Delete selected"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn danger btn-sm"
+                        disabled={filteredSubjects.length === 0 || bulkBusy}
+                        onClick={requestDeleteAllFiltered}
+                      >
+                        Delete all filtered
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
               <ListPanel
                 footer={
                   <ModalPagination
@@ -295,21 +504,45 @@ export default function SavedSubjectsModal({
                 <table>
             <thead>
               <tr>
+                <th className="saved-list-select-cell">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    ref={(input) => {
+                      if (input) input.indeterminate = somePageSelected;
+                    }}
+                    onChange={(e) => toggleSelectAll(pageSubjectIds, e.target.checked)}
+                    disabled={Boolean(editingId) || bulkBusy}
+                    aria-label="Select all on this page"
+                  />
+                </th>
                 <th>Course code</th>
                 <th className="saved-subjects-title-col">Title</th>
                 <th>Programs</th>
                 <th>Year</th>
                 <th>Topics</th>
                 <th>Questions</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {paginatedSubjects.map((s) => {
                 const isEditing = editingId === s.id;
+                const isSelected = selectedIds.has(s.id);
 
                 return (
-                  <tr key={s.id}>
+                  <tr
+                    key={s.id}
+                    className={isSelected ? "saved-list-selected-row" : undefined}
+                  >
+                    <td className="saved-list-select-cell">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => toggleSelect(s.id, e.target.checked)}
+                        disabled={Boolean(editingId) || bulkBusy}
+                        aria-label={`Select ${s.courseCode}`}
+                      />
+                    </td>
                     <td>
                       {isEditing ? (
                         <div className="saved-subjects-code-edit">
@@ -394,57 +627,6 @@ export default function SavedSubjectsModal({
                     </td>
                     <td>{s.topics?.length ?? 0}</td>
                     <td>{s._count?.questions ?? 0}</td>
-                    <td>
-                      <div className="action-buttons">
-                        {isEditing ? (
-                          <>
-                            <button
-                              type="button"
-                              className="btn btn-sm"
-                              disabled={
-                                savingId === s.id ||
-                                (editCourseCodeDuplicate !== null && editingId === s.id)
-                              }
-                              onClick={() => saveEdit(s.id)}
-                            >
-                              {savingId === s.id ? "Saving..." : "Save"}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn secondary btn-sm"
-                              onClick={cancelEdit}
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              className="btn secondary btn-sm"
-                              onClick={() => startEdit(s)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn danger btn-sm"
-                              disabled={deletingId === s.id}
-                              onClick={() =>
-                                deleteSubject(
-                                  s.id,
-                                  `${s.courseCode} — ${s.courseTitle}`,
-                                  s.topics?.length ?? 0,
-                                  s._count?.questions ?? 0
-                                )
-                              }
-                            >
-                              {deletingId === s.id ? "Deleting..." : "Delete"}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
                   </tr>
                 );
               })}
@@ -456,6 +638,20 @@ export default function SavedSubjectsModal({
           )}
         </>
       )}
+      {passwordPrompt ? (
+        <PasswordConfirmDialog
+          title={passwordPrompt.title}
+          message={passwordPrompt.message}
+          confirmLabel="Delete all"
+          onComplete={(password) => {
+            const prompt = passwordPrompt;
+            setPasswordPrompt(null);
+            if (password) {
+              prompt.onConfirm(password).catch(() => {});
+            }
+          }}
+        />
+      ) : null}
     </>
   );
 

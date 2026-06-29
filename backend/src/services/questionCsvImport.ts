@@ -68,6 +68,22 @@ function normalizeHeader(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, "_");
 }
 
+/** Loose match for CSV topic cells vs Setup topic names (dashes, spacing, Excel mojibake). */
+export function normalizeTopicMatchKey(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(/\uFFFD/g, "-")
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+    .replace(/\s*-\s*/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeCourseCodeMatchKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function parseDifficulty(value: string): Difficulty | null {
   const key = value.trim().toUpperCase();
   if (key === "EASY") return Difficulty.EASY;
@@ -251,10 +267,13 @@ export async function importQuestionsFromCsv(
   ]);
 
   const subjectByKey = new Map(
-    subjects.map((subject) => [`${subject.courseCode.toLowerCase()}::${subject.yearLevel}`, subject])
+    subjects.map((subject) => [
+      `${normalizeCourseCodeMatchKey(subject.courseCode)}::${subject.yearLevel}`,
+      subject,
+    ])
   );
   const topicByKey = new Map(
-    topics.map((topic) => [`${topic.subjectId}::${topic.name.trim().toLowerCase()}`, topic])
+    topics.map((topic) => [`${topic.subjectId}::${normalizeTopicMatchKey(topic.name)}`, topic])
   );
   const duplicateKeys = new Set(existingQuestions.map(questionDuplicateKey));
 
@@ -270,7 +289,7 @@ export async function importQuestionsFromCsv(
     }
 
     const data = parsed.data!;
-    const subjectKey = `${data.courseCode.toLowerCase()}::${data.curriculumYear}`;
+    const subjectKey = `${normalizeCourseCodeMatchKey(data.courseCode)}::${data.curriculumYear}`;
     const subject = subjectByKey.get(subjectKey);
     if (!subject) {
       errors.push({
@@ -282,11 +301,19 @@ export async function importQuestionsFromCsv(
 
     let topicId: string | null = null;
     if (data.topic) {
-      const topic = topicByKey.get(`${subject.id}::${data.topic.toLowerCase()}`);
+      const topic = topicByKey.get(`${subject.id}::${normalizeTopicMatchKey(data.topic)}`);
       if (!topic) {
+        const available = topics
+          .filter((row) => row.subjectId === subject.id)
+          .map((row) => row.name)
+          .sort((a, b) => a.localeCompare(b));
+        const examples =
+          available.length > 0
+            ? ` Available topics: ${available.slice(0, 5).map((name) => `"${name}"`).join(", ")}${available.length > 5 ? ", …" : ""}.`
+            : " Add topics under this subject in Setup first.";
         errors.push({
           row: rowNumber,
-          message: `Topic "${data.topic}" not found under ${data.courseCode}.`,
+          message: `Topic "${data.topic}" not found under ${data.courseCode}.${examples}`,
         });
         continue;
       }

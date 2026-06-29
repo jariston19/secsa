@@ -1,11 +1,23 @@
 import type { FastifyInstance } from "fastify";
-import { QuestionSetStatus, Role } from "@prisma/client";
-import { unlink } from "fs/promises";
-import path from "path";
+import { Role } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
-import { uploadDir } from "../lib/paths.js";
+import {
+  bulkDeleteTopics,
+  deleteTopicRecord,
+  verifyUserPassword,
+} from "../services/subjectTopicDelete.js";
+
+const bulkDeleteTopicsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(500),
+});
+
+const deleteAllTopicsSchema = z.object({
+  password: z.string().min(1),
+  subjectId: z.string().min(1),
+  ids: z.array(z.string().min(1)).min(1).max(500).optional(),
+});
 
 const topicSchema = z.object({
   name: z.string().min(1),
@@ -127,6 +139,62 @@ export async function topicRoutes(app: FastifyInstance) {
     }
   });
 
+  app.post("/bulk-delete", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const body = bulkDeleteTopicsSchema.parse(request.body);
+    const result = await bulkDeleteTopics(body.ids);
+
+    if (result.deleted === 0) {
+      return reply.code(400).send({
+        error: "No topics were deleted.",
+        ...result,
+      });
+    }
+
+    return result;
+  });
+
+  app.post("/delete-all", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const body = deleteAllTopicsSchema.parse(request.body);
+    const validPassword = await verifyUserPassword(user.id, body.password);
+    if (!validPassword) {
+      return reply.code(403).send({ error: "Incorrect password." });
+    }
+
+    const subject = await prisma.subject.findUnique({
+      where: { id: body.subjectId },
+      select: { id: true },
+    });
+    if (!subject) {
+      return reply.code(404).send({ error: "Subject not found." });
+    }
+
+    const topics = body.ids?.length
+      ? await prisma.topic.findMany({
+          where: { id: { in: body.ids }, subjectId: body.subjectId },
+          select: { id: true },
+        })
+      : await prisma.topic.findMany({
+          where: { subjectId: body.subjectId },
+          select: { id: true },
+        });
+
+    const result = await bulkDeleteTopics(topics.map((topic) => topic.id));
+    if (result.deleted === 0) {
+      return reply.code(400).send({
+        error: "No topics were deleted.",
+        ...result,
+      });
+    }
+
+    return result;
+  });
+
   app.delete("/:id", async (request, reply) => {
     const user = getUser(request);
     requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
@@ -134,59 +202,22 @@ export async function topicRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const topic = await prisma.topic.findUnique({
       where: { id },
-      include: {
-        questions: { select: { imagePath: true } },
-      },
+      select: { _count: { select: { questions: true } } },
     });
 
     if (!topic) return reply.code(404).send({ error: "Topic not found." });
 
-    const usedInExams = await prisma.examAnswer.findFirst({
-      where: {
-        question: { topicId: id },
-        selectedOption: { not: null },
-      },
-    });
+    const result = await deleteTopicRecord(id);
 
-    if (usedInExams) {
-      return reply.code(400).send({
-        error: "Cannot delete this topic because its questions were already used in student exams.",
-      });
+    if (!result.success) {
+      const status = result.error === "Topic not found." ? 404 : 400;
+      return reply.code(status).send({ error: result.error });
     }
-
-    const deployedConfigs = await prisma.questionSetConfig.findMany({
-      where: {
-        topicId: id,
-        questionSet: { status: QuestionSetStatus.DEPLOYED },
-      },
-      select: { questionSetId: true },
-    });
-
-    const deployedSetIds = [...new Set(deployedConfigs.map((c) => c.questionSetId))];
-
-    for (const question of topic.questions) {
-      if (question.imagePath) {
-        await unlink(path.join(uploadDir, question.imagePath)).catch(() => {});
-      }
-    }
-
-    await prisma.$transaction([
-      ...(deployedSetIds.length > 0
-        ? [
-            prisma.questionSet.updateMany({
-              where: { id: { in: deployedSetIds } },
-              data: { status: QuestionSetStatus.ARCHIVED },
-            }),
-          ]
-        : []),
-      prisma.question.deleteMany({ where: { topicId: id } }),
-      prisma.topic.delete({ where: { id } }),
-    ]);
 
     return {
       success: true,
-      archivedSets: deployedSetIds.length,
-      deletedQuestions: topic.questions.length,
+      archivedSets: result.archivedSets,
+      deletedQuestions: topic._count.questions,
     };
   });
 }

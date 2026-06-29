@@ -1,11 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import { QuestionSetStatus, Role } from "@prisma/client";
-import { unlink } from "fs/promises";
-import path from "path";
+import { Role } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
-import { uploadDir } from "../lib/paths.js";
 import { programCourseSlugSchema, assertActiveProgramSlugs } from "../lib/programCourse.js";
 import {
   programCoursesSchema,
@@ -16,12 +13,28 @@ import {
   formatCourseCode,
   findDuplicateCourseCode,
 } from "../services/subjectDuplicates.js";
+import {
+  bulkDeleteSubjects,
+  deleteSubjectRecord,
+  verifyUserPassword,
+} from "../services/subjectTopicDelete.js";
 
 const subjectSchema = z.object({
   courseCode: z.string().min(1),
   courseTitle: z.string().min(1),
   yearLevel: yearLevelSchema,
   programCourses: programCoursesSchema,
+});
+
+const bulkDeleteSubjectsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(200),
+});
+
+const deleteAllSubjectsSchema = z.object({
+  password: z.string().min(1),
+  ids: z.array(z.string().min(1)).min(1).max(500).optional(),
+  programCourse: programCourseSlugSchema.optional(),
+  yearLevel: yearLevelSchema.optional(),
 });
 
 async function loadSubject(id: string) {
@@ -200,64 +213,75 @@ export async function subjectRoutes(app: FastifyInstance) {
     }
   });
 
+  app.post("/bulk-delete", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const body = bulkDeleteSubjectsSchema.parse(request.body);
+    const result = await bulkDeleteSubjects(body.ids);
+
+    if (result.deleted === 0) {
+      return reply.code(400).send({
+        error: "No subjects were deleted.",
+        ...result,
+      });
+    }
+
+    return result;
+  });
+
+  app.post("/delete-all", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
+
+    const body = deleteAllSubjectsSchema.parse(request.body);
+    const validPassword = await verifyUserPassword(user.id, body.password);
+    if (!validPassword) {
+      return reply.code(403).send({ error: "Incorrect password." });
+    }
+
+    const subjects = body.ids?.length
+      ? body.ids.map((id) => ({ id }))
+      : await prisma.subject.findMany({
+          where: {
+            ...(body.yearLevel != null ? { yearLevel: body.yearLevel } : {}),
+            ...(body.programCourse
+              ? {
+                  programCourses: {
+                    some: { programCourse: body.programCourse },
+                  },
+                }
+              : {}),
+          },
+          select: { id: true },
+        });
+
+    const result = await bulkDeleteSubjects(subjects.map((subject) => subject.id));
+    if (result.deleted === 0) {
+      return reply.code(400).send({
+        error: "No subjects were deleted.",
+        ...result,
+      });
+    }
+
+    return result;
+  });
+
   app.delete("/:id", async (request, reply) => {
     const user = getUser(request);
     requireRoles(user, [Role.TEACHER, Role.SUPERADMIN]);
 
     const { id } = request.params as { id: string };
-    const subject = await prisma.subject.findUnique({
-      where: { id },
-      include: {
-        questions: { select: { id: true, imagePath: true } },
-      },
-    });
+    const result = await deleteSubjectRecord(id);
 
-    if (!subject) return reply.code(404).send({ error: "Subject not found." });
-
-    const usedInExams = await prisma.examAnswer.findFirst({
-      where: {
-        question: { subjectId: id },
-        selectedOption: { not: null },
-      },
-    });
-
-    if (usedInExams) {
-      return reply.code(400).send({
-        error: "Cannot delete this subject because its questions were already used in student exams.",
-      });
+    if (!result.success) {
+      const status = result.error === "Subject not found." ? 404 : 400;
+      return reply.code(status).send({ error: result.error });
     }
-
-    const deployedConfigs = await prisma.questionSetConfig.findMany({
-      where: {
-        subjectId: id,
-        questionSet: { status: QuestionSetStatus.DEPLOYED },
-      },
-      select: { questionSetId: true },
-    });
-
-    const deployedSetIds = [...new Set(deployedConfigs.map((c) => c.questionSetId))];
-
-    for (const question of subject.questions) {
-      if (question.imagePath) {
-        await unlink(path.join(uploadDir, question.imagePath)).catch(() => {});
-      }
-    }
-
-    await prisma.$transaction([
-      ...(deployedSetIds.length > 0
-        ? [
-            prisma.questionSet.updateMany({
-              where: { id: { in: deployedSetIds } },
-              data: { status: QuestionSetStatus.ARCHIVED },
-            }),
-          ]
-        : []),
-      prisma.subject.delete({ where: { id } }),
-    ]);
 
     return {
       success: true,
-      archivedSets: deployedSetIds.length,
+      archivedSets: result.archivedSets,
     };
   });
 }
