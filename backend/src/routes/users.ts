@@ -15,6 +15,7 @@ import {
   previewBulkPromote,
   previewSchoolYearRollover,
 } from "../services/bulkStudentYearOps.js";
+import { importUsersFromCsv, userCsvTemplate } from "../services/userCsvImport.js";
 
 const emailSchema = z.string().trim().email().transform(normalizeUserEmail);
 
@@ -342,6 +343,44 @@ export async function userRoutes(app: FastifyInstance) {
       const message = err instanceof Error ? err.message : "Failed to rollover students.";
       return reply.code(400).send({ error: message });
     }
+  });
+
+  app.get("/import/template.csv", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    reply
+      .header("Content-Type", "text/csv; charset=utf-8")
+      .header("Content-Disposition", 'attachment; filename="users-import-template.csv"');
+    return userCsvTemplate();
+  });
+
+  app.post("/import/csv", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    const parts = request.parts();
+    let csvText: string | null = null;
+
+    for await (const part of parts) {
+      if (part.type === "file" && part.fieldname === "csv") {
+        csvText = (await part.toBuffer()).toString("utf8");
+      }
+    }
+
+    if (!csvText?.trim()) {
+      return reply.code(400).send({ error: "Upload a CSV file in the csv field." });
+    }
+
+    const result = await importUsersFromCsv(prisma, csvText);
+    if (result.created === 0) {
+      return reply.code(400).send({
+        error: "No users were imported.",
+        ...result,
+      });
+    }
+
+    return reply.code(201).send(result);
   });
 
   app.delete("/:id", async (request, reply) => {

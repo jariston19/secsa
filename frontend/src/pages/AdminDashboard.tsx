@@ -10,6 +10,7 @@ import IndividualStudentAnalytics from "../components/IndividualStudentAnalytics
 import AnalyticsOverview from "../components/AnalyticsOverview";
 import AnalyticsDemographics from "../components/AnalyticsDemographics";
 import AnalyticsTrends from "../components/AnalyticsTrends";
+import AnalyticsRankings from "../components/AnalyticsRankings";
 import QuestionPerformanceModal from "../components/QuestionPerformanceModal";
 import StudentSubmissionDetailModal from "../components/StudentSubmissionDetailModal";
 import StudentSubmissionsSection from "../components/StudentSubmissionsSection";
@@ -26,6 +27,7 @@ type Tab =
   | "analytics-overview"
   | "analytics-trends"
   | "analytics-demographics"
+  | "analytics-rankings"
   | "analytics-group"
   | "analytics-student"
   | "analytics-question"
@@ -57,6 +59,7 @@ const ADMIN_PAGE_MENUS = [
       { id: "analytics-overview", label: "Overview" },
       { id: "analytics-trends", label: "Trends" },
       { id: "analytics-demographics", label: "Demographics" },
+      { id: "analytics-rankings", label: "Rankings" },
       { id: "analytics-group", label: "Group" },
       { id: "analytics-student", label: "Student" },
       { id: "analytics-question", label: "Question" },
@@ -133,6 +136,8 @@ export default function AdminDashboard() {
       {activeTab === "analytics-trends" && <AnalyticsTrends token={token} />}
 
       {activeTab === "analytics-demographics" && <AnalyticsDemographics token={token} />}
+
+      {activeTab === "analytics-rankings" && <AnalyticsRankings token={token} />}
 
       {activeTab === "analytics-group" && <GroupAnalytics token={token} />}
 

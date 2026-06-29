@@ -18,6 +18,7 @@ import { buildAnalyticsReports } from "../services/analyticsReports.js";
 import { buildOverviewDashboard } from "../services/overviewDashboard.js";
 import { buildCohortTrends } from "../services/cohortTrends.js";
 import { buildDemographicAnalytics } from "../services/demographicAnalytics.js";
+import { buildAnalyticsRankings, type RankingsExamType } from "../services/analyticsRankings.js";
 import { listAvailableExamYears, parseExamYearQuery } from "../lib/analyticsSeason.js";
 
 export async function analyticsRoutes(app: FastifyInstance) {
@@ -81,6 +82,32 @@ export async function analyticsRoutes(app: FastifyInstance) {
       examYear?: string;
     };
     return buildDemographicAnalytics({
+      yearLevel: parseYearLevelQuery(query.yearLevel),
+      programCourse: await parseProgramCourseQuery(query.programCourse),
+      examYear: parseExamYear(query.examYear),
+    });
+  });
+
+  app.get("/rankings", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
+
+    const query = request.query as {
+      examType?: string;
+      yearLevel?: string;
+      programCourse?: string;
+      examYear?: string;
+    };
+
+    const examTypeRaw = (query.examType ?? "comprehensive").trim().toLowerCase();
+    if (examTypeRaw !== "diagnostic" && examTypeRaw !== "comprehensive") {
+      return reply.code(400).send({
+        error: "examType must be diagnostic or comprehensive.",
+      });
+    }
+
+    return buildAnalyticsRankings({
+      examType: examTypeRaw as RankingsExamType,
       yearLevel: parseYearLevelQuery(query.yearLevel),
       programCourse: await parseProgramCourseQuery(query.programCourse),
       examYear: parseExamYear(query.examYear),

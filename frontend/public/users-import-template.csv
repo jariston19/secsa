@@ -1,0 +1,3 @@
+email,password,first_name,last_name,role,year_level,program_course,gender,school_type,qa_unlimited
+student1@school.edu,password123,Juan,Dela Cruz,STUDENT,1,INFORMATION_TECHNOLOGY,MALE,PUBLIC,false
+teacher1@school.edu,password123,Maria,Santos,TEACHER,,,,,

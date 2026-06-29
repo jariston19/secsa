@@ -11,7 +11,7 @@ import {
   type SchoolTypeId,
 } from "../lib/studentDemographics";
 import { duplicateUserEmailMessage } from "../lib/userEmailDuplicates";
-import { toastCreated } from "../lib/toastMessages";
+import { toastBatchCreated, toastCreated } from "../lib/toastMessages";
 
 type UserRole = "STUDENT" | "TEACHER" | "SUPERADMIN";
 
@@ -77,6 +77,9 @@ export default function AddUserForm({ token, onCreated }: Props) {
   }
 
   const [submitting, setSubmitting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
   const [emailChecking, setEmailChecking] = useState(false);
   const [emailDuplicate, setEmailDuplicate] = useState<{
     email: string;
@@ -171,13 +174,99 @@ export default function AddUserForm({ token, onCreated }: Props) {
     }
   }
 
+  async function importCsv() {
+    if (!importFile) {
+      setImportError("Choose a CSV file to import.");
+      return;
+    }
+
+    setImporting(true);
+    setImportError("");
+
+    const formData = new FormData();
+    formData.append("csv", importFile);
+
+    try {
+      const res = await fetch("/api/users/import/csv", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail =
+          Array.isArray(data.errors) && data.errors.length > 0
+            ? data.errors
+                .slice(0, 3)
+                .map((entry: { row: number; message: string }) => `Row ${entry.row}: ${entry.message}`)
+                .join(" ")
+            : "";
+        throw new Error(
+          [data.error || "Import failed", detail].filter(Boolean).join(" ")
+        );
+      }
+
+      setImportFile(null);
+      const skipped =
+        data.failed > 0 ? `${data.failed} row${data.failed === 1 ? "" : "s"} skipped.` : "";
+      onCreated(toastBatchCreated("users", data.created, "CSV import", skipped));
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <section className="card build-sets-panel add-user-card">
       <header className="sets-header build-set-inline-header add-user-header">
         <div className="add-user-header-copy">
           <h2>Add User</h2>
+          <p className="muted section-desc">
+            Create one account at a time below, or import many users from CSV.
+          </p>
         </div>
       </header>
+
+      <div className="encoder-csv-import add-user-csv-import">
+        <div>
+          <h3>Import from CSV</h3>
+          <p className="muted section-desc">
+            Students need year level, program course, gender, and school type. Leave those columns
+            blank for teachers and superadmins.
+          </p>
+        </div>
+        <div className="encoder-csv-import-actions">
+          <a className="btn secondary btn-sm" href="/users-import-template.csv" download>
+            Download template
+          </a>
+          <label className="encoder-csv-file">
+            <span className="btn secondary btn-sm">Choose CSV</span>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => {
+                setImportFile(event.target.files?.[0] ?? null);
+                setImportError("");
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn secondary btn-sm"
+            onClick={importCsv}
+            disabled={importing || !importFile}
+          >
+            {importing ? "Importing..." : "Import CSV"}
+          </button>
+        </div>
+        {importFile ? <p className="muted encoder-csv-filename">{importFile.name}</p> : null}
+        {importError ? (
+          <p className="field-hint field-hint-error" role="alert">
+            {importError}
+          </p>
+        ) : null}
+      </div>
 
       <form className="add-user-form build-set-form" onSubmit={handleSubmit}>
         <div className="add-user-form-body build-set-form-body">
