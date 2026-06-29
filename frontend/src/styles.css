@@ -434,6 +434,7 @@ body {
 }
 
 .card.saved-panel .list-panel,
+.card.backup-restore-panel .list-panel,
 .card.saved-panel .admin-users-modal-body,
 .card.student-submissions-panel .list-panel,
 .card.individual-student-browser .list-panel,
@@ -7672,6 +7673,77 @@ td:has(.action-buttons) {
   grid-column: 1 / -1;
 }
 
+.backup-restore-panel .saved-panel-header {
+  margin-bottom: 1rem;
+}
+
+.backup-restore-panel {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: var(--list-screen-height);
+  min-height: 20rem;
+  overflow: hidden;
+}
+
+.backup-restore-panel-top {
+  flex-shrink: 0;
+}
+
+.backup-restore-list-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.backup-restore-list-panel .list-panel-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.backup-restore-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.backup-restore-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  background: var(--surface);
+}
+
+.backup-restore-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+}
+
+.backup-restore-card dl {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.backup-restore-card dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.backup-restore-card dt {
+  margin: 0;
+  color: var(--ios-label-secondary);
+  font-size: 0.8125rem;
+}
+
+.backup-restore-card dd {
+  margin: 0;
+  font-size: 0.875rem;
+  text-align: right;
+}
+
 .saved-list-bulk-panel {
   display: flex;
   align-items: center;
@@ -7708,14 +7780,50 @@ td:has(.action-buttons) {
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 
+.password-confirm-dialog {
+  align-items: stretch;
+  text-align: left;
+}
+
+.password-confirm-dialog .confirm-dialog-icon {
+  align-self: center;
+}
+
+.password-confirm-dialog .confirm-dialog-title {
+  text-align: center;
+}
+
+.password-confirm-dialog #password-confirm-description {
+  width: 100%;
+}
+
+.password-confirm-dialog .confirm-dialog-message {
+  margin-bottom: 0;
+}
+
 .password-confirm-dialog .password-confirm-field {
   display: grid;
   gap: 0.35rem;
   margin-top: 1rem;
+  text-align: left;
 }
 
 .password-confirm-dialog .password-confirm-field input {
   width: 100%;
+}
+
+.password-confirm-dialog .field-hint {
+  margin-top: 0.5rem;
+  text-align: left;
+}
+
+.password-confirm-dialog .confirm-dialog-actions {
+  width: 100%;
+  margin-top: 1.1rem;
+}
+
+.modal-overlay:has(.password-confirm-dialog) {
+  place-items: center;
 }
 
 .saved-subjects-modal th:nth-child(1),
@@ -8421,6 +8529,10 @@ td:has(.action-buttons) {
   .saved-subjects-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .backup-restore-summary {
+    grid-template-columns: 1fr;
   }
 
   .saved-questions-filters,

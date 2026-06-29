@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import AddUserForm from "../components/AddUserForm";
 import AdminUsersModal from "../components/AdminUsersModal";
 import ProgramCoursesSettings from "../components/ProgramCoursesSettings";
+import BackupRestorePanel from "../components/BackupRestorePanel";
 import TabPanel from "../components/TabPanel";
 import AnalyticsReports from "../components/AnalyticsReports";
 import GroupAnalytics from "../components/GroupAnalytics";
@@ -21,6 +22,7 @@ type Tab =
   | "users-add"
   | "users-manage"
   | "settings-programs"
+  | "settings-backup"
   | "analytics-overview"
   | "analytics-trends"
   | "analytics-demographics"
@@ -43,7 +45,10 @@ const ADMIN_PAGE_MENUS = [
   {
     id: "settings",
     label: "Settings",
-    items: [{ id: "settings-programs", label: "Program Courses" }],
+    items: [
+      { id: "settings-programs", label: "Program Courses" },
+      { id: "settings-backup", label: "Backup / Restore" },
+    ],
   },
   {
     id: "analytics",
@@ -117,6 +122,10 @@ export default function AdminDashboard() {
 
       {activeTab === "settings-programs" && (
         <ProgramCoursesSettings token={token} onCreated={showMessage} />
+      )}
+
+      {activeTab === "settings-backup" && (
+        <BackupRestorePanel token={token} onUpdated={showMessage} />
       )}
 
       {activeTab === "analytics-overview" && <AnalyticsOverview token={token} />}

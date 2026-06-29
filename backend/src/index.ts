@@ -6,6 +6,7 @@ import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import { requireEnv } from "./lib/env.js";
 import { uploadDir } from "./lib/paths.js";
+import { ensureBackupDir } from "./services/databaseBackup.js";
 import { authRoutes } from "./routes/auth.js";
 import { userRoutes } from "./routes/users.js";
 import { subjectRoutes } from "./routes/subjects.js";
@@ -15,10 +16,12 @@ import { questionSetRoutes } from "./routes/questionSets.js";
 import { examRoutes } from "./routes/exams.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { programRoutes } from "./routes/programs.js";
+import { backupRoutes } from "./routes/backups.js";
 
 const app = Fastify({ logger: true });
 
 await mkdir(uploadDir, { recursive: true });
+await ensureBackupDir();
 
 await app.register(cors, { origin: true });
 await app.register(jwt, { secret: requireEnv("JWT_SECRET") });
@@ -55,6 +58,7 @@ await app.register(questionSetRoutes, { prefix: "/api/question-sets" });
 await app.register(examRoutes, { prefix: "/api/exams" });
 await app.register(analyticsRoutes, { prefix: "/api/analytics" });
 await app.register(programRoutes, { prefix: "/api/programs" });
+await app.register(backupRoutes, { prefix: "/api/backups" });
 
 const port = Number(process.env.PORT || 3001);
 await app.listen({ port, host: "0.0.0.0" });
