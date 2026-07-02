@@ -91,7 +91,7 @@ export default function BackupRestorePanel({ token, onUpdated }: Props) {
     pageStart,
     pageEnd,
     totalItems,
-  } = usePagination(backups, { pageSize: 10, resetKey: backups.length });
+  } = usePagination(backups, { pageSize: 5, resetKey: backups.length });
 
   async function createBackup() {
     setCreating(true);
@@ -252,6 +252,7 @@ export default function BackupRestorePanel({ token, onUpdated }: Props) {
       </div>
 
       {!loading && status ? (
+        <div className="backup-restore-panel-body">
           <ListPanel
             className="backup-restore-list-panel"
             footer={
@@ -316,6 +317,7 @@ export default function BackupRestorePanel({ token, onUpdated }: Props) {
               </table>
             </div>
           </ListPanel>
+        </div>
       ) : null}
 
       {passwordPrompt ? (

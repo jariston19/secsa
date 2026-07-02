@@ -7836,15 +7836,35 @@ td:has(.action-buttons) {
   flex-shrink: 0;
 }
 
+.backup-restore-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .backup-restore-list-panel {
   flex: 1;
   min-height: 0;
+  gap: 0.5rem;
 }
 
 .backup-restore-list-panel .list-panel-scroll {
   min-height: 0;
   flex: 1 1 auto;
-  overflow: hidden;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.backup-restore-list-panel .list-panel-scroll tbody tr {
+  height: auto;
+  min-height: 2.75rem;
+}
+
+.backup-restore-list-panel .list-panel-footer {
+  flex-shrink: 0;
+  padding-top: 0.15rem;
 }
 
 .backup-restore-summary {

@@ -360,9 +360,6 @@ export default function SavedSubjectsModal({
       <div className={inline ? "saved-panel-header" : "modal-header"}>
         <div>
           <h2>Saved Subjects</h2>
-          <p className="muted section-desc">
-            Filter by program course and curriculum year. Search by course code or title. Select rows to edit or delete.
-          </p>
         </div>
         <div className="saved-panel-header-end">
           <span className="muted saved-panel-count">

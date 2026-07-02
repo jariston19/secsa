@@ -17,7 +17,9 @@
     "db:remove-trial-students": "npm run db:remove-trial-students --workspace=backend",
     "db:remove-intake-batches": "npm run db:remove-intake-batches --workspace=backend",
     "docker:up": "docker compose up --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "loadtest:exam": "k6 run load-tests/student-exam.js",
+    "loadtest:auth": "k6 run load-tests/auth-only.js"
   },
   "workspaces": [
     "backend",
