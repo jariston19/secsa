@@ -1,15 +1,18 @@
 import type { ReactNode } from "react";
+import ChartSlotShell from "./ChartSlotShell";
 import { ANALYTICS_SLOT_CLASS, type AnalyticsSlotSize } from "../lib/analyticsLayout";
 
 interface Props {
   size?: AnalyticsSlotSize;
   className?: string;
+  chartId?: string;
   children: ReactNode;
 }
 
 export default function AnalyticsChartSlot({
   size = "tall",
   className = "",
+  chartId,
   children,
 }: Props) {
   return (
@@ -18,7 +21,7 @@ export default function AnalyticsChartSlot({
         .filter(Boolean)
         .join(" ")}
     >
-      {children}
+      <ChartSlotShell chartId={chartId}>{children}</ChartSlotShell>
     </div>
   );
 }

@@ -1,13 +1,14 @@
 /** Half-width chart footprint — matches Group Analytics “Performance by difficulty”. */
 export const ANALYTICS_STANDARD_SLOT_CLASS = "analytics-chart-grid-slot-tall";
 
-export type AnalyticsSlotSize = "default" | "square" | "wide" | "tall";
+export type AnalyticsSlotSize = "default" | "square" | "wide" | "tall" | "threeQuarter";
 
 export const ANALYTICS_SLOT_CLASS: Record<AnalyticsSlotSize, string> = {
   default: ANALYTICS_STANDARD_SLOT_CLASS,
   square: ANALYTICS_STANDARD_SLOT_CLASS,
   wide: "analytics-chart-grid-slot-wide",
   tall: ANALYTICS_STANDARD_SLOT_CLASS,
+  threeQuarter: "analytics-chart-grid-slot-three-quarter",
 };
 
 export function chartSlotLayout(layout: Partial<Record<string, AnalyticsSlotSize>>) {

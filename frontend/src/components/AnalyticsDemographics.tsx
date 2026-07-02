@@ -292,7 +292,7 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-donut-pair"
           title="At-risk share by school"
-          description="Share of students below 60% on their latest diagnostic."
+          description="Share of students below 75% on their latest diagnostic."
         >
           <DemographicsDonutPair
             mode="atRisk"
@@ -422,7 +422,7 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-donut-pair"
           title="At-risk share by gender"
-          description="Share of students below 60% on their latest diagnostic."
+          description="Share of students below 75% on their latest diagnostic."
         >
           <DemographicsDonutPair
             mode="atRisk"

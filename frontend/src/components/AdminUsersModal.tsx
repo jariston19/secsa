@@ -8,7 +8,7 @@ import { useAnimatedModal } from "../hooks/useAnimatedModal";
 import { usePagination } from "../hooks/usePagination";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { parseYearLevel } from "../lib/constants";
+import { parseYearLevel, MIN_YEAR_LEVEL } from "../lib/constants";
 import { compareByName, formatDisplayFullName, formatFullName } from "../lib/names";
 import { formatProgramCourse, maxYearLevelForProgram, type ProgramCourseId } from "../lib/programCourse";
 import { duplicateUserEmailMessage, findDuplicateUserEmail } from "../lib/userEmailDuplicates";
@@ -474,6 +474,7 @@ export default function AdminUsersModal({
         count > 0 ? `Updated ${count} student account${count === 1 ? "" : "s"}.` : "No matching active students.",
         false
       );
+      clearSelection();
       await loadUsers();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Bulk action failed";
@@ -481,6 +482,34 @@ export default function AdminUsersModal({
     } finally {
       setBulkBusy(null);
     }
+  }
+
+  function yearChangeTargets(fromYearLevel: number) {
+    return selectedCount > 0
+      ? selectedUsers.filter(
+          (user) =>
+            user.isActive &&
+            user.yearLevel === fromYearLevel &&
+            user.programCourse === bulkProgramCourse &&
+            !user.qaUnlimited
+        )
+      : [];
+  }
+
+  function yearChangeBody(fromYearLevel: number, targets: UserRow[]) {
+    const body: Record<string, unknown> = {
+      programCourse: bulkProgramCourse,
+      fromYearLevel,
+    };
+    if (targets.length > 0) {
+      body.userIds = targets.map((user) => user.id);
+    }
+    return body;
+  }
+
+  function yearChangeLabel(delta: "Promote" | "Revert", targetCount: number) {
+    const suffix = targetCount > 0 ? ` (${targetCount})` : "";
+    return `${delta} Year${suffix}`;
   }
 
   async function promoteCurrentYear() {
@@ -492,12 +521,47 @@ export default function AdminUsersModal({
       );
       return;
     }
+
+    const promoteTargets = yearChangeTargets(fromYearLevel);
+
+    if (selectedCount > 0 && promoteTargets.length === 0) {
+      onUpdated("None of the selected students can be moved up from this year.", true);
+      return;
+    }
+
     await runBulkAction(
       "promote",
       "/users/bulk/promote/preview",
       "/users/bulk/promote",
-      { programCourse: bulkProgramCourse, fromYearLevel },
-      `Promote incoming year ${fromYearLevel}?`
+      yearChangeBody(fromYearLevel, promoteTargets),
+      promoteTargets.length > 0
+        ? `Move ${promoteTargets.length} selected student${promoteTargets.length === 1 ? "" : "s"} up one year?`
+        : `Move all active incoming year ${fromYearLevel} students up one year?`
+    );
+  }
+
+  async function demoteCurrentYear() {
+    const fromYearLevel = Number(studentYearTab);
+    if (fromYearLevel <= MIN_YEAR_LEVEL) {
+      onUpdated(`Incoming year ${MIN_YEAR_LEVEL} students cannot be moved down further.`, true);
+      return;
+    }
+
+    const demoteTargets = yearChangeTargets(fromYearLevel);
+
+    if (selectedCount > 0 && demoteTargets.length === 0) {
+      onUpdated("None of the selected students can be moved back from this year.", true);
+      return;
+    }
+
+    await runBulkAction(
+      "demote",
+      "/users/bulk/demote/preview",
+      "/users/bulk/demote",
+      yearChangeBody(fromYearLevel, demoteTargets),
+      demoteTargets.length > 0
+        ? `Move ${demoteTargets.length} selected student${demoteTargets.length === 1 ? "" : "s"} back one year?`
+        : `Move all active incoming year ${fromYearLevel} students back one year?`
     );
   }
 
@@ -748,6 +812,18 @@ export default function AdminUsersModal({
               </select>
             </label>
             <div className="admin-users-bulk-buttons">
+              {Number(studentYearTab) > MIN_YEAR_LEVEL ? (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={bulkBusy != null}
+                  onClick={() => demoteCurrentYear().catch(() => {})}
+                >
+                  {bulkBusy === "demote"
+                    ? "Moving…"
+                    : yearChangeLabel("Revert", yearChangeTargets(Number(studentYearTab)).length)}
+                </button>
+              ) : null}
               {Number(studentYearTab) < bulkMaxYear ? (
                 <button
                   type="button"
@@ -756,8 +832,8 @@ export default function AdminUsersModal({
                   onClick={() => promoteCurrentYear().catch(() => {})}
                 >
                   {bulkBusy === "promote"
-                    ? "Promoting…"
-                    : `Promote Y${studentYearTab} → Y${Number(studentYearTab) + 1}`}
+                    ? "Moving…"
+                    : yearChangeLabel("Promote", yearChangeTargets(Number(studentYearTab)).length)}
                 </button>
               ) : null}
               <button

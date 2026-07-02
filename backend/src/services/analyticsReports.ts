@@ -12,7 +12,7 @@ import { prisma } from "../lib/prisma.js";
 const PASS_THRESHOLD = 75;
 const STRONG_THRESHOLD = 80;
 const WEAK_THRESHOLD = 50;
-const AT_RISK_THRESHOLD = 60;
+const AT_RISK_THRESHOLD = PASS_THRESHOLD;
 const TOO_EASY_THRESHOLD = 90;
 const TOO_HARD_THRESHOLD = 20;
 const MIN_AREA_ATTEMPTS = 3;

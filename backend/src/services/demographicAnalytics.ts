@@ -4,7 +4,7 @@ import { prisma } from "../lib/prisma.js";
 import { submittedAtFilter } from "../lib/analyticsSeason.js";
 import { nonQaStudentWhere } from "../lib/studentFilters.js";
 
-const AT_RISK_THRESHOLD = 60;
+const AT_RISK_THRESHOLD = 75;
 const DIFFICULTY_ORDER = [Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD] as const;
 
 const HIGHER_BLOOM_LEVELS: BloomLevel[] = [

@@ -1,4 +1,5 @@
 import { type ReactNode, useState } from "react";
+import ChartSlotShell from "./ChartSlotShell";
 import { slotClassForChart, type AnalyticsSlotSize } from "../lib/analyticsLayout";
 
 interface Props {
@@ -58,12 +59,9 @@ export default function SwappableChartGrid({
             setOverId(null);
           }}
         >
-          <button
-            type="button"
-            className="chart-card-drag-handle analytics-no-print"
+          <ChartSlotShell
+            chartId={id}
             draggable
-            aria-label="Drag to reorder chart"
-            title="Drag to reorder"
             onDragStart={(event) => {
               setDraggingId(id);
               event.dataTransfer.effectAllowed = "move";
@@ -74,9 +72,8 @@ export default function SwappableChartGrid({
               setOverId(null);
             }}
           >
-            <span aria-hidden>⋮⋮</span>
-          </button>
-          {children(id)}
+            {children(id)}
+          </ChartSlotShell>
         </div>
       ))}
     </div>

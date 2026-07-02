@@ -133,6 +133,8 @@ export default function AnalyticsRankings({ token }: Props) {
     >
       <section className={`card analytics-rankings${refreshing ? " is-refreshing" : ""}`}>
         <div className="analytics-rankings-top">
+        <AnalyticsSeasonControl />
+
         <header className="analytics-rankings-header">
           <div>
             <h2>Score rankings</h2>
@@ -142,8 +144,6 @@ export default function AnalyticsRankings({ token }: Props) {
             </p>
           </div>
         </header>
-
-        <AnalyticsSeasonControl />
 
         <div className="analytics-reports-filter analytics-no-print">
           <div className="analytics-reports-filter-primary">

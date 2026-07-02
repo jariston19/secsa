@@ -8,9 +8,11 @@ import { programCourseSlugSchema, assertActiveProgramSlug } from "../lib/program
 import { MIN_YEAR_LEVEL, assertYearLevelForProgram, maxYearLevelForProgram, yearLevelSchema } from "../lib/yearLevel.js";
 import { findDuplicateUserEmail, normalizeUserEmail } from "../services/userDuplicates.js";
 import {
+  executeBulkDemote,
   executeBulkGraduate,
   executeBulkPromote,
   executeSchoolYearRollover,
+  previewBulkDemote,
   previewBulkGraduate,
   previewBulkPromote,
   previewSchoolYearRollover,
@@ -52,6 +54,7 @@ const bulkProgramSchema = z.object({
 
 const bulkPromoteSchema = bulkProgramSchema.extend({
   fromYearLevel: yearLevelSchema,
+  userIds: z.array(z.string().min(1)).optional(),
 }).superRefine((body, ctx) => {
   const maxYearLevel = maxYearLevelForProgram(body.programCourse);
   if (body.fromYearLevel < MIN_YEAR_LEVEL || body.fromYearLevel >= maxYearLevel) {
@@ -59,6 +62,19 @@ const bulkPromoteSchema = bulkProgramSchema.extend({
       code: z.ZodIssueCode.custom,
       path: ["fromYearLevel"],
       message: `Promote only applies to incoming years ${MIN_YEAR_LEVEL}–${maxYearLevel - 1}. Use graduate for incoming year ${maxYearLevel}.`,
+    });
+  }
+});
+
+const bulkDemoteSchema = bulkProgramSchema.extend({
+  fromYearLevel: yearLevelSchema,
+  userIds: z.array(z.string().min(1)).optional(),
+}).superRefine((body, ctx) => {
+  if (body.fromYearLevel <= MIN_YEAR_LEVEL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["fromYearLevel"],
+      message: `Demote only applies to incoming year ${MIN_YEAR_LEVEL + 1} and above.`,
     });
   }
 });
@@ -273,7 +289,7 @@ export async function userRoutes(app: FastifyInstance) {
 
     const body = bulkPromoteSchema.parse(request.body);
     try {
-      return await previewBulkPromote(body.programCourse, body.fromYearLevel);
+      return await previewBulkPromote(body.programCourse, body.fromYearLevel, body.userIds);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to preview promote.";
       return reply.code(400).send({ error: message });
@@ -286,9 +302,35 @@ export async function userRoutes(app: FastifyInstance) {
 
     const body = bulkPromoteSchema.parse(request.body);
     try {
-      return await executeBulkPromote(body.programCourse, body.fromYearLevel);
+      return await executeBulkPromote(body.programCourse, body.fromYearLevel, body.userIds);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to promote students.";
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  app.post("/bulk/demote/preview", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    const body = bulkDemoteSchema.parse(request.body);
+    try {
+      return await previewBulkDemote(body.programCourse, body.fromYearLevel, body.userIds);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to preview demote.";
+      return reply.code(400).send({ error: message });
+    }
+  });
+
+  app.post("/bulk/demote", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN]);
+
+    const body = bulkDemoteSchema.parse(request.body);
+    try {
+      return await executeBulkDemote(body.programCourse, body.fromYearLevel, body.userIds);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to demote students.";
       return reply.code(400).send({ error: message });
     }
   });

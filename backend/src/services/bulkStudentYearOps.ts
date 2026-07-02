@@ -3,21 +3,30 @@ import { prisma } from "../lib/prisma.js";
 import { assertActiveProgramSlug } from "../lib/programCourse.js";
 import { MIN_YEAR_LEVEL, maxYearLevelForProgram } from "../lib/yearLevel.js";
 
-const activeStudentWhere = (programCourse: string, yearLevel: number) => ({
+const activeStudentWhere = (programCourse: string, yearLevel: number, userIds?: string[]) => ({
   role: Role.STUDENT,
   programCourse,
   yearLevel,
   isActive: true,
   qaUnlimited: false,
+  ...(userIds?.length ? { id: { in: userIds } } : {}),
 });
 
-async function countActiveStudents(programCourse: string, yearLevel: number) {
+async function countActiveStudents(
+  programCourse: string,
+  yearLevel: number,
+  userIds?: string[]
+) {
   return prisma.user.count({
-    where: activeStudentWhere(programCourse, yearLevel),
+    where: activeStudentWhere(programCourse, yearLevel, userIds),
   });
 }
 
-export async function previewBulkPromote(programCourse: string, fromYearLevel: number) {
+export async function previewBulkPromote(
+  programCourse: string,
+  fromYearLevel: number,
+  userIds?: string[]
+) {
   await assertActiveProgramSlug(programCourse);
 
   const maxYearLevel = maxYearLevelForProgram(programCourse);
@@ -27,7 +36,12 @@ export async function previewBulkPromote(programCourse: string, fromYearLevel: n
     );
   }
 
-  const matchCount = await countActiveStudents(programCourse, fromYearLevel);
+  const matchCount = await countActiveStudents(programCourse, fromYearLevel, userIds);
+  if (userIds?.length && matchCount !== userIds.length) {
+    throw new Error(
+      `Only ${matchCount} of ${userIds.length} selected student${userIds.length === 1 ? "" : "s"} can be promoted from incoming year ${fromYearLevel}.`
+    );
+  }
   const inactiveAtLevel = await prisma.user.count({
     where: {
       role: Role.STUDENT,
@@ -45,19 +59,75 @@ export async function previewBulkPromote(programCourse: string, fromYearLevel: n
     toYearLevel: fromYearLevel + 1,
     matchCount,
     inactiveAtLevel,
-    message: `Move ${matchCount} active student${matchCount === 1 ? "" : "s"} from incoming year ${fromYearLevel} to ${fromYearLevel + 1}.`,
+    message: userIds?.length
+      ? `Move ${matchCount} selected student${matchCount === 1 ? "" : "s"} from incoming year ${fromYearLevel} to ${fromYearLevel + 1}.`
+      : `Move ${matchCount} active student${matchCount === 1 ? "" : "s"} from incoming year ${fromYearLevel} to ${fromYearLevel + 1}.`,
   };
 }
 
-export async function executeBulkPromote(programCourse: string, fromYearLevel: number) {
-  const preview = await previewBulkPromote(programCourse, fromYearLevel);
+export async function executeBulkPromote(
+  programCourse: string,
+  fromYearLevel: number,
+  userIds?: string[]
+) {
+  const preview = await previewBulkPromote(programCourse, fromYearLevel, userIds);
   if (preview.matchCount === 0) {
     return { ...preview, updatedCount: 0, dryRun: false };
   }
 
   const result = await prisma.user.updateMany({
-    where: activeStudentWhere(programCourse, fromYearLevel),
+    where: activeStudentWhere(programCourse, fromYearLevel, userIds),
     data: { yearLevel: fromYearLevel + 1 },
+  });
+
+  return { ...preview, updatedCount: result.count, dryRun: false };
+}
+
+export async function previewBulkDemote(
+  programCourse: string,
+  fromYearLevel: number,
+  userIds?: string[]
+) {
+  await assertActiveProgramSlug(programCourse);
+
+  if (fromYearLevel <= MIN_YEAR_LEVEL) {
+    throw new Error(
+      `Demote only applies to incoming year ${MIN_YEAR_LEVEL + 1} and above.`
+    );
+  }
+
+  const matchCount = await countActiveStudents(programCourse, fromYearLevel, userIds);
+  if (userIds?.length && matchCount !== userIds.length) {
+    throw new Error(
+      `Only ${matchCount} of ${userIds.length} selected student${userIds.length === 1 ? "" : "s"} can be moved back from incoming year ${fromYearLevel}.`
+    );
+  }
+
+  return {
+    action: "demote" as const,
+    programCourse,
+    fromYearLevel,
+    toYearLevel: fromYearLevel - 1,
+    matchCount,
+    message: userIds?.length
+      ? `Move ${matchCount} selected student${matchCount === 1 ? "" : "s"} from incoming year ${fromYearLevel} back to ${fromYearLevel - 1}.`
+      : `Move ${matchCount} active student${matchCount === 1 ? "" : "s"} from incoming year ${fromYearLevel} back to ${fromYearLevel - 1}.`,
+  };
+}
+
+export async function executeBulkDemote(
+  programCourse: string,
+  fromYearLevel: number,
+  userIds?: string[]
+) {
+  const preview = await previewBulkDemote(programCourse, fromYearLevel, userIds);
+  if (preview.matchCount === 0) {
+    return { ...preview, updatedCount: 0, dryRun: false };
+  }
+
+  const result = await prisma.user.updateMany({
+    where: activeStudentWhere(programCourse, fromYearLevel, userIds),
+    data: { yearLevel: fromYearLevel - 1 },
   });
 
   return { ...preview, updatedCount: result.count, dryRun: false };

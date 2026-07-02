@@ -19,12 +19,15 @@ export default function AnalyticsSeasonControl({ variant = "bar" }: Props) {
       }
     >
       <div className="analytics-season-copy">
-        <strong>{isOverview ? "Analytics period" : "Showing"}</strong>
-        <p className="muted">
-          {isOverview
-            ? "Choose all collected exam years or one calendar year. Other analytics tabs follow this setting."
-            : seasonLabel}
-        </p>
+        <strong>
+          {isOverview ? "Analytics period" : "Showing"} · {seasonLabel}
+        </strong>
+        {isOverview ? (
+          <p className="muted">
+            Choose all collected exam years or one calendar year. Other analytics tabs follow
+            this setting.
+          </p>
+        ) : null}
       </div>
       <label className="analytics-season-field">
         {isOverview ? "Exam year" : "Period"}
