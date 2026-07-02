@@ -27,7 +27,9 @@ export default function ChartSlotShell({
       await downloadChartPng(contentRef.current, chartId ?? "chart");
     } catch (error) {
       console.error(error);
-      window.alert("Could not download chart image. Try again or use print instead.");
+      window.alert(
+        "Could not download chart image. Rebuild the frontend, then hard-refresh the page (Ctrl+Shift+R)."
+      );
     } finally {
       setDownloading(false);
     }

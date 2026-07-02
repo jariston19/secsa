@@ -9,6 +9,7 @@ import {
   type ScoreTone,
 } from "../../lib/analyticsChartUtils";
 import { BLOOM_LEVEL_COLORS, BLOOM_LEVEL_SHORT_LABELS } from "../../lib/bloomLevel";
+import { probeDonutStrokeColors, probeSvgClassStyles, svgPresentationProps } from "../../lib/chartExportStyles";
 import {
   DOMAIN_YEAR_LEVELS,
   buildSmoothPath,
@@ -533,6 +534,7 @@ export function DonutChart({
   const centerLabel = label ?? (metric === "averageScore" ? "avg score" : "passed");
   const centerValue = hasData ? `${pct.toFixed(0)}%` : "—";
   const variantClass = variant === "risk" ? " chart-donut-risk" : "";
+  const ringColors = useMemo(() => probeDonutStrokeColors(variant), [variant]);
 
   return (
     <div className={`chart-donut${variantClass}`}>
@@ -543,6 +545,7 @@ export function DonutChart({
             cy="60"
             r={radius}
             className="chart-donut-ring-bg"
+            stroke={ringColors.bg}
             strokeWidth="14"
             fill="none"
           />
@@ -551,6 +554,7 @@ export function DonutChart({
             cy="60"
             r={radius}
             className="chart-donut-ring-fill"
+            stroke={ringColors.fill}
             strokeWidth="14"
             fill="none"
             strokeDasharray={circumference}
@@ -652,6 +656,17 @@ export function RadarChart({
       })
       .join(" ");
 
+  const radarStyles = useMemo(
+    () => ({
+      grid: svgPresentationProps(probeSvgClassStyles("chart-radar-grid")),
+      axis: svgPresentationProps(probeSvgClassStyles("chart-radar-axis", "line")),
+      classSeries: svgPresentationProps(probeSvgClassStyles("chart-radar-class")),
+      studentSeries: svgPresentationProps(probeSvgClassStyles("chart-radar-student")),
+      label: svgPresentationProps(probeSvgClassStyles("chart-radar-label", "text")),
+    }),
+    []
+  );
+
   return (
     <div className={`chart-radar-wrap${fillContainer ? " chart-radar-wrap-fill" : ""}`}>
       <svg viewBox={`0 0 ${size} ${size}`} className="chart-radar" role="img">
@@ -665,6 +680,7 @@ export function RadarChart({
               })
               .join(" ")}
             className="chart-radar-grid"
+            {...radarStyles.grid}
           />
         ))}
         {topics.map((topic, index) => {
@@ -680,6 +696,7 @@ export function RadarChart({
                 x2={outer.x}
                 y2={outer.y}
                 className="chart-radar-axis"
+                {...radarStyles.axis}
               />
               <text
                 x={label.x}
@@ -687,14 +704,15 @@ export function RadarChart({
                 className="chart-radar-label"
                 fontSize={labelFontSize}
                 textAnchor="middle"
+                {...radarStyles.label}
               >
                 {displayLabel}
               </text>
             </g>
           );
         })}
-        <polygon points={polygon(classScores)} className="chart-radar-class" />
-        <polygon points={polygon(studentScores)} className="chart-radar-student" />
+        <polygon points={polygon(classScores)} className="chart-radar-class" {...radarStyles.classSeries} />
+        <polygon points={polygon(studentScores)} className="chart-radar-student" {...radarStyles.studentSeries} />
       </svg>
       <div className="chart-radar-legend">
         <span>
@@ -789,6 +807,19 @@ export function BloomCognitiveGapChart({
         ].join(" ")
       : "";
 
+  const gapStyles = useMemo(
+    () => ({
+      axis: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-axis", "line")),
+      grid: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-grid", "line")),
+      levelGrid: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-level-grid", "line")),
+      area: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-area")),
+      axisLabel: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-axis-label", "text")),
+      label: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-label", "text")),
+      dot: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-dot", "circle")),
+    }),
+    []
+  );
+
   return (
     <div
       ref={wrapRef}
@@ -807,6 +838,7 @@ export function BloomCognitiveGapChart({
           x2={pad.left}
           y2={pad.top + plotH}
           className="chart-bloom-gap-axis"
+          {...gapStyles.axis}
         />
         {[0, 25, 50, 75, 100].map((tick) => {
           const y = yAt(tick);
@@ -818,8 +850,15 @@ export function BloomCognitiveGapChart({
                 x2={pad.left + plotW}
                 y2={y}
                 className="chart-bloom-gap-grid"
+                {...gapStyles.grid}
               />
-              <text x={pad.left - 6} y={y + 4} className="chart-bloom-gap-axis-label" textAnchor="end">
+              <text
+                x={pad.left - 6}
+                y={y + 4}
+                className="chart-bloom-gap-axis-label"
+                textAnchor="end"
+                {...gapStyles.axisLabel}
+              >
                 {tick}
               </text>
             </g>
@@ -833,9 +872,12 @@ export function BloomCognitiveGapChart({
             x2={xAt(index)}
             y2={pad.top + plotH}
             className="chart-bloom-gap-level-grid"
+            {...gapStyles.levelGrid}
           />
         ))}
-        {gapAreaPath ? <polygon points={gapAreaPath} className="chart-bloom-gap-area" /> : null}
+        {gapAreaPath ? (
+          <polygon points={gapAreaPath} className="chart-bloom-gap-area" {...gapStyles.area} />
+        ) : null}
         <path d={linePath("left")} className="chart-bloom-gap-line" style={{ stroke: leftSeries.color }} />
         <path d={linePath("right")} className="chart-bloom-gap-line" style={{ stroke: rightSeries.color }} />
         {visibleRows.map((row, index) => {
@@ -848,6 +890,7 @@ export function BloomCognitiveGapChart({
                 r={3.5}
                 className="chart-bloom-gap-dot"
                 style={{ fill: leftSeries.color }}
+                {...gapStyles.dot}
               />
             );
           }
@@ -863,6 +906,7 @@ export function BloomCognitiveGapChart({
                 r={3.5}
                 className="chart-bloom-gap-dot"
                 style={{ fill: rightSeries.color }}
+                {...gapStyles.dot}
               />
             );
           }
@@ -879,6 +923,7 @@ export function BloomCognitiveGapChart({
               y={topY - 8}
               className="chart-bloom-gap-label"
               textAnchor="middle"
+              {...gapStyles.label}
             >
               {gap.toFixed(0)} pt
             </text>
@@ -891,6 +936,7 @@ export function BloomCognitiveGapChart({
             y={pad.top + plotH + 18}
             className="chart-bloom-gap-axis-label"
             textAnchor="middle"
+            {...gapStyles.axisLabel}
           >
             {row.shortLabel ?? row.label}
           </text>
