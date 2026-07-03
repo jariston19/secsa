@@ -1,8 +1,4 @@
-export function formatFullName(firstName: string, lastName: string) {
-  return `${firstName} ${lastName}`.trim();
-}
-
-/** Display name in title case, e.g. JORYL CAMPOS → Joryl Campos */
+/** Title-case one name part, e.g. JORYL → Joryl, DELA CRUZ → Dela Cruz */
 export function formatDisplayNamePart(value: string) {
   return value
     .trim()
@@ -12,8 +8,13 @@ export function formatDisplayNamePart(value: string) {
     .join(" ");
 }
 
+export function formatFullName(firstName: string, lastName: string) {
+  return `${formatDisplayNamePart(firstName)} ${formatDisplayNamePart(lastName)}`.trim();
+}
+
+/** @deprecated Use formatFullName — kept for existing imports. */
 export function formatDisplayFullName(firstName: string, lastName: string) {
-  return formatFullName(formatDisplayNamePart(firstName), formatDisplayNamePart(lastName));
+  return formatFullName(firstName, lastName);
 }
 
 export function compareByName(

@@ -26,14 +26,30 @@ export const PROGRAM_MAX_YEAR_LEVELS: Partial<Record<string, number>> = {
   ARCHITECTURE: 5,
 };
 
+export const DEFAULT_MAX_YEAR_LEVEL = 4;
+export const ABSOLUTE_MAX_YEAR_LEVEL = 5;
+
 export function maxYearLevelForProgram(programCourse?: string | null) {
-  if (!programCourse) return 4;
-  return PROGRAM_MAX_YEAR_LEVELS[programCourse] ?? 4;
+  if (!programCourse) return DEFAULT_MAX_YEAR_LEVEL;
+  return PROGRAM_MAX_YEAR_LEVELS[programCourse] ?? DEFAULT_MAX_YEAR_LEVEL;
+}
+
+/** Max incoming year in analytics filters (year 5 when All or Architecture). */
+export function maxYearLevelForFilter(programCourse?: ProgramCourseFilter | null) {
+  if (!programCourse || programCourse === "ALL") return ABSOLUTE_MAX_YEAR_LEVEL;
+  return maxYearLevelForProgram(programCourse);
+}
+
+export function incomingYearLevelsForFilter(programCourse?: ProgramCourseFilter | null) {
+  const max = maxYearLevelForFilter(programCourse);
+  const min = 1;
+  return Array.from({ length: max - min + 1 }, (_, index) => min + index);
 }
 
 /** Highest incoming-year milestone shown in cohort journey analytics. */
 export function studentMilestoneMaxYear(programCourse?: string | null) {
-  return maxYearLevelForProgram(programCourse === "ALL" ? null : programCourse);
+  if (!programCourse || programCourse === "ALL") return ABSOLUTE_MAX_YEAR_LEVEL;
+  return maxYearLevelForProgram(programCourse);
 }
 
 export function toProgramSlug(label: string) {

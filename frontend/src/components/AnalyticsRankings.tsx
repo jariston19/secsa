@@ -5,7 +5,7 @@ import SegmentedControl from "./SegmentedControl";
 import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
 import { api } from "../lib/api";
 import { useAnalyticsSeason } from "../lib/analyticsSeason";
-import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
+import { MIN_YEAR_LEVEL, incomingYearLevelsForFilter } from "../lib/constants";
 import { formatFullName } from "../lib/names";
 import {
   formatProgramCourse,
@@ -178,10 +178,7 @@ export default function AnalyticsRankings({ token }: Props) {
                 onChange={(event) => setYearFilter(event.target.value as YearLevelFilter)}
               >
                 <option value="ALL">All</option>
-                {Array.from(
-                  { length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 },
-                  (_, index) => MIN_YEAR_LEVEL + index
-                ).map((level) => (
+                {incomingYearLevelsForFilter(courseFilter).map((level) => (
                   <option key={level} value={String(level)}>
                     Incoming year {level}
                   </option>

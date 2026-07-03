@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
 import PasswordConfirmDialog from "./PasswordConfirmDialog";
@@ -66,17 +66,23 @@ export default function BackupRestorePanel({ token, onUpdated }: Props) {
     onConfirm: (password: string) => Promise<void>;
   } | null>(null);
 
+  const onUpdatedRef = useRef(onUpdated);
+  onUpdatedRef.current = onUpdated;
+
   const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
       const data = await api<BackupStatus>("/backups", {}, token);
       setStatus(data);
     } catch (err) {
-      onUpdated(err instanceof Error ? err.message : "Failed to load backup status.", true);
+      onUpdatedRef.current(
+        err instanceof Error ? err.message : "Failed to load backup status.",
+        true
+      );
     } finally {
       setLoading(false);
     }
-  }, [onUpdated, token]);
+  }, [token]);
 
   useEffect(() => {
     void loadStatus();

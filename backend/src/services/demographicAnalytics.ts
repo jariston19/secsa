@@ -133,11 +133,16 @@ function higherOrderReadiness(map: Map<BloomLevel, { correct: number; total: num
   return pct(correct, total);
 }
 
-export async function buildDemographicAnalytics(filters: {
-  yearLevel?: number;
-  programCourse?: string;
-  examYear?: number;
-}) {
+export type SegmentExamType = "diagnostic" | "comprehensive";
+
+export async function buildSegmentAnalytics(
+  examType: SegmentExamType,
+  filters: {
+    yearLevel?: number;
+    programCourse?: string;
+    examYear?: number;
+  }
+) {
   const students = await prisma.user.findMany({
     where: nonQaStudentWhere(filters.yearLevel, filters.programCourse),
     select: {
@@ -156,7 +161,10 @@ export async function buildDemographicAnalytics(filters: {
     where: {
       studentId: { in: studentIds },
       submittedAt: submittedAtFilter(filters.examYear),
-      questionSet: { type: QuestionSetType.DIAGNOSTIC },
+      questionSet:
+        examType === "comprehensive"
+          ? { type: { in: [QuestionSetType.COMPREHENSIVE, QuestionSetType.RETAKE] } }
+          : { type: QuestionSetType.DIAGNOSTIC },
     },
     include: {
       answers: {
@@ -181,7 +189,7 @@ export async function buildDemographicAnalytics(filters: {
     }
   }
 
-  const diagnosticScores = {
+  const overallScoresBySchool = {
     [SchoolType.PUBLIC]: [] as number[],
     [SchoolType.PRIVATE]: [] as number[],
   };
@@ -227,7 +235,7 @@ export async function buildDemographicAnalytics(filters: {
     if (!student || attempt.percentage == null) continue;
 
     if (student.schoolType) {
-      diagnosticScores[student.schoolType].push(attempt.percentage);
+      overallScoresBySchool[student.schoolType].push(attempt.percentage);
       atRiskBySchool[student.schoolType].assessed += 1;
       if (attempt.percentage < AT_RISK_THRESHOLD) {
         atRiskBySchool[student.schoolType].atRisk += 1;
@@ -399,7 +407,7 @@ export async function buildDemographicAnalytics(filters: {
     { label: "Female", ...atRiskByGender[Gender.FEMALE] },
   ]);
 
-  const programDiagnosticRows = [...programScores.entries()]
+  const programRows = [...programScores.entries()]
     .map(([programCourse, row]) => ({
       programCourse,
       averageScore: average(row.scores),
@@ -409,26 +417,27 @@ export async function buildDemographicAnalytics(filters: {
     .filter((row) => row.studentCount > 0)
     .sort((a, b) => b.averageScore - a.averageScore);
 
-  const studentsWithDiagnostic = latestAttemptByStudent.size;
+  const studentsWithExam = latestAttemptByStudent.size;
   const studentsWithDemographics = students.filter(
     (student) => student.gender && student.schoolType
   ).length;
 
   return {
+    examType,
     studentsInScope: students.length,
-    studentsWithDiagnostic,
+    studentsWithExam,
     studentsWithDemographics,
     schoolType: {
       overallScores: [
         {
           label: "Public",
-          value: average(diagnosticScores[SchoolType.PUBLIC]),
-          count: diagnosticScores[SchoolType.PUBLIC].length,
+          value: average(overallScoresBySchool[SchoolType.PUBLIC]),
+          count: overallScoresBySchool[SchoolType.PUBLIC].length,
         },
         {
           label: "Private",
-          value: average(diagnosticScores[SchoolType.PRIVATE]),
-          count: diagnosticScores[SchoolType.PRIVATE].length,
+          value: average(overallScoresBySchool[SchoolType.PRIVATE]),
+          count: overallScoresBySchool[SchoolType.PRIVATE].length,
         },
       ],
       bloomGaps: bloomGapByLevel,
@@ -444,7 +453,31 @@ export async function buildDemographicAnalytics(filters: {
       atRiskShare: genderAtRiskRows,
       topicComparison: genderTopicRows,
     },
-    programs: programDiagnosticRows,
+    programs: programRows,
     showProgramBreakdown: !filters.programCourse,
+  };
+}
+
+export async function buildDemographicAnalytics(filters: {
+  yearLevel?: number;
+  programCourse?: string;
+  examYear?: number;
+}) {
+  const result = await buildSegmentAnalytics("diagnostic", filters);
+  return {
+    ...result,
+    studentsWithDiagnostic: result.studentsWithExam,
+  };
+}
+
+export async function buildRetentionAnalytics(filters: {
+  yearLevel?: number;
+  programCourse?: string;
+  examYear?: number;
+}) {
+  const result = await buildSegmentAnalytics("comprehensive", filters);
+  return {
+    ...result,
+    studentsWithComprehensive: result.studentsWithExam,
   };
 }

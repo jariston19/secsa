@@ -132,8 +132,7 @@ export default function AnalyticsTrends({ token }: Props) {
   const milestoneYears = useMemo(() => {
     const fromData = data?.batchJourneys[0]?.milestones.map((milestone) => milestone.yearLevel) ?? [];
     if (fromData.length > 0) return fromData;
-    const maxYear =
-      courseFilter === "ALL" ? 4 : studentMilestoneMaxYear(courseFilter);
+    const maxYear = studentMilestoneMaxYear(courseFilter);
     return Array.from({ length: maxYear }, (_, index) => index + 1);
   }, [data, courseFilter]);
 

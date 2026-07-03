@@ -9,7 +9,7 @@ import {
   type ScoreTone,
 } from "../../lib/analyticsChartUtils";
 import { BLOOM_LEVEL_COLORS, BLOOM_LEVEL_SHORT_LABELS } from "../../lib/bloomLevel";
-import { probeDonutStrokeColors, probeSvgClassStyles, svgPresentationProps } from "../../lib/chartExportStyles";
+import { probeDonutStrokeColors, probeSvgClassStyles, svgPresentationProps, chartCssColor } from "../../lib/chartExportStyles";
 import {
   DOMAIN_YEAR_LEVELS,
   buildSmoothPath,
@@ -160,14 +160,6 @@ export function PairedHorizontalBarChart({
 
   return (
     <div className="chart-paired-horizontal-panel">
-      <div className="chart-paired-horizontal-legend">
-        <span>
-          <i style={{ background: leftSeries.color }} /> {leftSeries.label}
-        </span>
-        <span>
-          <i style={{ background: rightSeries.color }} /> {rightSeries.label}
-        </span>
-      </div>
       <div
         className={[
           "chart-paired-horizontal-bars",
@@ -217,6 +209,14 @@ export function PairedHorizontalBarChart({
             aria-hidden
           />
         ))}
+      </div>
+      <div className="chart-paired-horizontal-legend">
+        <span>
+          <i style={{ background: leftSeries.color }} /> {leftSeries.label}
+        </span>
+        <span>
+          <i style={{ background: rightSeries.color }} /> {rightSeries.label}
+        </span>
       </div>
       {pageSize ? (
         <div className="chart-card-pagination analytics-no-print">
@@ -660,12 +660,13 @@ export function RadarChart({
     () => ({
       grid: svgPresentationProps(probeSvgClassStyles("chart-radar-grid")),
       axis: svgPresentationProps(probeSvgClassStyles("chart-radar-axis", "line")),
-      classSeries: svgPresentationProps(probeSvgClassStyles("chart-radar-class")),
-      studentSeries: svgPresentationProps(probeSvgClassStyles("chart-radar-student")),
       label: svgPresentationProps(probeSvgClassStyles("chart-radar-label", "text")),
     }),
     []
   );
+
+  const radarClassFill = chartCssColor("--chart-radar-series-a-fill", "rgba(0, 122, 255, 0.18)");
+  const radarStudentFill = chartCssColor("--chart-radar-series-b-fill", "rgba(52, 199, 89, 0.22)");
 
   return (
     <div className={`chart-radar-wrap${fillContainer ? " chart-radar-wrap-fill" : ""}`}>
@@ -711,8 +712,20 @@ export function RadarChart({
             </g>
           );
         })}
-        <polygon points={polygon(classScores)} className="chart-radar-class" {...radarStyles.classSeries} />
-        <polygon points={polygon(studentScores)} className="chart-radar-student" {...radarStyles.studentSeries} />
+        <polygon
+          points={polygon(classScores)}
+          className="chart-radar-class"
+          fill={radarClassFill}
+          stroke="var(--ios-blue)"
+          strokeWidth={1.5}
+        />
+        <polygon
+          points={polygon(studentScores)}
+          className="chart-radar-student"
+          fill={radarStudentFill}
+          stroke="var(--ios-green)"
+          strokeWidth={1.5}
+        />
       </svg>
       <div className="chart-radar-legend">
         <span>
@@ -799,20 +812,25 @@ export function BloomCognitiveGapChart({
     })
     .filter((pair): pair is NonNullable<typeof pair> => Boolean(pair));
 
-  const gapAreaPath =
-    gapAreaPoints.length >= 2
-      ? [
-          ...gapAreaPoints.map((pair) => `${pair.x},${pair.leftY}`),
-          ...[...gapAreaPoints].reverse().map((pair) => `${pair.x},${pair.rightY}`),
-        ].join(" ")
-      : "";
+  const gapAreaSegments = useMemo(() => {
+    const segments: string[] = [];
+    for (let index = 0; index < gapAreaPoints.length - 1; index += 1) {
+      const start = gapAreaPoints[index]!;
+      const end = gapAreaPoints[index + 1]!;
+      segments.push(
+        `${start.x},${start.leftY} ${end.x},${end.leftY} ${end.x},${end.rightY} ${start.x},${start.rightY}`
+      );
+    }
+    return segments;
+  }, [gapAreaPoints]);
+
+  const gapBandFill = chartCssColor("--chart-gap-band-fill", "rgba(255, 149, 0, 0.16)");
 
   const gapStyles = useMemo(
     () => ({
       axis: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-axis", "line")),
       grid: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-grid", "line")),
       levelGrid: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-level-grid", "line")),
-      area: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-area")),
       axisLabel: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-axis-label", "text")),
       label: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-label", "text")),
       dot: svgPresentationProps(probeSvgClassStyles("chart-bloom-gap-dot", "circle")),
@@ -875,9 +893,15 @@ export function BloomCognitiveGapChart({
             {...gapStyles.levelGrid}
           />
         ))}
-        {gapAreaPath ? (
-          <polygon points={gapAreaPath} className="chart-bloom-gap-area" {...gapStyles.area} />
-        ) : null}
+        {gapAreaSegments.map((points, index) => (
+          <polygon
+            key={`gap-segment-${index}`}
+            points={points}
+            className="chart-bloom-gap-area"
+            fill={gapBandFill}
+            stroke="none"
+          />
+        ))}
         <path d={linePath("left")} className="chart-bloom-gap-line" style={{ stroke: leftSeries.color }} />
         <path d={linePath("right")} className="chart-bloom-gap-line" style={{ stroke: rightSeries.color }} />
         {visibleRows.map((row, index) => {

@@ -1,3 +1,5 @@
+import { formatFullName } from "./names";
+
 export function normalizeUserEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -18,5 +20,5 @@ export function findDuplicateUserEmail<
 export function duplicateUserEmailMessage<
   T extends { email: string; firstName: string; lastName: string },
 >(duplicate: T) {
-  return `This email is already used by ${duplicate.firstName} ${duplicate.lastName} (${duplicate.email}).`;
+  return `This email is already used by ${formatFullName(duplicate.firstName, duplicate.lastName)} (${duplicate.email}).`;
 }

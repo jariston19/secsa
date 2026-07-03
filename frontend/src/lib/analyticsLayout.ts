@@ -55,6 +55,23 @@ export const DEMOGRAPHICS_CHART_LAYOUT = chartSlotLayout({
   "program-readiness": "tall",
 });
 
+export const RETENTION_CHART_LAYOUT = chartSlotLayout({
+  "school-overall": "tall",
+  "school-bloom-heatmap": "tall",
+  "school-bloom": "tall",
+  "school-bloom-gap": "tall",
+  "school-difficulty": "tall",
+  "school-topic-gap": "tall",
+  "school-topic": "tall",
+  "school-at-risk": "tall",
+  "gender-difficulty": "tall",
+  "gender-at-risk": "tall",
+  "gender-bloom": "tall",
+  "gender-topic": "tall",
+  "program-score": "tall",
+  "program-readiness": "tall",
+});
+
 export const GROUP_CHART_LAYOUT = chartSlotLayout({
   "pass-rate": "tall",
   "score-distribution": "tall",

@@ -9,6 +9,7 @@ import GroupAnalytics from "../components/GroupAnalytics";
 import IndividualStudentAnalytics from "../components/IndividualStudentAnalytics";
 import AnalyticsOverview from "../components/AnalyticsOverview";
 import AnalyticsDemographics from "../components/AnalyticsDemographics";
+import AnalyticsRetention from "../components/AnalyticsRetention";
 import AnalyticsTrends from "../components/AnalyticsTrends";
 import AnalyticsRankings from "../components/AnalyticsRankings";
 import QuestionPerformanceModal from "../components/QuestionPerformanceModal";
@@ -27,6 +28,7 @@ type Tab =
   | "analytics-overview"
   | "analytics-trends"
   | "analytics-demographics"
+  | "analytics-retention"
   | "analytics-rankings"
   | "analytics-group"
   | "analytics-student"
@@ -59,6 +61,7 @@ const ADMIN_PAGE_MENUS = [
       { id: "analytics-overview", label: "Overview" },
       { id: "analytics-trends", label: "Trends" },
       { id: "analytics-demographics", label: "Demographics" },
+      { id: "analytics-retention", label: "Retention" },
       { id: "analytics-rankings", label: "Rankings" },
       { id: "analytics-group", label: "Group" },
       { id: "analytics-student", label: "Student" },
@@ -107,10 +110,13 @@ export default function AdminDashboard() {
     setPageNavValue(activeTab);
   }, [activeTab, setPageNavValue]);
 
-  function showMessage(text: string, isError = false) {
-    if (isError) toast.error(text);
-    else toast.success(text);
-  }
+  const showMessage = useCallback(
+    (text: string, isError = false) => {
+      if (isError) toast.error(text);
+      else toast.success(text);
+    },
+    [toast]
+  );
 
   return (
     <AnalyticsSeasonProvider token={token}>
@@ -136,6 +142,8 @@ export default function AdminDashboard() {
       {activeTab === "analytics-trends" && <AnalyticsTrends token={token} />}
 
       {activeTab === "analytics-demographics" && <AnalyticsDemographics token={token} />}
+
+      {activeTab === "analytics-retention" && <AnalyticsRetention token={token} />}
 
       {activeTab === "analytics-rankings" && <AnalyticsRankings token={token} />}
 

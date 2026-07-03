@@ -10,7 +10,7 @@ import {
 } from "./charts/AnalyticsCharts";
 import SwappableChartGrid from "./SwappableChartGrid";
 import { useChartOrder } from "../hooks/useChartOrder";
-import { DEMOGRAPHICS_CHART_LAYOUT } from "../lib/analyticsLayout";
+import { RETENTION_CHART_LAYOUT } from "../lib/analyticsLayout";
 import { api } from "../lib/api";
 import { useAnalyticsSeason } from "../lib/analyticsSeason";
 import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
@@ -23,9 +23,9 @@ import { useProgramCourseOptions } from "../lib/programs";
 import { BLOOM_LEVEL_LABELS, BLOOM_LEVEL_SHORT_LABELS, type BloomLevelId } from "../lib/bloomLevel";
 import { DIFFICULTY_LABELS, scoreToTone } from "../lib/analyticsChartUtils";
 
-interface DemographicsData {
+interface RetentionData {
   studentsInScope: number;
-  studentsWithDiagnostic: number;
+  studentsWithComprehensive: number;
   studentsWithDemographics: number;
   showProgramBreakdown: boolean;
   schoolType: {
@@ -90,7 +90,7 @@ interface Props {
   token: string | null;
 }
 
-const DEMOGRAPHICS_CHART_ORDER = [
+const RETENTION_CHART_ORDER = [
   "school-overall",
   "school-bloom-heatmap",
   "school-bloom",
@@ -107,9 +107,9 @@ const DEMOGRAPHICS_CHART_ORDER = [
   "program-readiness",
 ] as const;
 
-type DemographicsChartId = (typeof DEMOGRAPHICS_CHART_ORDER)[number];
+type RetentionChartId = (typeof RETENTION_CHART_ORDER)[number];
 
-function DemographicsDonutPair({
+function RetentionDonutPair({
   rows,
   mode,
 }: {
@@ -143,11 +143,11 @@ function DemographicsDonutPair({
   );
 }
 
-function DemographicsProgramDonuts({
+function RetentionProgramDonuts({
   programs,
   metric,
 }: {
-  programs: DemographicsData["programs"];
+  programs: RetentionData["programs"];
   metric: "averageScore" | "higherOrderReadiness";
 }) {
   if (programs.length === 0) {
@@ -171,16 +171,16 @@ function DemographicsProgramDonuts({
   );
 }
 
-function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData): ReactNode {
+function renderRetentionChart(id: RetentionChartId, data: RetentionData): ReactNode {
   switch (id) {
     case "school-overall":
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-donut-pair"
-          title="Overall diagnostic score by school type"
-          description="Average latest diagnostic score — public vs private."
+          title="Overall retention score by school type"
+          description="Average latest comprehensive score — public vs private."
         >
-          <DemographicsDonutPair
+          <RetentionDonutPair
             mode="averageScore"
             rows={data.schoolType.overallScores.map((row) => ({
               label: row.label,
@@ -202,8 +202,8 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
       return (
         <ChartCard
           className="analytics-chart-card-demographics-table"
-          title="L1–L6 by school"
-          description="Correct rate by cognitive level — public vs private (values)."
+          title="L1–L6 retention by school"
+          description="Correct rate by cognitive level — public vs private."
         >
           <DemographicsBloomTable
             rows={bloomRows.map((row) => ({
@@ -221,8 +221,8 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-bloom-gap"
-          title="L1–L6 cognitive gap"
-          description="Chart view — how public and private profiles diverge across Bloom levels."
+          title="L1–L6 retention gap"
+          description="How public and private retention profiles diverge across Bloom levels."
         >
           <BloomCognitiveGapChart
             fillContainer
@@ -244,7 +244,7 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-heatmap"
           title="Bloom × school heatmap"
-          description="L1–L6 correct rate by school type on a red-to-green scale."
+          description="L1–L6 retention rate by school type."
         >
           <PerformanceHeatmap
             columnLabels={["Public", "Private"]}
@@ -267,7 +267,7 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-heatmap"
-          title="Difficulty by school"
+          title="Difficulty retention by school"
           description="Easy / Medium / Hard correct rate — public vs private."
         >
           <PerformanceHeatmap
@@ -292,9 +292,9 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-donut-pair"
           title="At-risk share by school"
-          description="Share of students below 75% on their latest diagnostic."
+          description="Share of students below 75% on their latest comprehensive exam."
         >
-          <DemographicsDonutPair
+          <RetentionDonutPair
             mode="atRisk"
             rows={data.schoolType.atRiskShare.map((row) => ({
               label: row.label,
@@ -309,7 +309,7 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-heatmap"
-          title="Topic gap heatmap"
+          title="Topic retention gap"
           description="Public vs private correct rate on topics with the largest gaps."
         >
           <PerformanceHeatmap
@@ -330,8 +330,8 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-heatmap"
-          title="Topic strengths by school"
-          description="Shared topics with diagnostic attempts for both groups."
+          title="Topic retention by school"
+          description="Shared topics with comprehensive attempts for both groups."
         >
           <PerformanceHeatmap
             columnLabels={["Public", "Private"]}
@@ -357,8 +357,8 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-radar"
-          title="L1–L6 by gender"
-          description="Cognitive profile shape — male vs female across Bloom levels."
+          title="L1–L6 retention by gender"
+          description="Cognitive retention profile — male vs female across Bloom levels."
         >
           {genderBloomRows.length < 3 ? (
             <p className="muted">Need at least 3 Bloom levels for a radar chart.</p>
@@ -379,8 +379,8 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-heatmap"
-          title="Topic strengths by gender"
-          description="Shared topics with diagnostic attempts for both groups."
+          title="Topic retention by gender"
+          description="Shared topics with comprehensive attempts for both groups."
         >
           <PerformanceHeatmap
             columnLabels={["Male", "Female"]}
@@ -399,7 +399,7 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-heatmap"
-          title="Difficulty by gender"
+          title="Difficulty retention by gender"
           description="Easy / Medium / Hard correct rate — male vs female."
         >
           <PerformanceHeatmap
@@ -422,9 +422,9 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-donut-pair"
           title="At-risk share by gender"
-          description="Share of students below 75% on their latest diagnostic."
+          description="Share of students below 75% on their latest comprehensive exam."
         >
-          <DemographicsDonutPair
+          <RetentionDonutPair
             mode="atRisk"
             rows={data.gender.atRiskShare.map((row) => ({
               label: row.label,
@@ -439,20 +439,20 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-donut-pair analytics-chart-card-program-donuts"
-          title="Diagnostic score by program"
-          description="Average latest diagnostic score per enrolled program."
+          title="Retention score by program"
+          description="Average latest comprehensive score per enrolled program."
         >
-          <DemographicsProgramDonuts programs={data.programs} metric="averageScore" />
+          <RetentionProgramDonuts programs={data.programs} metric="averageScore" />
         </ChartCard>
       );
     case "program-readiness":
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-donut-pair analytics-chart-card-program-donuts"
-          title="L4–L6 readiness by program"
-          description="Higher-order thinking average (Analysis, Synthesis, Evaluation)."
+          title="L4–L6 retention by program"
+          description="Higher-order retention (Analysis, Synthesis, Evaluation)."
         >
-          <DemographicsProgramDonuts programs={data.programs} metric="higherOrderReadiness" />
+          <RetentionProgramDonuts programs={data.programs} metric="higherOrderReadiness" />
         </ChartCard>
       );
     default:
@@ -460,19 +460,19 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
   }
 }
 
-export default function AnalyticsDemographics({ token }: Props) {
+export default function AnalyticsRetention({ token }: Props) {
   const programCourseOptions = useProgramCourseOptions();
   const { appendExamYear, seasonLabel } = useAnalyticsSeason();
   const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<string>("ALL");
-  const [data, setData] = useState<DemographicsData | null>(null);
+  const [data, setData] = useState<RetentionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const hasLoadedRef = useRef(false);
   const [chartOrder, setChartOrder] = useChartOrder(
-    "analytics-demographics-chart-order-v3",
-    DEMOGRAPHICS_CHART_ORDER
+    "analytics-retention-chart-order-v1",
+    RETENTION_CHART_ORDER
   );
 
   const query = useMemo(() => {
@@ -489,6 +489,7 @@ export default function AnalyticsDemographics({ token }: Props) {
       courseFilter === "ALL" ? "All courses" : formatProgramCourse(courseFilter),
       yearFilter === "ALL" ? "All year levels" : `Incoming year ${yearFilter}`,
       seasonLabel,
+      "Comprehensive + retake",
     ];
     return parts.join(" · ");
   }, [courseFilter, yearFilter, seasonLabel]);
@@ -498,12 +499,12 @@ export default function AnalyticsDemographics({ token }: Props) {
     if (hasLoadedRef.current) setRefreshing(true);
     else setLoading(true);
 
-    api<DemographicsData>(`/analytics/demographics${query}`, {}, token)
+    api<RetentionData>(`/analytics/retention${query}`, {}, token)
       .then((response) => {
         setData(response);
         hasLoadedRef.current = true;
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load demographics"))
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load retention analytics"))
       .finally(() => {
         setLoading(false);
         setRefreshing(false);
@@ -534,8 +535,13 @@ export default function AnalyticsDemographics({ token }: Props) {
     ]);
   }
 
+  const emptyMessage =
+    yearFilter === String(MIN_YEAR_LEVEL)
+      ? "Incoming year 1 students do not take comprehensive exams. Try year 2 or above."
+      : "No comprehensive exam data yet for this filter.";
+
   if (loading && !data) {
-    return <p className="muted">Loading demographic analytics...</p>;
+    return <p className="muted">Loading retention analytics...</p>;
   }
 
   if (!data) {
@@ -544,14 +550,14 @@ export default function AnalyticsDemographics({ token }: Props) {
 
   return (
     <AnalyticsPrintArea
-      id="analytics-print-demographics"
-      title="Analytics — Demographics"
+      id="analytics-print-retention"
+      title="Analytics — Retention"
       subtitle={filterSubtitle}
     >
-      <div className={`analytics-demographics${refreshing ? " is-refreshing" : ""}`}>
+      <div className={`analytics-retention analytics-demographics${refreshing ? " is-refreshing" : ""}`}>
         <AnalyticsSeasonControl />
         <p className="muted analytics-segment-note analytics-no-print">
-          Based on diagnostic exams — incoming readiness by school type, gender, and program.
+          Based on comprehensive and retake exams — retention by school type, gender, and program.
         </p>
         <div className="analytics-reports-filter analytics-no-print">
           <div className="analytics-reports-filters">
@@ -591,8 +597,8 @@ export default function AnalyticsDemographics({ token }: Props) {
             <strong>{data.studentsInScope}</strong>
           </article>
           <article className="analytics-trends-stat">
-            <span className="analytics-trends-stat-label">With diagnostic</span>
-            <strong>{data.studentsWithDiagnostic}</strong>
+            <span className="analytics-trends-stat-label">With comprehensive</span>
+            <strong>{data.studentsWithComprehensive}</strong>
           </article>
           <article className="analytics-trends-stat">
             <span className="analytics-trends-stat-label">With demographics</span>
@@ -602,18 +608,16 @@ export default function AnalyticsDemographics({ token }: Props) {
 
         {error ? <p className="error">{error}</p> : null}
 
-        {data.studentsWithDiagnostic === 0 ? (
-          <p className="muted">No diagnostic exam data yet for this filter.</p>
+        {data.studentsWithComprehensive === 0 ? (
+          <p className="muted">{emptyMessage}</p>
         ) : (
-          <>
-            <SwappableChartGrid
-              order={activeChartOrder}
-              onOrderChange={handleChartOrderChange}
-              slotLayout={DEMOGRAPHICS_CHART_LAYOUT}
-            >
-              {(id) => renderDemographicsChart(id as DemographicsChartId, data)}
-            </SwappableChartGrid>
-          </>
+          <SwappableChartGrid
+            order={activeChartOrder}
+            onOrderChange={handleChartOrderChange}
+            slotLayout={RETENTION_CHART_LAYOUT}
+          >
+            {(id) => renderRetentionChart(id as RetentionChartId, data)}
+          </SwappableChartGrid>
         )}
       </div>
     </AnalyticsPrintArea>

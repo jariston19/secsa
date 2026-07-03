@@ -4,7 +4,7 @@ import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import SwappableChartGrid from "./SwappableChartGrid";
 import { useChartOrder } from "../hooks/useChartOrder";
 import { OVERVIEW_CHART_LAYOUT } from "../lib/analyticsLayout";
-import { MAX_YEAR_LEVEL, MIN_YEAR_LEVEL } from "../lib/constants";
+import { MIN_YEAR_LEVEL, incomingYearLevelsForFilter } from "../lib/constants";
 import {
   formatProgramCourse,
   type ProgramCourseFilter,
@@ -520,10 +520,7 @@ export default function AnalyticsOverview({ token }: Props) {
                 }
               >
                 <option value="ALL">All</option>
-                {Array.from(
-                  { length: MAX_YEAR_LEVEL - MIN_YEAR_LEVEL + 1 },
-                  (_, i) => MIN_YEAR_LEVEL + i
-                ).map((level) => (
+                {incomingYearLevelsForFilter(courseFilter).map((level) => (
                   <option key={level} value={String(level)}>
                     Year {level}
                   </option>

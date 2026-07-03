@@ -2,9 +2,9 @@
 [data-theme="light"] {
   --ios-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue",
     sans-serif;
-  --ios-bg: #f2f2f7;
+  --ios-bg: #f2f2f2;
   --ios-bg-elevated: #ffffff;
-  --ios-bg-tertiary: #f2f2f7;
+  --ios-bg-tertiary: #f2f2f2;
   --ios-fill: rgba(120, 120, 128, 0.2);
   --ios-fill-secondary: rgba(120, 120, 128, 0.16);
   --ios-label: #000000;
@@ -23,10 +23,10 @@
   --ios-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
   --ios-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
   --ios-focus-ring: 0 0 0 3px rgba(0, 122, 255, 0.28);
-  --topbar-bg: rgba(255, 255, 255, 0.82);
+  --topbar-bg: rgba(242, 242, 242, 0.82);
   --sidebar-rail-width: 72px;
   --sidebar-width: 260px;
-  --encoder-footer-bg: rgba(255, 255, 255, 0.92);
+  --encoder-footer-bg: rgba(242, 242, 242, 0.92);
   --modal-overlay-bg: rgba(0, 0, 0, 0.4);
   --card-border: rgba(0, 0, 0, 0.04);
   --difficulty-easy-bg: rgba(52, 199, 89, 0.15);
@@ -35,6 +35,13 @@
   --difficulty-medium-text: #c93400;
   --difficulty-hard-bg: rgba(255, 59, 48, 0.12);
   --difficulty-hard-text: #d70015;
+  --chart-grid-line: rgba(60, 60, 67, 0.1);
+  --chart-axis-line: rgba(60, 60, 67, 0.08);
+  --chart-radar-series-a-fill: rgba(0, 122, 255, 0.18);
+  --chart-radar-series-b-fill: rgba(52, 199, 89, 0.22);
+  --chart-gap-band-fill: rgba(255, 149, 0, 0.16);
+  --chart-donut-track: rgba(60, 60, 67, 0.12);
+  --chart-guide-line: rgba(60, 60, 67, 0.14);
   --code-bg: #1c1c1e;
   --code-text: #f2f2f7;
   --modal-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
@@ -77,6 +84,13 @@
   --difficulty-medium-text: #ff9f0a;
   --difficulty-hard-bg: rgba(255, 69, 58, 0.18);
   --difficulty-hard-text: #ff453a;
+  --chart-grid-line: rgba(235, 235, 245, 0.12);
+  --chart-axis-line: rgba(235, 235, 245, 0.1);
+  --chart-radar-series-a-fill: rgba(10, 132, 255, 0.22);
+  --chart-radar-series-b-fill: rgba(48, 209, 88, 0.24);
+  --chart-gap-band-fill: rgba(255, 159, 10, 0.18);
+  --chart-donut-track: rgba(235, 235, 245, 0.14);
+  --chart-guide-line: rgba(235, 235, 245, 0.16);
   --code-bg: #2c2c2e;
   --code-text: #f2f2f7;
   --modal-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
@@ -2943,6 +2957,11 @@ textarea {
   gap: 1rem;
 }
 
+.analytics-segment-note {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
 .analytics-demographics-bloom-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3098,7 +3117,10 @@ textarea {
 }
 
 .chart-demographics-table-wrap {
-  overflow-x: auto;
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .chart-demographics-table {
@@ -3132,6 +3154,9 @@ textarea {
 .analytics-chart-card-demographics-table .analytics-chart-card-body {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .analytics-chart-card-donut-pair .analytics-chart-card-body {
@@ -3144,6 +3169,23 @@ textarea {
 .analytics-chart-card-donut-pair .overview-pass-donut-grid {
   width: 100%;
   flex: 1;
+}
+
+.analytics-chart-card-donut-pair:not(.analytics-chart-card-program-donuts) .chart-donut {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 9rem;
+  min-height: unset;
+  height: auto;
+  margin-inline: auto;
+}
+
+.analytics-chart-card-donut-pair:not(.analytics-chart-card-program-donuts) .chart-donut-ring-wrap {
+  flex: 0 0 auto;
+  width: min(100%, 9rem);
+  aspect-ratio: 1;
+  height: auto;
+  max-height: none;
 }
 
 .analytics-chart-card-program-donuts .demographics-program-donut-grid {
@@ -3179,6 +3221,7 @@ textarea {
 .analytics-chart-card-program-donuts .chart-donut-ring-wrap {
   flex: 0 0 auto;
   width: min(100%, 7.5rem);
+  aspect-ratio: 1;
   height: auto;
   max-height: 7.5rem;
 }
@@ -3199,7 +3242,7 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.5rem;
 }
 
@@ -3575,6 +3618,10 @@ textarea {
   padding: 0;
   list-style: none;
   font-size: 0.8125rem;
+  flex-shrink: 0;
+  margin-top: auto;
+  justify-content: center;
+  width: 100%;
 }
 
 .chart-progression-controls {
@@ -3623,7 +3670,10 @@ textarea {
 
 .chart-progression-wrap,
 .chart-correlation-wrap {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   gap: 0.5rem;
 }
 
@@ -3642,6 +3692,13 @@ textarea {
   height: 100%;
 }
 
+.chart-progression-wrap .chart-progression,
+.chart-progression-wrap .chart-progression-compare,
+.chart-correlation-wrap .chart-correlation {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .chart-progression,
 .chart-correlation {
   width: 100%;
@@ -3651,19 +3708,19 @@ textarea {
 
 .chart-progression-grid,
 .chart-correlation-axis {
-  stroke: color-mix(in srgb, var(--ios-label-tertiary) 25%, transparent);
+  stroke: var(--chart-grid-line);
   stroke-width: 1;
 }
 
 .chart-correlation-grid {
-  stroke: color-mix(in srgb, var(--ios-label-tertiary) 18%, transparent);
+  stroke: var(--chart-axis-line);
   stroke-width: 1;
   stroke-dasharray: 3 4;
 }
 
 .chart-progression-axis-line,
 .chart-progression-year-grid {
-  stroke: color-mix(in srgb, var(--ios-label-tertiary) 18%, transparent);
+  stroke: var(--chart-axis-line);
   stroke-width: 1;
 }
 
@@ -3698,7 +3755,7 @@ textarea {
 }
 
 .chart-correlation-guide {
-  stroke: color-mix(in srgb, var(--ios-label-tertiary) 35%, transparent);
+  stroke: var(--chart-guide-line);
   stroke-width: 1;
   stroke-dasharray: 4 4;
 }
@@ -4432,6 +4489,7 @@ textarea {
 
 .analytics-overview.is-refreshing,
 .analytics-demographics.is-refreshing,
+.analytics-retention.is-refreshing,
 .analytics-trends.is-refreshing,
 .analytics-reports-body {
   display: flex;
@@ -4527,6 +4585,10 @@ textarea {
   gap: 0.65rem;
   height: 100%;
   min-height: 0;
+}
+
+.analytics-panel-header > div:first-child {
+  min-width: 0;
 }
 
 .analytics-panel h3 {
@@ -4659,6 +4721,17 @@ textarea {
   min-height: 0;
 }
 
+.chart-slot-shell {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+}
+
+.chart-slot-shell:has(.analytics-chart-card) .chart-slot-shell-download,
+.chart-slot-shell:has(.analytics-panel) .chart-slot-shell-download {
+  display: none;
+}
+
 .chart-slot-content {
   height: 100%;
   min-height: 0;
@@ -4686,15 +4759,61 @@ textarea {
 
 .chart-slot-toolbar {
   position: absolute;
-  top: 0.55rem;
-  right: 0.55rem;
-  z-index: 2;
+  top: 1rem;
+  right: 1.1rem;
+  z-index: 3;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
 }
 
+.analytics-chart-card,
+.analytics-panel {
+  position: relative;
+}
+
+.chart-card-download {
+  position: absolute;
+  top: 1rem;
+  right: 1.1rem;
+  z-index: 2;
+}
+
+.analytics-chart-card-header,
+.analytics-panel-header {
+  padding-right: 2.5rem;
+}
+
+.analytics-chart-card-header {
+  display: block;
+}
+
+.analytics-panel-header {
+  display: block;
+}
+
 .chart-slot-download,
+.chart-card-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0.5px solid color-mix(in srgb, var(--ios-label-tertiary) 25%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ios-bg-elevated) 92%, transparent);
+  color: var(--ios-label-secondary);
+  font-size: 0.75rem;
+  line-height: 1;
+  letter-spacing: -0.12em;
+  cursor: pointer;
+}
+
+.chart-slot-shell:has(.chart-card-download) .chart-slot-toolbar {
+  right: 3.15rem;
+}
+
 .chart-card-drag-handle {
   display: inline-flex;
   align-items: center;
@@ -5021,12 +5140,6 @@ textarea {
   grid-column: 1 / -1;
 }
 
-.analytics-chart-card-header {
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
-}
-
 .analytics-chart-card-header h3 {
   margin: 0;
   font-size: 0.9375rem;
@@ -5261,13 +5374,17 @@ textarea {
   gap: 0.5rem;
 }
 
+.chart-paired-horizontal-panel .chart-paired-horizontal-bars {
+  flex: 1;
+  min-height: 0;
+}
+
 .chart-paired-horizontal-panel .chart-paired-horizontal-legend,
 .chart-paired-horizontal-panel .chart-card-pagination {
   flex-shrink: 0;
 }
 
 .chart-paired-horizontal-panel .chart-card-pagination {
-  margin-top: auto;
   padding-top: 0.35rem;
 }
 
@@ -5277,6 +5394,10 @@ textarea {
   gap: 1rem;
   font-size: 0.8125rem;
   color: var(--ios-label-secondary);
+  justify-content: center;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 0.5rem;
 }
 
 .chart-paired-horizontal-legend i {
@@ -5419,8 +5540,11 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 1rem;
-  margin-top: 0.75rem;
+  margin-top: auto;
+  padding-top: 0.75rem;
   font-size: 0.8rem;
+  justify-content: center;
+  width: 100%;
 }
 
 .saved-questions-bloom-tag {
@@ -5645,16 +5769,21 @@ textarea {
 
 .chart-donut-ring-wrap {
   position: relative;
-  flex: 1 1 0;
-  min-height: 0;
-  width: auto;
-  max-width: 100%;
-  height: 100%;
-  max-height: 100%;
+  flex: 1 1 auto;
+  width: min(100%, 8.5rem);
   aspect-ratio: 1;
   margin-inline: auto;
   align-self: center;
   container-type: size;
+  min-height: 0;
+}
+
+.overview-hero-card .chart-donut-ring-wrap {
+  flex: 1 1 auto;
+  width: min(100%, 13rem);
+  min-width: 5.5rem;
+  min-height: 5.5rem;
+  max-height: 100%;
 }
 
 .chart-donut-svg {
@@ -5664,7 +5793,7 @@ textarea {
 }
 
 .chart-donut-ring-bg {
-  stroke: color-mix(in srgb, var(--ios-label-tertiary) 20%, transparent);
+  stroke: var(--chart-donut-track);
 }
 
 .chart-donut-ring-fill {
@@ -5772,7 +5901,14 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: center;
+  flex: 1;
+  min-height: 0;
   gap: 0.5rem;
+}
+
+.chart-radar-wrap-fill .chart-radar {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .chart-radar {
@@ -5783,12 +5919,12 @@ textarea {
 
 .chart-radar-grid {
   fill: none;
-  stroke: color-mix(in srgb, var(--ios-label-tertiary) 18%, transparent);
+  stroke: var(--chart-grid-line);
   stroke-width: 1;
 }
 
 .chart-radar-axis {
-  stroke: color-mix(in srgb, var(--ios-label-tertiary) 15%, transparent);
+  stroke: var(--chart-axis-line);
   stroke-width: 1;
 }
 
@@ -5798,13 +5934,13 @@ textarea {
 }
 
 .chart-radar-class {
-  fill: color-mix(in srgb, var(--ios-blue) 18%, transparent);
+  fill: var(--chart-radar-series-a-fill);
   stroke: var(--ios-blue);
   stroke-width: 1.5;
 }
 
 .chart-radar-student {
-  fill: color-mix(in srgb, var(--ios-green) 22%, transparent);
+  fill: var(--chart-radar-series-b-fill);
   stroke: var(--ios-green);
   stroke-width: 1.5;
 }
@@ -5813,9 +5949,15 @@ textarea {
 .chart-scatter-legend,
 .chart-bloom-gap-legend {
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   font-size: 0.75rem;
   color: var(--ios-label-secondary);
+  flex-shrink: 0;
+  margin-top: auto;
+  justify-content: center;
+  width: 100%;
+  padding-top: 0.5rem;
 }
 
 .chart-bloom-gap-wrap {
@@ -5823,6 +5965,13 @@ textarea {
   flex-direction: column;
   gap: 0.5rem;
   width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+.chart-bloom-gap-wrap-fill .chart-bloom-gap {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .chart-bloom-gap {
@@ -5833,7 +5982,7 @@ textarea {
 
 .chart-bloom-gap-grid,
 .chart-bloom-gap-level-grid {
-  stroke: color-mix(in srgb, var(--ios-label-tertiary) 20%, transparent);
+  stroke: var(--chart-grid-line);
   stroke-width: 1;
 }
 
@@ -5842,12 +5991,12 @@ textarea {
 }
 
 .chart-bloom-gap-axis {
-  stroke: color-mix(in srgb, var(--ios-label-tertiary) 28%, transparent);
+  stroke: var(--chart-axis-line);
   stroke-width: 1;
 }
 
 .chart-bloom-gap-area {
-  fill: color-mix(in srgb, var(--ios-orange) 16%, transparent);
+  fill: var(--chart-gap-band-fill);
   stroke: none;
 }
 
@@ -5904,7 +6053,15 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: center;
+  flex: 1;
+  min-height: 0;
   gap: 0.35rem;
+}
+
+.chart-scatter-wrap .chart-scatter,
+.chart-discrimination-wrap-fill .chart-discrimination-fill {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .chart-discrimination-wrap-fill {
@@ -5930,7 +6087,7 @@ textarea {
 
 .chart-scatter-grid,
 .chart-discrimination-grid {
-  stroke: color-mix(in srgb, var(--ios-label-tertiary) 25%, transparent);
+  stroke: var(--chart-grid-line);
   stroke-width: 1;
   stroke-dasharray: 4 3;
 }
@@ -10521,6 +10678,8 @@ td:has(.action-buttons) {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+  flex: 1;
+  min-height: 0;
 }
 
 .individual-student-compare-row {
@@ -10583,6 +10742,15 @@ td:has(.action-buttons) {
 .individual-student-legend {
   margin: 0.5rem 0 0;
   font-size: 0.6875rem;
+  flex-shrink: 0;
+  margin-top: auto;
+  text-align: center;
+  width: 100%;
+}
+
+.analytics-panel-body:has(.individual-student-compare-chart) {
+  flex: 1;
+  min-height: 0;
 }
 
 .individual-student-metrics-grid {
@@ -10622,7 +10790,8 @@ td:has(.action-buttons) {
 
 .analytics-panel-body:has(.individual-student-time-compare) .individual-student-legend {
   flex-shrink: 0;
-  margin-top: 0.35rem;
+  margin-top: auto;
+  padding-top: 0.35rem;
 }
 
 .individual-student-time-list {

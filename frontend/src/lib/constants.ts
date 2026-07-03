@@ -1,8 +1,13 @@
-import { maxYearLevelForProgram } from "./programCourse";
+import {
+  ABSOLUTE_MAX_YEAR_LEVEL,
+  maxYearLevelForFilter,
+  maxYearLevelForProgram,
+  incomingYearLevelsForFilter,
+} from "./programCourse";
 
 export const MIN_YEAR_LEVEL = 1;
-export const MAX_YEAR_LEVEL = 4;
-export const ABSOLUTE_MAX_YEAR_LEVEL = 5;
+export const MAX_YEAR_LEVEL = ABSOLUTE_MAX_YEAR_LEVEL;
+export { ABSOLUTE_MAX_YEAR_LEVEL, maxYearLevelForFilter, maxYearLevelForProgram, incomingYearLevelsForFilter };
 export const MAX_EXAM_FOCUS_VIOLATIONS = 3;
 
 export function formatExamTimeLimit(totalMinutes: number) {

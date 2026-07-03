@@ -34,6 +34,39 @@ type SvgProbeTag = "polygon" | "line" | "circle" | "path" | "text";
 
 const svgClassStyleCache = new Map<string, Partial<Record<(typeof SVG_PRESENTATION_ATTRS)[number], string>>>();
 
+const SVG_CLASS_FILL_VARS: Partial<Record<string, string>> = {
+  "chart-bloom-gap-area": "--chart-gap-band-fill",
+  "chart-radar-class": "--chart-radar-series-a-fill",
+  "chart-radar-student": "--chart-radar-series-b-fill",
+};
+
+function readRootCssColor(name: string, fallback: string) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+export function chartCssColor(varName: string, fallback: string) {
+  return readRootCssColor(varName, fallback);
+}
+
+function isDefaultSvgFill(value: string) {
+  return value === "rgb(0, 0, 0)" || value === "#000000" || value === "black";
+}
+
+function resolveSvgClassPaint(
+  className: string,
+  attr: "fill" | "stroke",
+  value: string
+) {
+  if (attr === "fill") {
+    const cssVar = SVG_CLASS_FILL_VARS[className];
+    if (cssVar && (!value || isDefaultSvgFill(value) || value.includes("color-mix"))) {
+      return readRootCssColor(cssVar, value);
+    }
+  }
+  return value;
+}
+
 function applySvgPresentation(node: SVGElement, attr: string, value: string) {
   node.setAttribute(attr, value);
   node.style.setProperty(attr, value);
@@ -64,7 +97,7 @@ export function probeSvgClassStyles(
   className: string,
   tag: SvgProbeTag = "polygon"
 ): Partial<Record<(typeof SVG_PRESENTATION_ATTRS)[number], string>> {
-  const cacheKey = `${tag}:${className}`;
+  const cacheKey = `v2:${tag}:${className}`;
   const cached = svgClassStyleCache.get(cacheKey);
   if (cached) return cached;
 
@@ -96,7 +129,11 @@ export function probeSvgClassStyles(
   const computed = getComputedStyle(element);
   const styles: Partial<Record<(typeof SVG_PRESENTATION_ATTRS)[number], string>> = {};
   for (const attr of SVG_PRESENTATION_ATTRS) {
-    const value = computed.getPropertyValue(attr).trim();
+    let value = computed.getPropertyValue(attr).trim();
+    if (!value || value === "none") continue;
+    if (attr === "fill" || attr === "stroke") {
+      value = resolveSvgClassPaint(className, attr, value);
+    }
     if (!value || value === "none") continue;
     styles[attr] = value;
   }
@@ -127,9 +164,13 @@ export function svgPresentationProps(
 export function findChartExportRoot(element: HTMLElement) {
   return (
     element.querySelector<HTMLElement>(
-      ".analytics-chart-card, .overview-hero-card, .overview-panel, .analytics-panel, .individual-student-section"
+      ".analytics-chart-card, .overview-hero-card, .overview-panel, .analytics-panel, .individual-student-section, .analytics-trends-step-summary"
     ) ?? element
   );
+}
+
+export function chartExportTitle(element: HTMLElement) {
+  return element.querySelector("h3, h2")?.textContent?.trim() ?? "";
 }
 
 export function measureChartExportSize(element: HTMLElement) {
@@ -137,7 +178,7 @@ export function measureChartExportSize(element: HTMLElement) {
   const width = Math.max(320, Math.ceil(rect.width || element.scrollWidth || element.clientWidth));
   const height = Math.max(
     280,
-    Math.ceil(rect.height || element.scrollHeight || element.clientHeight)
+    Math.ceil(Math.max(element.scrollHeight, element.offsetHeight, rect.height))
   );
   return { width, height };
 }
@@ -191,8 +232,13 @@ function mirrorComputedStyles(source: Element, target: Element) {
 function inlineSvgNodePresentationStyles(node: SVGElement, styleSource: Element) {
   const snapshots: StyleSnapshot[] = [];
   const computed = getComputedStyle(styleSource);
+  const className = styleSource.getAttribute("class") ?? "";
   for (const attr of SVG_PRESENTATION_ATTRS) {
-    const value = computed.getPropertyValue(attr).trim();
+    let value = computed.getPropertyValue(attr).trim();
+    if (!value || value === "none") continue;
+    if (attr === "fill" || attr === "stroke") {
+      value = resolveSvgClassPaint(className, attr, value);
+    }
     if (!value || value === "none") continue;
     snapshots.push({
       node,
@@ -278,6 +324,13 @@ export function createChartExportClone(source: HTMLElement, width: number, heigh
   clone.style.minHeight = `${height}px`;
   clone.style.overflow = "visible";
   clone.style.boxSizing = "border-box";
+
+  clone
+    .querySelectorAll<HTMLElement>(".chart-demographics-table-wrap, .analytics-chart-card-body")
+    .forEach((node) => {
+      node.style.overflow = "visible";
+      node.style.maxHeight = "none";
+    });
 
   mirrorComputedStyles(source, clone);
   wrapper.appendChild(clone);

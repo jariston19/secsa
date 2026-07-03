@@ -17,7 +17,7 @@ import {
 import { buildAnalyticsReports } from "../services/analyticsReports.js";
 import { buildOverviewDashboard } from "../services/overviewDashboard.js";
 import { buildCohortTrends } from "../services/cohortTrends.js";
-import { buildDemographicAnalytics } from "../services/demographicAnalytics.js";
+import { buildDemographicAnalytics, buildRetentionAnalytics } from "../services/demographicAnalytics.js";
 import { buildAnalyticsRankings, type RankingsExamType } from "../services/analyticsRankings.js";
 import { listAvailableExamYears, parseExamYearQuery } from "../lib/analyticsSeason.js";
 
@@ -82,6 +82,22 @@ export async function analyticsRoutes(app: FastifyInstance) {
       examYear?: string;
     };
     return buildDemographicAnalytics({
+      yearLevel: parseYearLevelQuery(query.yearLevel),
+      programCourse: await parseProgramCourseQuery(query.programCourse),
+      examYear: parseExamYear(query.examYear),
+    });
+  });
+
+  app.get("/retention", async (request) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
+
+    const query = request.query as {
+      yearLevel?: string;
+      programCourse?: string;
+      examYear?: string;
+    };
+    return buildRetentionAnalytics({
       yearLevel: parseYearLevelQuery(query.yearLevel),
       programCourse: await parseProgramCourseQuery(query.programCourse),
       examYear: parseExamYear(query.examYear),

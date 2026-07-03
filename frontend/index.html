@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#f2f2f7" />
+    <meta name="theme-color" content="#f2f2f2" />
     <meta name="author" content="Josiah P. Ariston" />
     <meta
       name="description"
@@ -21,7 +21,7 @@
         document.documentElement.setAttribute("data-theme", theme);
         document.documentElement.classList.toggle("dark", theme === "dark");
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute("content", theme === "dark" ? "#000000" : "#f2f2f7");
+        if (meta) meta.setAttribute("content", theme === "dark" ? "#000000" : "#f2f2f2");
       })();
     </script>
   </head>
