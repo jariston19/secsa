@@ -26,6 +26,7 @@ import {
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
 import { INDIVIDUAL_STUDENT_CHART_LAYOUT } from "../lib/analyticsLayout";
+import StudentSubmissionDetailModal from "./StudentSubmissionDetailModal";
 
 type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
 
@@ -52,6 +53,7 @@ interface StudentSearchResult {
   yearLevel: number | null;
   programCourse: string | null;
   email: string;
+  latestSubmissionId: string | null;
 }
 
 interface IndividualReport {
@@ -66,6 +68,7 @@ interface IndividualReport {
   };
   hasExamData: boolean;
   exam?: {
+    id: string;
     questionSetName: string;
     questionSetYear: number;
     submittedAt: string;
@@ -418,6 +421,7 @@ export default function IndividualStudentAnalytics({ token }: Props) {
   const [report, setReport] = useState<IndividualReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
   const [chartOrder, setChartOrder] = useChartOrder(
     "analytics-individual-student-chart-order",
     INDIVIDUAL_STUDENT_CHART_ORDER
@@ -665,13 +669,26 @@ export default function IndividualStudentAnalytics({ token }: Props) {
                         <td>{student.yearLevel ?? "—"}</td>
                         <td>{student.email}</td>
                         <td>
-                          <button
-                            type="button"
-                            className="btn secondary btn-sm"
-                            onClick={() => selectStudent(student, results)}
-                          >
-                            View
-                          </button>
+                          <div className="individual-student-table-actions">
+                            <button
+                              type="button"
+                              className="btn secondary btn-sm"
+                              onClick={() => selectStudent(student, results)}
+                            >
+                              View
+                            </button>
+                            <button
+                              type="button"
+                              className="btn secondary btn-sm"
+                              disabled={!student.latestSubmissionId}
+                              onClick={() =>
+                                student.latestSubmissionId &&
+                                setSelectedSubmissionId(student.latestSubmissionId)
+                              }
+                            >
+                              Submission
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -857,6 +874,14 @@ export default function IndividualStudentAnalytics({ token }: Props) {
             )}
           </div>
         </AnalyticsPrintArea>
+      ) : null}
+
+      {selectedSubmissionId ? (
+        <StudentSubmissionDetailModal
+          submissionId={selectedSubmissionId}
+          token={token}
+          onClose={() => setSelectedSubmissionId(null)}
+        />
       ) : null}
     </div>
   );

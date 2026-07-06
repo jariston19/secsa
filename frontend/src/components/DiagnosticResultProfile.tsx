@@ -33,8 +33,7 @@ function toneBarWidth(tone: BloomLevelRow["tone"]) {
 }
 
 function toneFillColor(tone: BloomLevelRow["tone"]) {
-  if (tone === "strong") return "#22c55e";
-  if (tone === "moderate") return "#f59e0b";
+  if (tone === "strong") return "#007aff";
   return "#ef4444";
 }
 

@@ -50,8 +50,31 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleString();
 }
 
+function matchesScoreFilter(submission: SubmissionRow, filter: string) {
+  const trimmed = filter.trim();
+  if (!trimmed) return true;
+
+  const fractionMatch = trimmed.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (fractionMatch) {
+    const correct = Number(fractionMatch[1]);
+    const total = Number(fractionMatch[2]);
+    return submission.score === correct && submission.totalItems === total;
+  }
+
+  const target = Number(trimmed);
+  if (!Number.isFinite(target)) return false;
+
+  const score = submission.score ?? 0;
+  const percentage = submission.percentage ?? 0;
+  if (score === target) return true;
+  if (percentage.toFixed(1) === target.toFixed(1)) return true;
+
+  return false;
+}
+
 export default function StudentSubmissionsSection({ token, onViewSubmission }: Props) {
   const [yearFilter, setYearFilter] = useState("all");
+  const [scoreFilter, setScoreFilter] = useState("");
   const [firstNameFilter, setFirstNameFilter] = useState("");
   const [lastNameFilter, setLastNameFilter] = useState("");
   const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
@@ -76,11 +99,12 @@ export default function StudentSubmissionsSection({ token, onViewSubmission }: P
     return submissions.filter((submission) => {
       if (first && !submission.student.firstName.toLowerCase().includes(first)) return false;
       if (last && !submission.student.lastName.toLowerCase().includes(last)) return false;
+      if (!matchesScoreFilter(submission, scoreFilter)) return false;
       return true;
     });
-  }, [submissions, firstNameFilter, lastNameFilter]);
+  }, [submissions, firstNameFilter, lastNameFilter, scoreFilter]);
 
-  const paginationResetKey = `${yearFilter}|${firstNameFilter}|${lastNameFilter}|${filteredSubmissions.length}`;
+  const paginationResetKey = `${yearFilter}|${scoreFilter}|${firstNameFilter}|${lastNameFilter}|${filteredSubmissions.length}`;
   const {
     page,
     setPage,
@@ -127,6 +151,16 @@ export default function StudentSubmissionsSection({ token, onViewSubmission }: P
               placeholder="Filter last name"
               value={lastNameFilter}
               onChange={(e) => setLastNameFilter(e.target.value)}
+            />
+          </label>
+          <label>
+            Score
+            <input
+              type="search"
+              inputMode="decimal"
+              placeholder="e.g. 38 or 75.0"
+              value={scoreFilter}
+              onChange={(e) => setScoreFilter(e.target.value)}
             />
           </label>
         </div>

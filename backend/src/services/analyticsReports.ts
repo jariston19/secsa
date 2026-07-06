@@ -159,9 +159,7 @@ function buildCohortLabel(filters: AnalyticsReportFilters) {
 }
 
 function scoreTone(score: number) {
-  if (score >= STRONG_THRESHOLD) return "strong";
-  if (score >= WEAK_THRESHOLD) return "moderate";
-  return "weak";
+  return score >= PASS_THRESHOLD ? "strong" : "weak";
 }
 
 function pct(correct: number, total: number) {

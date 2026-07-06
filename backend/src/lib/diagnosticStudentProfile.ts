@@ -211,9 +211,7 @@ function pct(correct: number, total: number) {
 }
 
 function scoreTone(score: number): "strong" | "moderate" | "weak" {
-  if (score >= STRONG_THRESHOLD) return "strong";
-  if (score >= WEAK_THRESHOLD) return "moderate";
-  return "weak";
+  return score >= STRONG_THRESHOLD ? "strong" : "weak";
 }
 
 function areaMessage(label: string, tone: "strong" | "weak") {

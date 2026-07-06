@@ -241,23 +241,34 @@ function LayoutShell() {
       />
 
       <aside className="app-sidebar" aria-label="Main navigation">
-        <div className="sidebar-header">
-          <img className="sidebar-logo" src="/logo.png" alt="SECSA" />
-          <div className="sidebar-brand-text">
-            <h1>SECSA AQAP</h1>
-            <p className="muted">
-              {user ? formatFullName(user.firstName, user.lastName) : ""}
-              {user?.role ? ` · ${formatRole(user.role)}` : ""}
-            </p>
-            {(user?.yearLevel || user?.programCourse) && (
-              <p className="muted sidebar-meta">
-                {user?.yearLevel ? `Incoming Year ${user.yearLevel}` : ""}
-                {user?.yearLevel && user?.programCourse ? " · " : ""}
-                {user?.programCourse ? formatProgramCourse(user.programCourse) : ""}
+        {open ? (
+          <div className="sidebar-header">
+            <img className="sidebar-logo" src="/logo.png" alt="SECSA" />
+            <div className="sidebar-brand-text">
+              <h1>SECSA AQAP</h1>
+              <p className="muted">
+                {user ? formatFullName(user.firstName, user.lastName) : ""}
+                {user?.role ? ` · ${formatRole(user.role)}` : ""}
               </p>
-            )}
+              {(user?.yearLevel || user?.programCourse) && (
+                <p className="muted sidebar-meta">
+                  {user?.yearLevel ? `Incoming Year ${user.yearLevel}` : ""}
+                  {user?.yearLevel && user?.programCourse ? " · " : ""}
+                  {user?.programCourse ? formatProgramCourse(user.programCourse) : ""}
+                </p>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <button
+            type="button"
+            className="sidebar-header sidebar-header-toggle"
+            onClick={toggle}
+            aria-label="Open navigation"
+          >
+            <img className="sidebar-logo" src="/logo.png" alt="" />
+          </button>
+        )}
 
         <nav className="sidebar-nav" ref={navRef} onScroll={() => {
           if (navRef.current) navScrollTopRef.current = navRef.current.scrollTop;

@@ -26,6 +26,7 @@
   --topbar-bg: rgba(242, 242, 242, 0.82);
   --sidebar-rail-width: 72px;
   --sidebar-width: 260px;
+  --app-topbar-height: 3.55rem;
   --encoder-footer-bg: rgba(242, 242, 242, 0.92);
   --modal-overlay-bg: rgba(0, 0, 0, 0.4);
   --card-border: rgba(0, 0, 0, 0.04);
@@ -123,6 +124,7 @@ body {
   display: flex;
   flex-direction: column;
   margin-left: var(--sidebar-rail-width);
+  padding-top: calc(var(--app-topbar-height) + env(safe-area-inset-top, 0px));
   transition: none;
 }
 
@@ -191,6 +193,7 @@ body {
 @media (max-width: 1023px) {
   .app-main {
     margin-left: 0;
+    padding-top: calc(var(--app-topbar-height) + env(safe-area-inset-top, 0px));
   }
 
   .app-sidebar {
@@ -230,6 +233,27 @@ body {
   gap: 0.75rem;
   padding: 0.5rem 1rem 1rem;
   border-bottom: 0.5px solid var(--ios-separator-opaque);
+}
+
+button.sidebar-header-toggle {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+button.sidebar-header-toggle:hover {
+  background: color-mix(in srgb, var(--ios-fill-tertiary) 70%, transparent);
+}
+
+button.sidebar-header-toggle:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
 }
 
 .sidebar-logo {
@@ -541,20 +565,23 @@ body {
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 0.5px solid var(--ios-separator-opaque);
-  position: sticky;
+  position: fixed;
   top: 0;
+  right: 0;
+  left: var(--sidebar-rail-width);
   z-index: 100;
-  transition: margin-left 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: left 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (min-width: 1024px) {
   .app-shell.sidebar-open .app-topbar {
-    margin-left: calc(var(--sidebar-width) - var(--sidebar-rail-width));
+    left: var(--sidebar-width);
   }
 }
 
 @media (max-width: 1023px) {
   .app-topbar {
+    left: 0;
     z-index: 230;
   }
 }
@@ -3159,14 +3186,28 @@ textarea {
   flex-direction: column;
 }
 
-.analytics-chart-card-donut-pair .analytics-chart-card-body {
+.analytics-chart-card-donut-pair:not(.analytics-chart-card-program-donuts) .analytics-chart-card-body {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
+  align-items: stretch;
   min-height: 0;
 }
 
-.analytics-chart-card-donut-pair .overview-pass-donut-grid {
+.analytics-chart-card-donut-pair.analytics-chart-card-program-donuts .analytics-chart-card-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.analytics-chart-card-donut-pair:not(.analytics-chart-card-program-donuts) .overview-pass-donut-grid {
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.analytics-chart-card-donut-pair.analytics-chart-card-program-donuts .overview-pass-donut-grid {
   width: 100%;
   flex: 1;
 }
@@ -5723,13 +5764,13 @@ textarea {
 }
 
 .chart-heatmap-cell.chart-tone-strong {
-  background: color-mix(in srgb, var(--ios-green) 18%, transparent);
-  color: var(--ios-green);
+  background: color-mix(in srgb, var(--ios-blue) 18%, transparent);
+  color: var(--ios-blue);
 }
 
 .chart-heatmap-cell.chart-tone-moderate {
-  background: color-mix(in srgb, var(--ios-orange) 16%, transparent);
-  color: var(--ios-orange);
+  background: color-mix(in srgb, var(--ios-red) 14%, transparent);
+  color: var(--ios-red);
 }
 
 .chart-heatmap-cell.chart-tone-weak {
@@ -5874,13 +5915,13 @@ textarea {
 }
 
 .chart-topic-flag.chart-tone-strong {
-  background: color-mix(in srgb, var(--ios-green) 16%, transparent);
-  border: 0.5px solid color-mix(in srgb, var(--ios-green) 35%, transparent);
+  background: color-mix(in srgb, var(--ios-blue) 16%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--ios-blue) 35%, transparent);
 }
 
 .chart-topic-flag.chart-tone-moderate {
-  background: color-mix(in srgb, var(--ios-orange) 14%, transparent);
-  border: 0.5px solid color-mix(in srgb, var(--ios-orange) 30%, transparent);
+  background: color-mix(in srgb, var(--ios-red) 12%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--ios-red) 28%, transparent);
 }
 
 .chart-topic-flag.chart-tone-weak {
@@ -6555,11 +6596,11 @@ textarea {
 }
 
 .score-bar-fill-strong {
-  background: var(--ios-green);
+  background: var(--ios-blue);
 }
 
 .score-bar-fill-moderate {
-  background: var(--ios-orange);
+  background: var(--ios-red);
 }
 
 .score-bar-fill-weak {
@@ -7045,15 +7086,15 @@ body.modal-open {
 }
 
 .diagnostic-bloom-tone-strong {
-  color: #22c55e;
+  color: var(--ios-blue);
 }
 
 .diagnostic-bloom-tone-moderate {
-  color: #f59e0b;
+  color: var(--ios-red);
 }
 
 .diagnostic-bloom-tone-weak {
-  color: #ef4444;
+  color: var(--ios-red);
 }
 
 .exam-session-content {
@@ -8548,7 +8589,7 @@ td:has(.action-buttons) {
 
 .student-submissions-name-filters {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.65rem;
 }
 
@@ -10348,6 +10389,12 @@ td:has(.action-buttons) {
   font-size: 0.6875rem;
 }
 
+.individual-student-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 .individual-student-search {
   display: flex;
   flex-direction: column;
@@ -10634,13 +10681,13 @@ td:has(.action-buttons) {
 }
 
 .individual-student-topic-tile.chart-tone-strong {
-  background: color-mix(in srgb, var(--ios-green) 16%, transparent);
-  border: 0.5px solid color-mix(in srgb, var(--ios-green) 35%, transparent);
+  background: color-mix(in srgb, var(--ios-blue) 16%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--ios-blue) 35%, transparent);
 }
 
 .individual-student-topic-tile.chart-tone-moderate {
-  background: color-mix(in srgb, var(--ios-orange) 14%, transparent);
-  border: 0.5px solid color-mix(in srgb, var(--ios-orange) 30%, transparent);
+  background: color-mix(in srgb, var(--ios-red) 12%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--ios-red) 28%, transparent);
 }
 
 .individual-student-topic-tile.chart-tone-weak {
@@ -10712,11 +10759,11 @@ td:has(.action-buttons) {
 }
 
 .individual-student-compare-bar.chart-tone-strong {
-  background: var(--ios-green);
+  background: var(--ios-blue);
 }
 
 .individual-student-compare-bar.chart-tone-moderate {
-  background: var(--ios-orange);
+  background: var(--ios-red);
 }
 
 .individual-student-compare-bar.chart-tone-weak {

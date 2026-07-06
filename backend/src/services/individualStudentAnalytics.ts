@@ -6,6 +6,7 @@ import { nonQaStudentWhere, nonQaSubmittedExamWhere } from "../lib/studentFilter
 import { submittedAtFilter } from "../lib/analyticsSeason.js";
 import { buildStudentJourneyTrend } from "./studentJourneyTrend.js";
 
+const PASS_THRESHOLD = 75;
 const WEAK_THRESHOLD = 50;
 const WATCH_THRESHOLD = 60;
 const STRONG_THRESHOLD = 80;
@@ -15,9 +16,7 @@ function pct(correct: number, total: number) {
 }
 
 function scoreTone(score: number) {
-  if (score >= STRONG_THRESHOLD) return "strong" as const;
-  if (score >= WEAK_THRESHOLD) return "moderate" as const;
-  return "weak" as const;
+  return score >= PASS_THRESHOLD ? ("strong" as const) : ("weak" as const);
 }
 
 type BucketKey = string;
@@ -63,6 +62,7 @@ export async function searchStudentsForAnalytics(
           ? { submittedAt: submittedAtFilter(filters.examYear) }
           : { submittedAt: { not: null } },
         select: { id: true },
+        orderBy: { submittedAt: "desc" },
         take: 1,
       },
     },
@@ -86,6 +86,7 @@ export async function searchStudentsForAnalytics(
       yearLevel: student.yearLevel,
       programCourse: student.programCourse,
       email: student.email,
+      latestSubmissionId: student.examAttempts[0]?.id ?? null,
     }));
 }
 

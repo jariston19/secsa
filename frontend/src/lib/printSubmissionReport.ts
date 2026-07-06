@@ -74,8 +74,7 @@ function toneLabel(tone: "strong" | "moderate" | "weak") {
 }
 
 function toneFillColor(tone: "strong" | "moderate" | "weak") {
-  if (tone === "strong") return "#22c55e";
-  if (tone === "moderate") return "#f59e0b";
+  if (tone === "strong") return "#007aff";
   return "#ef4444";
 }
 

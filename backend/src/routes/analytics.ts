@@ -295,7 +295,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
         },
       },
       include: {
-        student: { select: { id: true, firstName: true, lastName: true, email: true, yearLevel: true } },
+        student: { select: { id: true, firstName: true, lastName: true, email: true, yearLevel: true, programCourse: true } },
         questionSet: { select: { name: true, yearLevel: true, type: true } },
       },
       orderBy: [{ submittedAt: "desc" }],
@@ -329,7 +329,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const attempt = await prisma.examAttempt.findUnique({
       where: { id },
       include: {
-        student: { select: { id: true, firstName: true, lastName: true, email: true, yearLevel: true } },
+        student: { select: { id: true, firstName: true, lastName: true, email: true, yearLevel: true, programCourse: true } },
         questionSet: {
           select: { name: true, yearLevel: true, type: true, passThreshold: true },
         },

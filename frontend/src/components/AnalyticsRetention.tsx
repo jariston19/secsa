@@ -21,7 +21,7 @@ import {
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
 import { BLOOM_LEVEL_LABELS, BLOOM_LEVEL_SHORT_LABELS, type BloomLevelId } from "../lib/bloomLevel";
-import { DIFFICULTY_LABELS, scoreToTone } from "../lib/analyticsChartUtils";
+import { DIFFICULTY_LABELS, scoreDonutVariant, scoreToTone } from "../lib/analyticsChartUtils";
 
 interface RetentionData {
   studentsInScope: number;
@@ -82,17 +82,28 @@ interface RetentionData {
     programCourse: string;
     averageScore: number;
     studentCount: number;
-    higherOrderReadiness: number;
+    l1L2Readiness: number;
+    l3Readiness: number;
   }>;
+  programTopics: {
+    columns: string[];
+    rows: Array<{ label: string; scores: Array<number | null> }>;
+  };
 }
 
 interface Props {
   token: string | null;
 }
 
+const RETENTION_PROGRAM_CHART_IDS = [
+  "program-score",
+  "program-l1l2-readiness",
+  "program-l3-readiness",
+  "program-topic",
+] as const;
+
 const RETENTION_CHART_ORDER = [
   "school-overall",
-  "school-bloom-heatmap",
   "school-bloom",
   "school-bloom-gap",
   "school-difficulty",
@@ -103,8 +114,7 @@ const RETENTION_CHART_ORDER = [
   "gender-at-risk",
   "gender-bloom",
   "gender-topic",
-  "program-score",
-  "program-readiness",
+  ...RETENTION_PROGRAM_CHART_IDS,
 ] as const;
 
 type RetentionChartId = (typeof RETENTION_CHART_ORDER)[number];
@@ -127,7 +137,12 @@ function RetentionDonutPair({
         <div key={row.label} className="overview-pass-donut-item">
           <span className="overview-pass-donut-title">{row.label}</span>
           {mode === "averageScore" ? (
-            <DonutChart metric="averageScore" value={row.value} exams={row.count} />
+            <DonutChart
+              metric="averageScore"
+              value={row.value}
+              exams={row.count}
+              variant={scoreDonutVariant(row.value)}
+            />
           ) : (
             <DonutChart
               variant="risk"
@@ -148,25 +163,38 @@ function RetentionProgramDonuts({
   metric,
 }: {
   programs: RetentionData["programs"];
-  metric: "averageScore" | "higherOrderReadiness";
+  metric: "averageScore" | "l1L2Readiness" | "l3Readiness";
 }) {
   if (programs.length === 0) {
     return <p className="muted">No program data yet.</p>;
   }
 
+  const metricValue = (row: RetentionData["programs"][number]) => {
+    if (metric === "averageScore") return row.averageScore;
+    if (metric === "l1L2Readiness") return row.l1L2Readiness;
+    return row.l3Readiness;
+  };
+
+  const metricLabel =
+    metric === "averageScore" ? "avg score" : metric === "l1L2Readiness" ? "L1–L2" : "L3";
+
   return (
     <div className="demographics-program-donut-grid overview-pass-donut-grid">
-      {programs.map((row) => (
-        <div key={row.programCourse} className="overview-pass-donut-item">
-          <span className="overview-pass-donut-title">{formatProgramCourse(row.programCourse)}</span>
-          <DonutChart
-            metric="averageScore"
-            value={metric === "averageScore" ? row.averageScore : row.higherOrderReadiness}
-            exams={row.studentCount}
-            label={metric === "averageScore" ? "avg score" : "L4–L6"}
-          />
-        </div>
-      ))}
+      {programs.map((row) => {
+        const value = metricValue(row);
+        return (
+          <div key={row.programCourse} className="overview-pass-donut-item">
+            <span className="overview-pass-donut-title">{formatProgramCourse(row.programCourse)}</span>
+            <DonutChart
+              metric="averageScore"
+              value={value}
+              exams={row.studentCount}
+              label={metricLabel}
+              variant={scoreDonutVariant(value)}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -221,8 +249,8 @@ function renderRetentionChart(id: RetentionChartId, data: RetentionData): ReactN
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-bloom-gap"
-          title="L1–L6 retention gap"
-          description="How public and private retention profiles diverge across Bloom levels."
+          title="Cognitive Performance Comparison"
+          description="Public vs private correct rate across Bloom levels."
         >
           <BloomCognitiveGapChart
             fillContainer
@@ -236,30 +264,6 @@ function renderRetentionChart(id: RetentionChartId, data: RetentionData): ReactN
             }))}
             leftSeries={{ label: "Public", color: "#007AFF" }}
             rightSeries={{ label: "Private", color: "#34C759" }}
-          />
-        </ChartCard>
-      );
-    case "school-bloom-heatmap":
-      return (
-        <ChartCard
-          className="analytics-chart-card-balanced analytics-chart-card-heatmap"
-          title="Bloom × school heatmap"
-          description="L1–L6 retention rate by school type."
-        >
-          <PerformanceHeatmap
-            columnLabels={["Public", "Private"]}
-            rows={data.schoolType.bloomComparison.map((row) => ({
-              id: row.bloomLevel,
-              label: BLOOM_LEVEL_LABELS[row.bloomLevel as BloomLevelId] ?? row.label,
-              cells: [
-                row.public != null
-                  ? { score: row.public, tone: scoreToTone(row.public) }
-                  : null,
-                row.private != null
-                  ? { score: row.private, tone: scoreToTone(row.private) }
-                  : null,
-              ],
-            }))}
           />
         </ChartCard>
       );
@@ -445,14 +449,49 @@ function renderRetentionChart(id: RetentionChartId, data: RetentionData): ReactN
           <RetentionProgramDonuts programs={data.programs} metric="averageScore" />
         </ChartCard>
       );
-    case "program-readiness":
+    case "program-l1l2-readiness":
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-donut-pair analytics-chart-card-program-donuts"
-          title="L4–L6 retention by program"
-          description="Higher-order retention (Analysis, Synthesis, Evaluation)."
+          title="L1–L2 retention by program"
+          description="Recall and comprehension average (Knowledge, Comprehension)."
         >
-          <RetentionProgramDonuts programs={data.programs} metric="higherOrderReadiness" />
+          <RetentionProgramDonuts programs={data.programs} metric="l1L2Readiness" />
+        </ChartCard>
+      );
+    case "program-l3-readiness":
+      return (
+        <ChartCard
+          className="analytics-chart-card-balanced analytics-chart-card-donut-pair analytics-chart-card-program-donuts"
+          title="L3 retention by program"
+          description="Application-level correct rate by enrolled program."
+        >
+          <RetentionProgramDonuts programs={data.programs} metric="l3Readiness" />
+        </ChartCard>
+      );
+    case "program-topic":
+      return (
+        <ChartCard
+          className="analytics-chart-card-balanced analytics-chart-card-heatmap"
+          title="Topic strengths by program"
+          description="Shared topics with comprehensive attempts across programs."
+        >
+          {data.programTopics.rows.length === 0 ? (
+            <p className="muted">No shared topic data across programs yet.</p>
+          ) : (
+            <PerformanceHeatmap
+              columnLabels={data.programTopics.columns.map((programCourse) =>
+                formatProgramCourse(programCourse)
+              )}
+              rows={data.programTopics.rows.map((row) => ({
+                id: row.label,
+                label: row.label,
+                cells: row.scores.map((score) =>
+                  score != null ? { score, tone: scoreToTone(score) } : null
+                ),
+              }))}
+            />
+          )}
         </ChartCard>
       );
     default:
@@ -471,7 +510,7 @@ export default function AnalyticsRetention({ token }: Props) {
   const [error, setError] = useState("");
   const hasLoadedRef = useRef(false);
   const [chartOrder, setChartOrder] = useChartOrder(
-    "analytics-retention-chart-order-v1",
+    "analytics-retention-chart-order-v2",
     RETENTION_CHART_ORDER
   );
 
@@ -518,7 +557,11 @@ export default function AnalyticsRetention({ token }: Props) {
   const activeChartOrder = useMemo(
     () =>
       chartOrder.filter(
-        (id) => showProgramCharts || (id !== "program-score" && id !== "program-readiness")
+        (id) =>
+          showProgramCharts ||
+          !RETENTION_PROGRAM_CHART_IDS.includes(
+            id as (typeof RETENTION_PROGRAM_CHART_IDS)[number]
+          )
       ),
     [chartOrder, showProgramCharts]
   );
@@ -531,7 +574,9 @@ export default function AnalyticsRetention({ token }: Props) {
 
     setChartOrder([
       ...nextActiveOrder,
-      ...chartOrder.filter((id) => id === "program-score" || id === "program-readiness"),
+      ...chartOrder.filter((id) =>
+        RETENTION_PROGRAM_CHART_IDS.includes(id as (typeof RETENTION_PROGRAM_CHART_IDS)[number])
+      ),
     ]);
   }
 

@@ -7,11 +7,8 @@ import { nonQaStudentWhere } from "../lib/studentFilters.js";
 const AT_RISK_THRESHOLD = 75;
 const DIFFICULTY_ORDER = [Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD] as const;
 
-const HIGHER_BLOOM_LEVELS: BloomLevel[] = [
-  BloomLevel.ANALYSIS,
-  BloomLevel.SYNTHESIS,
-  BloomLevel.EVALUATION,
-];
+const L1_L2_BLOOM_LEVELS: BloomLevel[] = [BloomLevel.KNOWLEDGE, BloomLevel.COMPREHENSION];
+const L3_BLOOM_LEVELS: BloomLevel[] = [BloomLevel.APPLICATION];
 
 function pct(correct: number, total: number) {
   return total > 0 ? (correct / total) * 100 : 0;
@@ -121,10 +118,13 @@ function bloomScores(map: Map<BloomLevel, { correct: number; total: number }>) {
   }).filter((row) => row.total > 0);
 }
 
-function higherOrderReadiness(map: Map<BloomLevel, { correct: number; total: number }>) {
+function bloomReadiness(
+  map: Map<BloomLevel, { correct: number; total: number }>,
+  levels: BloomLevel[]
+) {
   let correct = 0;
   let total = 0;
-  for (const bloomLevel of HIGHER_BLOOM_LEVELS) {
+  for (const bloomLevel of levels) {
     const row = map.get(bloomLevel);
     if (!row) continue;
     correct += row.correct;
@@ -229,6 +229,7 @@ export async function buildSegmentAnalytics(
     string,
     { scores: number[]; bloom: Map<BloomLevel, { correct: number; total: number }> }
   >();
+  const topicByProgram = new Map<string, Map<string, { correct: number; total: number }>>();
 
   for (const attempt of latestAttemptByStudent.values()) {
     const student = studentById.get(attempt.studentId);
@@ -285,6 +286,13 @@ export async function buildSegmentAnalytics(
       if (student.programCourse) {
         const programRow = programScores.get(student.programCourse)!;
         accumulateBloom(programRow.bloom, bloomLevel, isCorrect);
+        const programTopics =
+          topicByProgram.get(student.programCourse) ?? new Map<string, { correct: number; total: number }>();
+        const topicRow = programTopics.get(label) ?? { correct: 0, total: 0 };
+        topicRow.total += 1;
+        if (isCorrect) topicRow.correct += 1;
+        programTopics.set(label, topicRow);
+        topicByProgram.set(student.programCourse, programTopics);
       }
     }
   }
@@ -412,10 +420,33 @@ export async function buildSegmentAnalytics(
       programCourse,
       averageScore: average(row.scores),
       studentCount: row.scores.length,
-      higherOrderReadiness: higherOrderReadiness(row.bloom),
+      l1L2Readiness: bloomReadiness(row.bloom, L1_L2_BLOOM_LEVELS),
+      l3Readiness: bloomReadiness(row.bloom, L3_BLOOM_LEVELS),
     }))
     .filter((row) => row.studentCount > 0)
     .sort((a, b) => b.averageScore - a.averageScore);
+
+  const programCourseColumns = programRows.map((row) => row.programCourse);
+  const programTopicRows = [...topicByProgram.values()]
+    .flatMap((topics) => [...topics.keys()])
+    .filter((label, index, labels) => labels.indexOf(label) === index)
+    .map((label) => {
+      const scores = programCourseColumns.map((programCourse) => {
+        const row = topicByProgram.get(programCourse)?.get(label);
+        return row && row.total > 0 ? pct(row.correct, row.total) : null;
+      });
+      const populated = scores.filter((score): score is number => score != null);
+      if (populated.length < 2) return null;
+      return {
+        label,
+        scores,
+        peak: Math.max(...populated),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .sort((a, b) => b.peak - a.peak || a.label.localeCompare(b.label))
+    .slice(0, 6)
+    .map(({ label, scores }) => ({ label, scores }));
 
   const studentsWithExam = latestAttemptByStudent.size;
   const studentsWithDemographics = students.filter(
@@ -454,6 +485,10 @@ export async function buildSegmentAnalytics(
       topicComparison: genderTopicRows,
     },
     programs: programRows,
+    programTopics: {
+      columns: programCourseColumns,
+      rows: programTopicRows,
+    },
     showProgramBreakdown: !filters.programCourse,
   };
 }

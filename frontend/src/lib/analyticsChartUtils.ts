@@ -1,5 +1,7 @@
 export type ScoreTone = "strong" | "moderate" | "weak";
 
+export const PASS_THRESHOLD = 75;
+
 export const DIFFICULTY_COLORS = {
   EASY: "#22c55e",
   MEDIUM: "#f59e0b",
@@ -19,15 +21,16 @@ export const EXPECTED_CORRECT_RANGES: Record<string, { min: number; max: number 
 };
 
 export function toneColor(tone: ScoreTone) {
-  if (tone === "strong") return "#22c55e";
-  if (tone === "moderate") return "#f59e0b";
+  if (tone === "strong") return "#007aff";
   return "#ef4444";
 }
 
 export function scoreToTone(score: number): ScoreTone {
-  if (score >= 75) return "strong";
-  if (score >= 50) return "moderate";
-  return "weak";
+  return score >= PASS_THRESHOLD ? "strong" : "weak";
+}
+
+export function scoreDonutVariant(score: number): "default" | "risk" {
+  return score >= PASS_THRESHOLD ? "default" : "risk";
 }
 
 export function toneClass(tone: ScoreTone) {

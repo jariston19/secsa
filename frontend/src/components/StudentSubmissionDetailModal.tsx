@@ -10,6 +10,7 @@ import { api } from "../lib/api";
 import { formatExamType } from "../lib/constants";
 import type { DomainProgressionSeries } from "../lib/domainProgressionChart";
 import { formatFullName } from "../lib/names";
+import { formatProgramCourse } from "../lib/programCourse";
 import {
   printSubmissionDomainsReport,
   printSubmissionExamReport,
@@ -29,7 +30,14 @@ interface SubmissionAnswer {
 
 interface SubmissionDetail {
   id: string;
-  student: { id: string; firstName: string; lastName: string; email: string; yearLevel: number | null };
+  student: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    yearLevel: number | null;
+    programCourse: string | null;
+  };
   questionSet: {
     name: string;
     yearLevel: number;
@@ -249,7 +257,12 @@ export default function StudentSubmissionDetailModal({ submissionId, token, onCl
             <h2>Exam Submission</h2>
             {submission && (
               <p className="muted">
-                {studentName} · Year {submission.student.yearLevel ?? "—"} ·{" "}
+                {studentName}
+                {submission.student.programCourse
+                  ? ` · ${formatProgramCourse(submission.student.programCourse)}`
+                  : ""}
+                {" · "}Year {submission.student.yearLevel ?? "—"}
+                {" · "}
                 {submission.questionSet.name}
               </p>
             )}

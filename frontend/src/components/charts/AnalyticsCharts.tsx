@@ -5,10 +5,12 @@ import {
   DIFFICULTY_COLORS,
   DIFFICULTY_LABELS,
   EXPECTED_CORRECT_RANGES,
+  scoreDonutVariant,
+  scoreToTone,
   toneColor,
   type ScoreTone,
 } from "../../lib/analyticsChartUtils";
-import { BLOOM_LEVEL_COLORS, BLOOM_LEVEL_SHORT_LABELS } from "../../lib/bloomLevel";
+import { BLOOM_LEVEL_SHORT_LABELS } from "../../lib/bloomLevel";
 import { probeDonutStrokeColors, probeSvgClassStyles, svgPresentationProps, chartCssColor } from "../../lib/chartExportStyles";
 import {
   DOMAIN_YEAR_LEVELS,
@@ -73,7 +75,7 @@ export function HorizontalBarChart({
     <div className="chart-horizontal-bars">
       {bars.map((bar) => {
         const width = Math.min(100, Math.max(0, (bar.value / max) * 100));
-        const fillColor = bar.color ?? toneColor(bar.tone ?? "moderate");
+        const fillColor = bar.color ?? toneColor(bar.tone ?? scoreToTone(bar.value));
         return (
           <div key={bar.label} className="chart-horizontal-bar-row">
             <span className="chart-horizontal-bar-label">{bar.label}</span>
@@ -259,7 +261,7 @@ export function GroupedDifficultyBars({
           id: item.difficulty,
           label: DIFFICULTY_LABELS[item.difficulty] ?? item.difficulty,
           score: item.score,
-          color: DIFFICULTY_COLORS[item.difficulty as keyof typeof DIFFICULTY_COLORS] ?? "#64748b",
+          color: toneColor(scoreToTone(item.score)),
         }))}
       />
       {items.some((item) => item.domains && item.domains.length > 0) ? (
@@ -267,9 +269,7 @@ export function GroupedDifficultyBars({
           {items.map((item) => (
             <div key={item.difficulty} className="chart-difficulty-domain-col">
               {(item.domains ?? []).map((domain) => {
-                const color =
-                  BLOOM_LEVEL_COLORS[domain.bloomLevel as keyof typeof BLOOM_LEVEL_COLORS] ??
-                  "#64748b";
+                const color = toneColor(scoreToTone(domain.score));
                 const width = Math.min(100, Math.max(0, domain.score));
                 const hasData = (domain.total ?? 1) > 0;
                 return (
@@ -350,7 +350,7 @@ export function GroupedBloomBars({
   return (
     <div className="chart-grouped-bars" role="img" aria-label="Performance by domain">
       {items.map((item) => {
-        const color = BLOOM_LEVEL_COLORS[item.bloomLevel as keyof typeof BLOOM_LEVEL_COLORS] ?? "#64748b";
+        const color = toneColor(scoreToTone(item.score));
         const height = Math.min(100, Math.max(0, (item.score / max) * 100));
         return (
           <div key={item.bloomLevel} className="chart-grouped-bar-col">
@@ -533,8 +533,10 @@ export function DonutChart({
   const offset = circumference - (pct / 100) * circumference;
   const centerLabel = label ?? (metric === "averageScore" ? "avg score" : "passed");
   const centerValue = hasData ? `${pct.toFixed(0)}%` : "—";
-  const variantClass = variant === "risk" ? " chart-donut-risk" : "";
-  const ringColors = useMemo(() => probeDonutStrokeColors(variant), [variant]);
+  const resolvedVariant =
+    metric === "averageScore" && variant === "default" ? scoreDonutVariant(value) : variant;
+  const variantClass = resolvedVariant === "risk" ? " chart-donut-risk" : "";
+  const ringColors = useMemo(() => probeDonutStrokeColors(resolvedVariant), [resolvedVariant]);
 
   return (
     <div className={`chart-donut${variantClass}`}>

@@ -21,7 +21,7 @@ import {
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
 import { BLOOM_LEVEL_LABELS, BLOOM_LEVEL_SHORT_LABELS, type BloomLevelId } from "../lib/bloomLevel";
-import { DIFFICULTY_LABELS, scoreToTone } from "../lib/analyticsChartUtils";
+import { DIFFICULTY_LABELS, scoreDonutVariant, scoreToTone } from "../lib/analyticsChartUtils";
 
 interface DemographicsData {
   studentsInScope: number;
@@ -82,17 +82,28 @@ interface DemographicsData {
     programCourse: string;
     averageScore: number;
     studentCount: number;
-    higherOrderReadiness: number;
+    l1L2Readiness: number;
+    l3Readiness: number;
   }>;
+  programTopics: {
+    columns: string[];
+    rows: Array<{ label: string; scores: Array<number | null> }>;
+  };
 }
 
 interface Props {
   token: string | null;
 }
 
+const DEMOGRAPHICS_PROGRAM_CHART_IDS = [
+  "program-score",
+  "program-l1l2-readiness",
+  "program-l3-readiness",
+  "program-topic",
+] as const;
+
 const DEMOGRAPHICS_CHART_ORDER = [
   "school-overall",
-  "school-bloom-heatmap",
   "school-bloom",
   "school-bloom-gap",
   "school-difficulty",
@@ -103,8 +114,7 @@ const DEMOGRAPHICS_CHART_ORDER = [
   "gender-at-risk",
   "gender-bloom",
   "gender-topic",
-  "program-score",
-  "program-readiness",
+  ...DEMOGRAPHICS_PROGRAM_CHART_IDS,
 ] as const;
 
 type DemographicsChartId = (typeof DEMOGRAPHICS_CHART_ORDER)[number];
@@ -127,7 +137,12 @@ function DemographicsDonutPair({
         <div key={row.label} className="overview-pass-donut-item">
           <span className="overview-pass-donut-title">{row.label}</span>
           {mode === "averageScore" ? (
-            <DonutChart metric="averageScore" value={row.value} exams={row.count} />
+            <DonutChart
+              metric="averageScore"
+              value={row.value}
+              exams={row.count}
+              variant={scoreDonutVariant(row.value)}
+            />
           ) : (
             <DonutChart
               variant="risk"
@@ -148,25 +163,38 @@ function DemographicsProgramDonuts({
   metric,
 }: {
   programs: DemographicsData["programs"];
-  metric: "averageScore" | "higherOrderReadiness";
+  metric: "averageScore" | "l1L2Readiness" | "l3Readiness";
 }) {
   if (programs.length === 0) {
     return <p className="muted">No program data yet.</p>;
   }
 
+  const metricValue = (row: DemographicsData["programs"][number]) => {
+    if (metric === "averageScore") return row.averageScore;
+    if (metric === "l1L2Readiness") return row.l1L2Readiness;
+    return row.l3Readiness;
+  };
+
+  const metricLabel =
+    metric === "averageScore" ? "avg score" : metric === "l1L2Readiness" ? "L1–L2" : "L3";
+
   return (
     <div className="demographics-program-donut-grid overview-pass-donut-grid">
-      {programs.map((row) => (
-        <div key={row.programCourse} className="overview-pass-donut-item">
-          <span className="overview-pass-donut-title">{formatProgramCourse(row.programCourse)}</span>
-          <DonutChart
-            metric="averageScore"
-            value={metric === "averageScore" ? row.averageScore : row.higherOrderReadiness}
-            exams={row.studentCount}
-            label={metric === "averageScore" ? "avg score" : "L4–L6"}
-          />
-        </div>
-      ))}
+      {programs.map((row) => {
+        const value = metricValue(row);
+        return (
+          <div key={row.programCourse} className="overview-pass-donut-item">
+            <span className="overview-pass-donut-title">{formatProgramCourse(row.programCourse)}</span>
+            <DonutChart
+              metric="averageScore"
+              value={value}
+              exams={row.studentCount}
+              label={metricLabel}
+              variant={scoreDonutVariant(value)}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -221,8 +249,8 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-bloom-gap"
-          title="L1–L6 cognitive gap"
-          description="Chart view — how public and private profiles diverge across Bloom levels."
+          title="Cognitive Performance Comparison"
+          description="Public vs private correct rate across Bloom levels."
         >
           <BloomCognitiveGapChart
             fillContainer
@@ -236,30 +264,6 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
             }))}
             leftSeries={{ label: "Public", color: "#007AFF" }}
             rightSeries={{ label: "Private", color: "#34C759" }}
-          />
-        </ChartCard>
-      );
-    case "school-bloom-heatmap":
-      return (
-        <ChartCard
-          className="analytics-chart-card-balanced analytics-chart-card-heatmap"
-          title="Bloom × school heatmap"
-          description="L1–L6 correct rate by school type on a red-to-green scale."
-        >
-          <PerformanceHeatmap
-            columnLabels={["Public", "Private"]}
-            rows={data.schoolType.bloomComparison.map((row) => ({
-              id: row.bloomLevel,
-              label: BLOOM_LEVEL_LABELS[row.bloomLevel as BloomLevelId] ?? row.label,
-              cells: [
-                row.public != null
-                  ? { score: row.public, tone: scoreToTone(row.public) }
-                  : null,
-                row.private != null
-                  ? { score: row.private, tone: scoreToTone(row.private) }
-                  : null,
-              ],
-            }))}
           />
         </ChartCard>
       );
@@ -445,14 +449,49 @@ function renderDemographicsChart(id: DemographicsChartId, data: DemographicsData
           <DemographicsProgramDonuts programs={data.programs} metric="averageScore" />
         </ChartCard>
       );
-    case "program-readiness":
+    case "program-l1l2-readiness":
       return (
         <ChartCard
           className="analytics-chart-card-balanced analytics-chart-card-donut-pair analytics-chart-card-program-donuts"
-          title="L4–L6 readiness by program"
-          description="Higher-order thinking average (Analysis, Synthesis, Evaluation)."
+          title="L1–L2 readiness by program"
+          description="Recall and comprehension average (Knowledge, Comprehension)."
         >
-          <DemographicsProgramDonuts programs={data.programs} metric="higherOrderReadiness" />
+          <DemographicsProgramDonuts programs={data.programs} metric="l1L2Readiness" />
+        </ChartCard>
+      );
+    case "program-l3-readiness":
+      return (
+        <ChartCard
+          className="analytics-chart-card-balanced analytics-chart-card-donut-pair analytics-chart-card-program-donuts"
+          title="L3 readiness by program"
+          description="Application-level correct rate by enrolled program."
+        >
+          <DemographicsProgramDonuts programs={data.programs} metric="l3Readiness" />
+        </ChartCard>
+      );
+    case "program-topic":
+      return (
+        <ChartCard
+          className="analytics-chart-card-balanced analytics-chart-card-heatmap"
+          title="Topic strengths by program"
+          description="Shared topics with diagnostic attempts across programs."
+        >
+          {data.programTopics.rows.length === 0 ? (
+            <p className="muted">No shared topic data across programs yet.</p>
+          ) : (
+            <PerformanceHeatmap
+              columnLabels={data.programTopics.columns.map((programCourse) =>
+                formatProgramCourse(programCourse)
+              )}
+              rows={data.programTopics.rows.map((row) => ({
+                id: row.label,
+                label: row.label,
+                cells: row.scores.map((score) =>
+                  score != null ? { score, tone: scoreToTone(score) } : null
+                ),
+              }))}
+            />
+          )}
         </ChartCard>
       );
     default:
@@ -471,7 +510,7 @@ export default function AnalyticsDemographics({ token }: Props) {
   const [error, setError] = useState("");
   const hasLoadedRef = useRef(false);
   const [chartOrder, setChartOrder] = useChartOrder(
-    "analytics-demographics-chart-order-v3",
+    "analytics-demographics-chart-order-v4",
     DEMOGRAPHICS_CHART_ORDER
   );
 
@@ -517,7 +556,11 @@ export default function AnalyticsDemographics({ token }: Props) {
   const activeChartOrder = useMemo(
     () =>
       chartOrder.filter(
-        (id) => showProgramCharts || (id !== "program-score" && id !== "program-readiness")
+        (id) =>
+          showProgramCharts ||
+          !DEMOGRAPHICS_PROGRAM_CHART_IDS.includes(
+            id as (typeof DEMOGRAPHICS_PROGRAM_CHART_IDS)[number]
+          )
       ),
     [chartOrder, showProgramCharts]
   );
@@ -530,7 +573,9 @@ export default function AnalyticsDemographics({ token }: Props) {
 
     setChartOrder([
       ...nextActiveOrder,
-      ...chartOrder.filter((id) => id === "program-score" || id === "program-readiness"),
+      ...chartOrder.filter((id) =>
+        DEMOGRAPHICS_PROGRAM_CHART_IDS.includes(id as (typeof DEMOGRAPHICS_PROGRAM_CHART_IDS)[number])
+      ),
     ]);
   }
 
