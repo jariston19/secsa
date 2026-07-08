@@ -74,6 +74,63 @@ async function getPool(
   });
 }
 
+async function getPoolAcrossSubjects(subjectIds: string[], difficulty: Difficulty) {
+  if (subjectIds.length === 0) return [];
+  return prisma.question.findMany({
+    where: {
+      subjectId: { in: subjectIds },
+      difficulty,
+    },
+  });
+}
+
+function filterUnused(pool: Question[], usedIds: Set<string>, excludeIds: Set<string> = new Set()) {
+  return pool.filter((question) => !usedIds.has(question.id) && !excludeIds.has(question.id));
+}
+
+async function pickForConfig(
+  config: QuestionSetConfig,
+  difficulty: Difficulty,
+  count: number,
+  usedIds: Set<string>,
+  subjectIdsInSet: string[]
+): Promise<Question[]> {
+  if (count <= 0) return [];
+
+  const topicPool = filterUnused(
+    await getPool(config.subjectId, config.topicId, difficulty),
+    usedIds
+  );
+  let picked = pickBalancedByDomain(topicPool, count, difficulty);
+  for (const question of picked) usedIds.add(question.id);
+
+  if (picked.length >= count) return picked.slice(0, count);
+
+  const pickedIds = new Set(picked.map((question) => question.id));
+  const subjectPool = filterUnused(
+    await getPool(config.subjectId, null, difficulty),
+    usedIds,
+    pickedIds
+  );
+  const subjectPicked = pickBalancedByDomain(subjectPool, count - picked.length, difficulty);
+  for (const question of subjectPicked) usedIds.add(question.id);
+  picked = [...picked, ...subjectPicked];
+
+  if (picked.length >= count) return picked.slice(0, count);
+
+  const pickedSoFar = new Set(picked.map((question) => question.id));
+  const examPool = filterUnused(
+    await getPoolAcrossSubjects(subjectIdsInSet, difficulty),
+    usedIds,
+    pickedSoFar
+  );
+  const examPicked = pickBalancedByDomain(examPool, count - picked.length, difficulty);
+  for (const question of examPicked) usedIds.add(question.id);
+  picked = [...picked, ...examPicked];
+
+  return picked.slice(0, count);
+}
+
 export async function getConfigPoolQuestions(
   subjectId: string,
   topicId: string | null
@@ -97,61 +154,42 @@ function domainLabel(domain: BloomLevel) {
 
 export async function validateQuestionSetConfigs(configs: QuestionSetConfig[]) {
   const errors: string[] = [];
-
   const subjectIds = [...new Set(configs.map((config) => config.subjectId))];
-  const topicIds = [
-    ...new Set(configs.map((config) => config.topicId).filter((id): id is string => Boolean(id))),
-  ];
 
-  const [subjects, topics] = await Promise.all([
-    prisma.subject.findMany({
-      where: { id: { in: subjectIds } },
-      select: { id: true, courseCode: true },
-    }),
-    topicIds.length > 0
-      ? prisma.topic.findMany({
-          where: { id: { in: topicIds } },
-          select: { id: true, name: true },
-        })
-      : Promise.resolve([]),
-  ]);
-
-  const subjectLabels = new Map(subjects.map((subject) => [subject.id, subject.courseCode]));
-  const topicLabels = new Map(topics.map((topic) => [topic.id, topic.name]));
+  const requiredByDifficulty: Record<Difficulty, number> = {
+    [Difficulty.EASY]: 0,
+    [Difficulty.MEDIUM]: 0,
+    [Difficulty.HARD]: 0,
+  };
 
   for (const config of configs) {
-    const courseCode = subjectLabels.get(config.subjectId) ?? "Unknown subject";
-    const topicName = config.topicId ? topicLabels.get(config.topicId) : null;
-    const label = config.topicId
-      ? `${courseCode} — ${topicName ?? "Unknown topic"}`
-      : `${courseCode} (whole subject)`;
-    const checks: Array<[Difficulty, number]> = [
-      [Difficulty.EASY, config.easyCount],
-      [Difficulty.MEDIUM, config.mediumCount],
-      [Difficulty.HARD, config.hardCount],
-    ];
+    requiredByDifficulty[Difficulty.EASY] += config.easyCount;
+    requiredByDifficulty[Difficulty.MEDIUM] += config.mediumCount;
+    requiredByDifficulty[Difficulty.HARD] += config.hardCount;
+  }
 
-    for (const [difficulty, count] of checks) {
-      if (count <= 0) continue;
-      const pool = await getPool(config.subjectId, config.topicId, difficulty);
-      if (pool.length < count) {
+  for (const difficulty of [Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD]) {
+    const required = requiredByDifficulty[difficulty];
+    if (required <= 0) continue;
+
+    const pool = await getPoolAcrossSubjects(subjectIds, difficulty);
+    if (pool.length < required) {
+      errors.push(
+        `Set needs ${required} ${difficulty.toLowerCase()} questions but only ${pool.length} available across all subjects.`
+      );
+      continue;
+    }
+
+    const requiredDomains = BLOOM_LEVELS_BY_DIFFICULTY[difficulty];
+    const domainTargets = distributeCountAcrossSlots(requiredDomains.length, required);
+    for (const [index, domain] of requiredDomains.entries()) {
+      const need = domainTargets[index] ?? 0;
+      if (need <= 0) continue;
+      const available = pool.filter((question) => question.bloomLevel === domain).length;
+      if (available < need) {
         errors.push(
-          `${label} needs ${count} ${difficulty.toLowerCase()} questions but only ${pool.length} available.`
+          `Set needs ${need} ${domainLabel(domain)} domain question(s) within ${difficulty.toLowerCase()} but only ${available} available across all subjects.`
         );
-        continue;
-      }
-
-      const requiredDomains = BLOOM_LEVELS_BY_DIFFICULTY[difficulty];
-      const domainTargets = distributeCountAcrossSlots(requiredDomains.length, count);
-      for (const [index, domain] of requiredDomains.entries()) {
-        const need = domainTargets[index] ?? 0;
-        if (need <= 0) continue;
-        const available = pool.filter((question) => question.bloomLevel === domain).length;
-        if (available < need) {
-          errors.push(
-            `${label} needs ${need} ${domainLabel(domain)} domain question(s) within ${difficulty.toLowerCase()} but only ${available} available.`
-          );
-        }
       }
     }
   }
@@ -163,6 +201,8 @@ export async function generateCanonicalExamQuestions(
   configs: QuestionSetConfig[]
 ): Promise<Question[]> {
   const selected: Question[] = [];
+  const usedIds = new Set<string>();
+  const subjectIdsInSet = [...new Set(configs.map((config) => config.subjectId))];
 
   for (const config of configs) {
     const buckets: Array<[Difficulty, number]> = [
@@ -173,8 +213,13 @@ export async function generateCanonicalExamQuestions(
 
     for (const [difficulty, count] of buckets) {
       if (count <= 0) continue;
-      const pool = await getPool(config.subjectId, config.topicId, difficulty);
-      selected.push(...pickBalancedByDomain(pool, count, difficulty));
+      const picked = await pickForConfig(config, difficulty, count, usedIds, subjectIdsInSet);
+      if (picked.length < count) {
+        throw new Error(
+          `Could not fill ${count} ${difficulty.toLowerCase()} question(s) for subject ${config.subjectId}.`
+        );
+      }
+      selected.push(...picked);
     }
   }
 

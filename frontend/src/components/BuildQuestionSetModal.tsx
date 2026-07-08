@@ -1,9 +1,17 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useAnimatedModal } from "../hooks/useAnimatedModal";
+import BuildSetAddSubjectModal, {
+  type BuildSetSubjectSelection,
+} from "./BuildSetAddSubjectModal";
 import FieldInfoTip from "./FieldInfoTip";
 import { api } from "../lib/api";
 import { curriculumYearForStudentYear, formatExamType, MIN_YEAR_LEVEL, parseYearLevel, sanitizeYearInput, type QuestionSetExamType, preboardMaxCurriculumYearForProgram, preboardStudentYearForProgram } from "../lib/constants";
-import { difficultyCountsForTotal, expandTopicConfigsWithSubjectDifficulty, type ExamDifficultyCounts } from "../lib/examDifficultyDistribution";
+import {
+  difficultyCountsForTotal,
+  expandTopicConfigsWithPoolAwareDifficulty,
+  type ExamDifficultyCounts,
+  type SubjectDifficultyShortfall,
+} from "../lib/examDifficultyDistribution";
 import { buildExamAllocations, type TopicAllocation } from "../lib/examItemDistribution";
 import { toastCreated, toastUpdated } from "../lib/toastMessages";
 import {
@@ -147,7 +155,7 @@ export default function BuildQuestionSetModal({
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [examTotalItems, setExamTotalItems] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [addSubjectId, setAddSubjectId] = useState("");
+  const [showAddSubjectModal, setShowAddSubjectModal] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(Boolean(setId));
@@ -324,7 +332,6 @@ export default function BuildQuestionSetModal({
 
     const allowedSubjectIds = new Set(curriculumSubjects.map((s) => s.id));
     setSelectedSubjectIds((prev) => prev.filter((id) => allowedSubjectIds.has(id)));
-    setAddSubjectId("");
   }, [curriculumYear, curriculumSubjects, yearLevel, isEditing, setProgramCourse, type]);
 
   const groupedSubjects = selectedSubjectIds
@@ -332,6 +339,14 @@ export default function BuildQuestionSetModal({
     .filter(Boolean) as Subject[];
 
   const parsedTotalItems = countNum(examTotalItems);
+
+  function poolCount(subjectId: string, topicId: string | null, difficulty: string) {
+    return questions.filter((q) => {
+      if (q.subjectId !== subjectId || q.difficulty !== difficulty) return false;
+      if (topicId) return q.topicId === topicId;
+      return true;
+    }).length;
+  }
 
   const baseSubjectAllocations = useMemo(
     () =>
@@ -400,11 +415,16 @@ export default function BuildQuestionSetModal({
       { easyCount: number; mediumCount: number; hardCount: number }
     >();
     for (const allocation of subjectAllocations) {
-      const expanded = expandTopicConfigsWithSubjectDifficulty(
+      const expanded = expandTopicConfigsWithPoolAwareDifficulty(
         allocation.topics.map((topic) => ({
           key: topic.key,
           itemCount: topic.itemCount,
           sortKey: topic.label,
+          pool: {
+            easy: poolCount(topic.subjectId, topic.topicId, "EASY"),
+            medium: poolCount(topic.subjectId, topic.topicId, "MEDIUM"),
+            hard: poolCount(topic.subjectId, topic.topicId, "HARD"),
+          },
         }))
       );
       for (const topic of expanded) {
@@ -416,7 +436,28 @@ export default function BuildQuestionSetModal({
       }
     }
     return map;
-  }, [subjectAllocations]);
+  }, [subjectAllocations, questions]);
+
+  const subjectShortfallBySubjectId = useMemo(() => {
+    const map = new Map<string, SubjectDifficultyShortfall>();
+    for (const allocation of subjectAllocations) {
+      const expanded = expandTopicConfigsWithPoolAwareDifficulty(
+        allocation.topics.map((topic) => ({
+          itemCount: topic.itemCount,
+          sortKey: topic.label,
+          pool: {
+            easy: poolCount(topic.subjectId, topic.topicId, "EASY"),
+            medium: poolCount(topic.subjectId, topic.topicId, "MEDIUM"),
+            hard: poolCount(topic.subjectId, topic.topicId, "HARD"),
+          },
+        }))
+      );
+      if (expanded.length > 0) {
+        map.set(allocation.subjectId, expanded[0].subjectShortfall);
+      }
+    }
+    return map;
+  }, [subjectAllocations, questions]);
 
   const allocatedRows = useMemo(
     () => subjectAllocations.flatMap((allocation) => allocation.topics),
@@ -437,61 +478,113 @@ export default function BuildQuestionSetModal({
     return topicDifficultyOverrides[row.key] ?? autoDifficultyForRow(row);
   }
 
-  function poolCount(subjectId: string, topicId: string | null, difficulty: string) {
-    return questions.filter((q) => {
-      if (q.subjectId !== subjectId || q.difficulty !== difficulty) return false;
-      if (topicId) return q.topicId === topicId;
-      return true;
-    }).length;
+  function subjectPoolCount(subjectId: string, difficulty: string) {
+    return poolCount(subjectId, null, difficulty);
   }
 
-  function poolValidationError(row: TopicAllocation): string | null {
-    if (row.itemCount === 0) return null;
-
-    const { easyCount, mediumCount, hardCount } = difficultyForRow(row);
-    const availEasy = poolCount(row.subjectId, row.topicId, "EASY");
-    const availMedium = poolCount(row.subjectId, row.topicId, "MEDIUM");
-    const availHard = poolCount(row.subjectId, row.topicId, "HARD");
-
-    if (easyCount > availEasy) {
-      return `${row.label}: easy count (${easyCount}) exceeds available pool (${availEasy}).`;
+  function examPoolValidationError(
+    rows: TopicAllocation[],
+    difficultyForRowFn: (row: TopicAllocation) => ExamDifficultyCounts
+  ): string | null {
+    const required = { easy: 0, medium: 0, hard: 0 };
+    for (const row of rows) {
+      if (row.itemCount === 0) continue;
+      const { easyCount, mediumCount, hardCount } = difficultyForRowFn(row);
+      required.easy += easyCount;
+      required.medium += mediumCount;
+      required.hard += hardCount;
     }
-    if (mediumCount > availMedium) {
-      return `${row.label}: medium count (${mediumCount}) exceeds available pool (${availMedium}).`;
+
+    let availEasy = 0;
+    let availMedium = 0;
+    let availHard = 0;
+    for (const subject of groupedSubjects) {
+      availEasy += subjectPoolCount(subject.id, "EASY");
+      availMedium += subjectPoolCount(subject.id, "MEDIUM");
+      availHard += subjectPoolCount(subject.id, "HARD");
     }
-    if (hardCount > availHard) {
-      return `${row.label}: hard count (${hardCount}) exceeds available pool (${availHard}).`;
+
+    if (required.easy > availEasy) {
+      return `Set needs ${required.easy} easy questions but only ${availEasy} available across all subjects.`;
+    }
+    if (required.medium > availMedium) {
+      return `Set needs ${required.medium} medium questions but only ${availMedium} available across all subjects.`;
+    }
+    if (required.hard > availHard) {
+      return `Set needs ${required.hard} hard questions but only ${availHard} available across all subjects.`;
     }
 
     return null;
   }
 
-  function addSubject() {
-    if (!addSubjectId || selectedSubjectIds.includes(addSubjectId)) return;
+  function subjectCompensationWarning(subjectId: string): string | null {
+    const shortfall = subjectShortfallBySubjectId.get(subjectId);
+    if (!shortfall) return null;
 
-    const subject = subjects.find((s) => s.id === addSubjectId);
-    if (!subject) return;
+    const bands: string[] = [];
+    if (shortfall.easy > 0) bands.push("Easy");
+    if (shortfall.medium > 0) bands.push("Medium");
+    if (shortfall.hard > 0) bands.push("Hard");
+    if (bands.length === 0) return null;
 
-    if (!subjectMatchesSet(subject, type, curriculumYear, setProgramCourse)) {
-      if (isPreboard) {
-        setError(
-          `${subject.courseCode} is not available for preboard (must be curriculum years 1–${preboardMaxCurriculumYear} and linked to ${formatProgramCourse(setProgramCourse)}).`
-        );
-        return;
+    if (examPoolValidationError(allocatedRows, difficultyForRow)) return null;
+
+    const label = bands.length === 1 ? bands[0] : bands.join(", ");
+    return `Short on ${label} in this subject. Exam will pull ${bands.length === 1 ? label.toLowerCase() : "questions"} from other subjects.`;
+  }
+
+  function confirmAddSubjects(selections: BuildSetSubjectSelection[]): boolean {
+    if (selections.length === 0) return false;
+
+    for (const { subjectId } of selections) {
+      if (selectedSubjectIds.includes(subjectId)) {
+        const subject = subjects.find((s) => s.id === subjectId);
+        setError(`${subject?.courseCode ?? "Subject"} is already in this set.`);
+        return false;
       }
-      if (subject.yearLevel !== curriculumYear) {
-        setError(
-          `Only curriculum year ${curriculumYear} subjects can be added for student year ${parsedStudentYear}.`
-        );
-        return;
+
+      const subject = subjects.find((s) => s.id === subjectId);
+      if (!subject) return false;
+
+      if (!subjectMatchesSet(subject, type, curriculumYear, setProgramCourse)) {
+        if (isPreboard) {
+          setError(
+            `${subject.courseCode} is not available for preboard (must be curriculum years 1–${preboardMaxCurriculumYear} and linked to ${formatProgramCourse(setProgramCourse)}).`
+          );
+          return false;
+        }
+        if (subject.yearLevel !== curriculumYear) {
+          setError(
+            `Only curriculum year ${curriculumYear} subjects can be added for student year ${parsedStudentYear}.`
+          );
+          return false;
+        }
+        setError(`${subject.courseCode} is not linked to ${formatProgramCourse(setProgramCourse)}.`);
+        return false;
       }
-      setError(`${subject.courseCode} is not linked to ${formatProgramCourse(setProgramCourse)}.`);
-      return;
     }
 
-    setSelectedSubjectIds((prev) => [...prev, addSubjectId]);
-    setAddSubjectId("");
+    const newSubjectIds: string[] = [];
+    const newExcludedKeys: string[] = [];
+
+    for (const { subjectId, selectedTopicIds } of selections) {
+      newSubjectIds.push(subjectId);
+      const subjectTopics = topics.filter((topic) => topic.subjectId === subjectId);
+      if (subjectTopics.length > 0) {
+        newExcludedKeys.push(
+          ...subjectTopics
+            .filter((topic) => !selectedTopicIds.includes(topic.id))
+            .map((topic) => topicAllocationKey(subjectId, topic.id))
+        );
+      }
+    }
+
+    setSelectedSubjectIds((prev) => [...prev, ...newSubjectIds]);
+    if (newExcludedKeys.length > 0) {
+      setExcludedTopicKeys((prev) => [...prev, ...newExcludedKeys]);
+    }
     setError("");
+    return true;
   }
 
   function removeSubject(subjectId: string) {
@@ -734,7 +827,7 @@ export default function BuildQuestionSetModal({
       return;
     }
 
-    const poolError = allocatedRows.map(poolValidationError).find(Boolean);
+    const poolError = examPoolValidationError(allocatedRows, difficultyForRow);
     if (poolError) {
       setError(poolError);
       return;
@@ -848,6 +941,33 @@ export default function BuildQuestionSetModal({
       { easyCount: 0, mediumCount: 0, hardCount: 0 }
     );
   }, [allocatedRows, topicDifficultyOverrides, subjectDifficultyByKey]);
+
+  const examPoolAvailability = useMemo(() => {
+    let total = 0;
+    let easy = 0;
+    let medium = 0;
+    let hard = 0;
+
+    for (const subject of groupedSubjects) {
+      for (const question of questions) {
+        if (question.subjectId !== subject.id) continue;
+        total += 1;
+        if (question.difficulty === "EASY") easy += 1;
+        else if (question.difficulty === "MEDIUM") medium += 1;
+        else if (question.difficulty === "HARD") hard += 1;
+      }
+    }
+
+    return { total, easy, medium, hard };
+  }, [groupedSubjects, questions]);
+
+  function formatNeededVsAvailable(needed: number, available: number) {
+    return `${needed} / ${available}`;
+  }
+
+  function statIsShort(needed: number, available: number) {
+    return needed > available;
+  }
 
   const autoDifficultyTotals = difficultyCountsForTotal(parsedTotalItems);
 
@@ -1045,40 +1165,36 @@ export default function BuildQuestionSetModal({
             </div>
 
           <div className="build-set-add-subject">
-            <span className="build-set-field-label" id="build-set-add-subject-label">
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => setShowAddSubjectModal(true)}
+              disabled={addSubjectOptions.length === 0}
+            >
               Add subject
-            </span>
-            <div className="build-set-add-subject-row">
-              <select
-                id="build-set-add-subject-select"
-                aria-labelledby="build-set-add-subject-label"
-                value={addSubjectId}
-                onChange={(e) => setAddSubjectId(e.target.value)}
-              >
-                <option value="">Select a subject</option>
-                {addSubjectOptions.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {isPreboard
-                      ? `${subject.courseCode} — ${subject.courseTitle} (yr ${subject.yearLevel})`
-                      : `${subject.courseCode} — ${subject.courseTitle}`}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={addSubject}
-                disabled={!addSubjectId}
-              >
-                Add
-              </button>
-            </div>
+            </button>
             <span className="field-hint build-set-add-subject-hint">
               {isPreboard
                 ? `Showing curriculum years 1–${preboardMaxCurriculumYear} subjects linked to ${formatProgramCourse(setProgramCourse)}.`
                 : `Showing curriculum year ${curriculumYear} subjects linked to ${formatProgramCourse(setProgramCourse)}.`}
             </span>
           </div>
+
+          {showAddSubjectModal ? (
+            <BuildSetAddSubjectModal
+              subjects={addSubjectOptions}
+              topics={topics}
+              questions={questions}
+              isPreboard={isPreboard}
+              hint={
+                isPreboard
+                  ? `Curriculum years 1–${preboardMaxCurriculumYear} · ${formatProgramCourse(setProgramCourse)}`
+                  : `Curriculum year ${curriculumYear} · ${formatProgramCourse(setProgramCourse)}`
+              }
+              onClose={() => setShowAddSubjectModal(false)}
+              onAdd={confirmAddSubjects}
+            />
+          ) : null}
 
           {groupedSubjects.length === 0 ? (
             <p className="build-set-empty muted">
@@ -1088,7 +1204,7 @@ export default function BuildQuestionSetModal({
                   : isPreboard
                     ? `No subjects match curriculum yrs 1–${preboardMaxCurriculumYear} and ${abbreviateProgramCourse(setProgramCourse)}.`
                     : `No subjects match curriculum yr ${curriculumYear} and ${abbreviateProgramCourse(setProgramCourse)}.`
-                : "Add subjects above. Item counts auto-fill from the total."}
+                : "Add subjects with the button above. Item counts auto-fill from the total."}
             </p>
           ) : parsedTotalItems <= 0 ? (
             <p className="build-set-empty muted">Enter total items above to preview the split.</p>
@@ -1104,6 +1220,7 @@ export default function BuildQuestionSetModal({
               const { target, assigned, remaining } = subjectAllocationStatus(subject.id);
               const subjectBalanced = remaining === 0;
               const removedTopics = excludedTopicsForSubject(subject.id);
+              const compensationWarning = subjectCompensationWarning(subject.id);
 
               return (
                 <div
@@ -1152,6 +1269,10 @@ export default function BuildQuestionSetModal({
                     </div>
                   </div>
 
+                  {compensationWarning ? (
+                    <p className="field-hint build-set-subject-compensation-hint">{compensationWarning}</p>
+                  ) : null}
+
                   <div className="build-set-subject-table-wrap modal-table-wrap">
                   <table className="build-set-subject-table">
                     <thead>
@@ -1186,11 +1307,6 @@ export default function BuildQuestionSetModal({
                         const availEasy = poolCount(row.subjectId, row.topicId, "EASY");
                         const availMedium = poolCount(row.subjectId, row.topicId, "MEDIUM");
                         const availHard = poolCount(row.subjectId, row.topicId, "HARD");
-                        const poolShort =
-                          row.itemCount > 0 &&
-                          (easyCount > availEasy ||
-                            mediumCount > availMedium ||
-                            hardCount > availHard);
                         const difficultyMismatch =
                           row.itemCount > 0 &&
                           easyCount + mediumCount + hardCount !== row.itemCount;
@@ -1202,9 +1318,7 @@ export default function BuildQuestionSetModal({
                           <tr
                             key={row.key}
                             className={
-                              poolShort || difficultyMismatch
-                                ? "build-set-row-pool-short"
-                                : undefined
+                              difficultyMismatch ? "build-set-row-pool-short" : undefined
                             }
                           >
                             <td className="build-set-topic-col">{row.label}</td>
@@ -1297,32 +1411,77 @@ export default function BuildQuestionSetModal({
           <div className="build-set-form-footer">
           <div className="build-set-summary">
             <div className="build-set-summary-stats">
-              <div className="build-set-stat">
+              <div
+                className={`build-set-stat${
+                  parsedTotalItems > 0 && statIsShort(parsedTotalItems, examPoolAvailability.total)
+                    ? " build-set-stat-short"
+                    : ""
+                }`}
+              >
                 <span className="build-set-stat-label">Total items</span>
                 <span className="build-set-stat-value">
-                  {parsedTotalItems > 0 ? parsedTotalItems : "—"}
+                  {parsedTotalItems > 0
+                    ? formatNeededVsAvailable(parsedTotalItems, examPoolAvailability.total)
+                    : "—"}
                 </span>
               </div>
-              <div className="build-set-stat">
+              <div
+                className={`build-set-stat${
+                  parsedTotalItems > 0 &&
+                  statIsShort(difficultyTotals.easyCount, examPoolAvailability.easy)
+                    ? " build-set-stat-short"
+                    : ""
+                }`}
+              >
                 <span className="build-set-stat-label">Easy</span>
                 <span className="build-set-stat-value">
-                  {parsedTotalItems > 0 ? difficultyTotals.easyCount : "—"}
+                  {parsedTotalItems > 0
+                    ? formatNeededVsAvailable(
+                        difficultyTotals.easyCount,
+                        examPoolAvailability.easy
+                      )
+                    : "—"}
                 </span>
               </div>
-              <div className="build-set-stat">
+              <div
+                className={`build-set-stat${
+                  parsedTotalItems > 0 &&
+                  statIsShort(difficultyTotals.mediumCount, examPoolAvailability.medium)
+                    ? " build-set-stat-short"
+                    : ""
+                }`}
+              >
                 <span className="build-set-stat-label">Medium</span>
                 <span className="build-set-stat-value">
-                  {parsedTotalItems > 0 ? difficultyTotals.mediumCount : "—"}
+                  {parsedTotalItems > 0
+                    ? formatNeededVsAvailable(
+                        difficultyTotals.mediumCount,
+                        examPoolAvailability.medium
+                      )
+                    : "—"}
                 </span>
               </div>
-              <div className="build-set-stat">
+              <div
+                className={`build-set-stat${
+                  parsedTotalItems > 0 &&
+                  statIsShort(difficultyTotals.hardCount, examPoolAvailability.hard)
+                    ? " build-set-stat-short"
+                    : ""
+                }`}
+              >
                 <span className="build-set-stat-label">Hard</span>
                 <span className="build-set-stat-value">
-                  {parsedTotalItems > 0 ? difficultyTotals.hardCount : "—"}
+                  {parsedTotalItems > 0
+                    ? formatNeededVsAvailable(
+                        difficultyTotals.hardCount,
+                        examPoolAvailability.hard
+                      )
+                    : "—"}
                 </span>
               </div>
             </div>
             <p className="field-hint build-set-summary-hint">
+              Counts show needed / available across selected subjects.
               Subject totals stay fixed from the exam total. Use Edit to move items, difficulty
               counts, or remove topics within a subject. Reset restores all topics.
               {parsedTotalItems > 0

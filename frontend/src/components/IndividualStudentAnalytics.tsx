@@ -164,8 +164,15 @@ interface IndividualReport {
   };
 }
 
+interface StudentViewRequest {
+  id: string;
+  name?: string;
+}
+
 interface Props {
   token: string | null;
+  viewRequest?: StudentViewRequest | null;
+  onViewRequestConsumed?: () => void;
 }
 
 function formatExamDate(iso: string) {
@@ -408,7 +415,11 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
   }
 }
 
-export default function IndividualStudentAnalytics({ token }: Props) {
+export default function IndividualStudentAnalytics({
+  token,
+  viewRequest = null,
+  onViewRequestConsumed,
+}: Props) {
   const { appendExamYear } = useAnalyticsSeason();
   const programCourseOptions = useProgramCourseOptions();
   const [query, setQuery] = useState("");
@@ -453,6 +464,15 @@ export default function IndividualStudentAnalytics({ token }: Props) {
   useEffect(() => {
     resetBodyScrollLock();
   }, []);
+
+  useEffect(() => {
+    if (!viewRequest?.id) return;
+    setSelectedId(viewRequest.id);
+    if (viewRequest.name) {
+      setQuery(viewRequest.name);
+    }
+    onViewRequestConsumed?.();
+  }, [viewRequest, onViewRequestConsumed]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -669,26 +689,13 @@ export default function IndividualStudentAnalytics({ token }: Props) {
                         <td>{student.yearLevel ?? "—"}</td>
                         <td>{student.email}</td>
                         <td>
-                          <div className="individual-student-table-actions">
-                            <button
-                              type="button"
-                              className="btn secondary btn-sm"
-                              onClick={() => selectStudent(student, results)}
-                            >
-                              View
-                            </button>
-                            <button
-                              type="button"
-                              className="btn secondary btn-sm"
-                              disabled={!student.latestSubmissionId}
-                              onClick={() =>
-                                student.latestSubmissionId &&
-                                setSelectedSubmissionId(student.latestSubmissionId)
-                              }
-                            >
-                              Submission
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            className="btn secondary btn-sm"
+                            onClick={() => selectStudent(student, results)}
+                          >
+                            View
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -748,6 +755,14 @@ export default function IndividualStudentAnalytics({ token }: Props) {
               <div className="individual-student-header-actions">
                 <button type="button" className="btn secondary" onClick={backToList}>
                   Back
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={!report.exam?.id}
+                  onClick={() => report.exam?.id && setSelectedSubmissionId(report.exam.id)}
+                >
+                  Submission
                 </button>
                 <button
                   type="button"

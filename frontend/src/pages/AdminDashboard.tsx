@@ -77,6 +77,10 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>("users-add");
   const [showQuestionPerformance, setShowQuestionPerformance] = useState(false);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+  const [studentViewRequest, setStudentViewRequest] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   useEffect(() => {
     if (activeTab !== "submissions") {
@@ -145,11 +149,25 @@ export default function AdminDashboard() {
 
       {activeTab === "analytics-retention" && <AnalyticsRetention token={token} />}
 
-      {activeTab === "analytics-rankings" && <AnalyticsRankings token={token} />}
+      {activeTab === "analytics-rankings" && (
+        <AnalyticsRankings
+          token={token}
+          onViewStudent={(studentId, name) => {
+            setStudentViewRequest({ id: studentId, name });
+            setActiveTab("analytics-student");
+          }}
+        />
+      )}
 
       {activeTab === "analytics-group" && <GroupAnalytics token={token} />}
 
-      {activeTab === "analytics-student" && <IndividualStudentAnalytics token={token} />}
+      {activeTab === "analytics-student" && (
+        <IndividualStudentAnalytics
+          token={token}
+          viewRequest={studentViewRequest}
+          onViewRequestConsumed={() => setStudentViewRequest(null)}
+        />
+      )}
 
       {activeTab === "analytics-question" && (
         <AnalyticsReports

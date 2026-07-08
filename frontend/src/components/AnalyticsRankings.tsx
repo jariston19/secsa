@@ -44,6 +44,7 @@ interface RankingsData {
 
 interface Props {
   token: string | null;
+  onViewStudent?: (studentId: string, name: string) => void;
 }
 
 const EXAM_TYPE_SEGMENTS = [
@@ -64,7 +65,7 @@ function formatAttemptType(type: string) {
   return type === "RETAKE" ? "Retake" : "First";
 }
 
-export default function AnalyticsRankings({ token }: Props) {
+export default function AnalyticsRankings({ token, onViewStudent }: Props) {
   const programCourseOptions = useProgramCourseOptions();
   const { appendExamYear, seasonLabel } = useAnalyticsSeason();
   const [examType, setExamType] = useState<ExamTypeTab>("comprehensive");
@@ -242,7 +243,27 @@ export default function AnalyticsRankings({ token }: Props) {
                 </thead>
                 <tbody>
                   {visibleRankings.map((row) => (
-                    <tr key={row.studentId}>
+                    <tr
+                      key={row.studentId}
+                      className={onViewStudent ? "analytics-rankings-row-clickable" : undefined}
+                      tabIndex={onViewStudent ? 0 : undefined}
+                      role={onViewStudent ? "button" : undefined}
+                      onClick={
+                        onViewStudent
+                          ? () => onViewStudent(row.studentId, row.name)
+                          : undefined
+                      }
+                      onKeyDown={
+                        onViewStudent
+                          ? (event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                onViewStudent(row.studentId, row.name);
+                              }
+                            }
+                          : undefined
+                      }
+                    >
                       <td className="analytics-rankings-rank">{row.rank}</td>
                       <td>{formatFullName(row.firstName, row.lastName)}</td>
                       <td>{row.yearLevel ?? "—"}</td>

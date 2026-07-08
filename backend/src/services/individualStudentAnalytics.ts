@@ -67,7 +67,7 @@ export async function searchStudentsForAnalytics(
       },
     },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    take: 150,
+    ...(tokens.length === 0 ? { take: 150 } : {}),
   });
 
   return students
