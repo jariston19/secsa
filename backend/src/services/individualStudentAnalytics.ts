@@ -8,7 +8,6 @@ import { buildStudentJourneyTrend } from "./studentJourneyTrend.js";
 
 const PASS_THRESHOLD = 75;
 const WEAK_THRESHOLD = 50;
-const WATCH_THRESHOLD = 60;
 const STRONG_THRESHOLD = 80;
 
 function pct(correct: number, total: number) {
@@ -453,7 +452,7 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
     }))
   );
 
-  const weakTopics = byTopic.filter((row) => row.score < WATCH_THRESHOLD);
+  const weakTopics = byTopic.filter((row) => row.score < PASS_THRESHOLD);
   const studentScore = latestAttempt.percentage ?? 0;
 
   const rankedScores = [...cohortLatestScores.entries()]
@@ -474,7 +473,7 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
   for (const topic of weakTopics) {
     insights.push({
       type: "weak",
-      message: `Scored ${topic.score.toFixed(0)}% on ${topic.topic} (${topic.subject}) — below the ${WATCH_THRESHOLD}% watch threshold.`,
+      message: `Scored ${topic.score.toFixed(0)}% on ${topic.topic} (${topic.subject}) — below the ${PASS_THRESHOLD}% watch threshold.`,
     });
   }
 
@@ -528,7 +527,7 @@ export async function buildIndividualStudentAnalytics(studentId: string) {
   }
 
   for (const subject of bySubject) {
-    if (subject.classAverage != null && subject.score < subject.classAverage - 5 && subject.score >= WATCH_THRESHOLD) {
+    if (subject.classAverage != null && subject.score < subject.classAverage - 5 && subject.score >= PASS_THRESHOLD) {
       insights.push({
         type: "watch",
         message: `${subject.subject.split(" ").slice(0, 2).join(" ")} score (${subject.score.toFixed(0)}%) is below class average (${subject.classAverage.toFixed(0)}%) — monitor before retake.`,

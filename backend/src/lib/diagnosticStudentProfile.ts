@@ -26,6 +26,8 @@ export type StudentExamProfile = {
     label: string;
     tone: "strong" | "moderate" | "weak";
     score: number;
+    correct: number;
+    total: number;
   }>;
 };
 
@@ -149,6 +151,8 @@ export async function buildStudentExamProfile(
       label: BLOOM_LEVEL_LABELS[bloomLevel],
       tone: stats ? scoreTone(score) : ("moderate" as const),
       score: Math.round(score),
+      correct: stats?.correct ?? 0,
+      total: stats?.total ?? 0,
     };
   }).filter((row) => bloomStats.has(row.bloomLevel));
 

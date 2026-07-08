@@ -53,6 +53,7 @@ export const DEMOGRAPHICS_CHART_LAYOUT = chartSlotLayout({
   "program-score": "tall",
   "program-l1l2-readiness": "tall",
   "program-l3-readiness": "tall",
+  "program-l4l6-readiness": "tall",
   "program-topic": "wide",
 });
 
@@ -71,6 +72,7 @@ export const RETENTION_CHART_LAYOUT = chartSlotLayout({
   "program-score": "tall",
   "program-l1l2-readiness": "tall",
   "program-l3-readiness": "tall",
+  "program-l4l6-readiness": "tall",
   "program-topic": "wide",
 });
 

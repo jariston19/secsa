@@ -1,3 +1,11 @@
+import {
+  examProfileBandTextColor,
+  examProfileBarStyle,
+  examProfileLegendItems,
+  examProfileQualitativeLabel,
+  scoreToExamProfileBand,
+} from "../lib/examProfileLabels";
+
 type AreaInsight = {
   label: string;
   type: "subject" | "topic";
@@ -10,6 +18,8 @@ type BloomLevelRow = {
   label: string;
   tone: "strong" | "moderate" | "weak";
   score?: number;
+  correct?: number;
+  total?: number;
 };
 
 export type DiagnosticProfile = {
@@ -26,26 +36,9 @@ interface Props {
   reportMode?: boolean;
 }
 
-function toneBarWidth(tone: BloomLevelRow["tone"]) {
-  if (tone === "strong") return 85;
-  if (tone === "moderate") return 60;
-  return 35;
-}
-
-function toneFillColor(tone: BloomLevelRow["tone"]) {
-  if (tone === "strong") return "#007aff";
-  return "#ef4444";
-}
-
-function displayBarWidth(row: BloomLevelRow) {
-  const width = row.score ?? toneBarWidth(row.tone);
+function displayBarWidth(score: number | undefined) {
+  const width = score ?? 0;
   return Math.max(4, Math.min(100, width));
-}
-
-function toneLabel(tone: BloomLevelRow["tone"]) {
-  if (tone === "strong") return "Strong";
-  if (tone === "moderate") return "Developing";
-  return "Needs focus";
 }
 
 export default function DiagnosticResultProfile({
@@ -60,6 +53,8 @@ export default function DiagnosticResultProfile({
     : variant === "comprehensive"
       ? "Your comprehensive exam is complete. Below is an evaluation of your strengths and areas to develop based on your responses."
       : "Your diagnostic is complete. Below is a learning profile based on your responses — not a graded score.";
+
+  const legendItems = examProfileLegendItems();
 
   return (
     <div className="diagnostic-result-profile">
@@ -108,31 +103,58 @@ export default function DiagnosticResultProfile({
         <section className="diagnostic-result-section">
           <h3>Cognitive domains</h3>
           <p className="muted section-desc">
-            How you performed across recall, application, and higher-order thinking.
+            {reportMode
+              ? "Performance across recall, application, and higher-order thinking, with qualitative labels by score band."
+              : "How you performed across recall, application, and higher-order thinking, with qualitative labels by score band."}
           </p>
           <div className="score-bars diagnostic-bloom-grid">
-            {profile.bloomLevels.map((row) => (
-              <div key={row.bloomLevel} className="score-bar-row diagnostic-bloom-row">
-                <span className="score-bar-label diagnostic-bloom-label">{row.label}</span>
-                <div
-                  className="score-bar-track"
-                  role="presentation"
-                  style={{ height: "10px", background: "#e5e7eb", borderRadius: "999px" }}
-                >
-                  <span
-                    style={{
-                      display: "block",
-                      width: `${displayBarWidth(row)}%`,
-                      height: "10px",
-                      borderRadius: "999px",
-                      background: toneFillColor(row.tone),
-                    }}
-                  />
+            {profile.bloomLevels.map((row) => {
+              const score = row.score ?? 0;
+              const band = scoreToExamProfileBand(score);
+              const summaryColor = examProfileBandTextColor(band);
+              const qualitativeLabel = examProfileQualitativeLabel(score);
+
+              return (
+                <div key={row.bloomLevel} className="diagnostic-bloom-row-wrap">
+                  <div className="diagnostic-bloom-row-header">
+                    <span className="diagnostic-bloom-label">
+                      <span className="diagnostic-bloom-label-text">{row.label}</span>
+                      {row.total != null && row.total > 0 ? (
+                        <span className="diagnostic-bloom-quantity">
+                          {row.correct ?? 0}/{row.total} correct
+                        </span>
+                      ) : null}
+                    </span>
+                    <span
+                      className={`diagnostic-bloom-tone diagnostic-bloom-tone-${band}`}
+                      style={{ color: summaryColor }}
+                      title={qualitativeLabel}
+                    >
+                      {row.score != null ? `${row.score}% · ` : ""}
+                      {qualitativeLabel}
+                    </span>
+                  </div>
+                  <div className="diagnostic-bloom-track" role="presentation">
+                    <span
+                      className="diagnostic-bloom-fill"
+                      style={examProfileBarStyle(displayBarWidth(score))}
+                    />
+                  </div>
                 </div>
-                <span className={`diagnostic-bloom-tone diagnostic-bloom-tone-${row.tone}`}>
-                  {toneLabel(row.tone)}
+              );
+            })}
+          </div>
+          <div className="diagnostic-bloom-legend" aria-hidden="true">
+            {legendItems.map((item) => (
+              <span key={`${item.band}-${item.range}`} className="diagnostic-bloom-legend-item">
+                <i
+                  className="diagnostic-bloom-legend-swatch"
+                  style={{ background: item.color }}
+                />
+                <span>
+                  {item.range} · {item.label}
                 </span>
-              </div>
+              </span>
             ))}
           </div>
         </section>

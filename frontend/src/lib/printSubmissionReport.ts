@@ -1,9 +1,16 @@
 import type { DiagnosticProfile } from "../components/DiagnosticResultProfile";
 import { formatExamType } from "./constants";
 import {
+  examProfileBandTextColor,
+  examProfileBarStyle,
+  examProfileQualitativeLabel,
+  scoreToExamProfileBand,
+} from "./examProfileLabels";
+import {
   type DomainProgressionSeries,
   renderDomainProgressionSvg,
 } from "./domainProgressionChart";
+import { formatProgramCourse } from "./programCourse";
 import { escapeHtml, printHtmlDocument } from "./printHtmlDocument";
 
 type SubmissionAnswer = {
@@ -19,6 +26,7 @@ type SubmissionPrintInput = {
   studentName: string;
   studentEmail: string;
   yearLevel: number | null;
+  programCourse: string | null;
   questionSetName: string;
   questionSetType: string;
   attemptType: string;
@@ -48,10 +56,14 @@ function formatDate(value: string | null) {
 }
 
 function reportHeader(input: SubmissionPrintInput) {
+  const courseLabel = input.programCourse
+    ? formatProgramCourse(input.programCourse)
+    : null;
+
   return `
     <header class="report-header">
       <h1>${escapeHtml(input.studentName)}</h1>
-      <p class="muted">${escapeHtml(input.studentEmail)} · Year ${input.yearLevel ?? "—"}</p>
+      <p class="muted">${escapeHtml(input.studentEmail)}${courseLabel ? ` · ${escapeHtml(courseLabel)}` : ""} · Year ${input.yearLevel ?? "—"}</p>
       <p class="muted">
         ${escapeHtml(input.questionSetName)} · ${escapeHtml(formatExamType(input.questionSetType))} ·
         ${formatAttemptType(input.attemptType)} attempt #${input.attemptNumber}
@@ -61,26 +73,8 @@ function reportHeader(input: SubmissionPrintInput) {
   `;
 }
 
-function toneBarWidth(tone: "strong" | "moderate" | "weak") {
-  if (tone === "strong") return 85;
-  if (tone === "moderate") return 60;
-  return 35;
-}
-
-function toneLabel(tone: "strong" | "moderate" | "weak") {
-  if (tone === "strong") return "Strong";
-  if (tone === "moderate") return "Developing";
-  return "Needs focus";
-}
-
-function toneFillColor(tone: "strong" | "moderate" | "weak") {
-  if (tone === "strong") return "#007aff";
-  return "#ef4444";
-}
-
-function displayBarWidth(row: { score?: number; tone: "strong" | "moderate" | "weak" }) {
-  const width = row.score ?? toneBarWidth(row.tone);
-  return Math.max(4, Math.min(100, width));
+function toneBarWidth(score: number) {
+  return Math.max(4, Math.min(100, score));
 }
 
 function renderProfileHtml(
@@ -125,21 +119,33 @@ function renderProfileHtml(
         <table style="width:100%;border-collapse:collapse;margin-top:0.5rem;">
           <tbody>
           ${profile.bloomLevels
-            .map(
-              (row) => `
+            .map((row) => {
+              const score = row.score ?? 0;
+              const fill = examProfileBarStyle(toneBarWidth(score));
+              const band = scoreToExamProfileBand(score);
+              const summaryColor = examProfileBandTextColor(band);
+              const qualitativeLabel = examProfileQualitativeLabel(score);
+              return `
             <tr>
-              <td style="width:34%;padding:0.35rem 0.5rem 0.35rem 0;border:none;vertical-align:middle;">${escapeHtml(row.label)}</td>
+              <td style="width:30%;padding:0.35rem 0.5rem 0.35rem 0;border:none;vertical-align:middle;">
+                ${escapeHtml(row.label)}
+                ${
+                  row.total != null && row.total > 0
+                    ? `<div style="font-size:10px;color:#6b7280;">${row.correct ?? 0}/${row.total} correct</div>`
+                    : ""
+                }
+              </td>
               <td style="padding:0.35rem 0.5rem;border:none;vertical-align:middle;">
-                <div style="height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;">
-                  <div style="width:${displayBarWidth(row)}%;height:10px;background:${toneFillColor(row.tone)};border-radius:999px;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>
+                <div style="height:16px;background:#e5e7eb;border-radius:999px;overflow:hidden;">
+                  <div style="height:16px;border-radius:999px;-webkit-print-color-adjust:exact;print-color-adjust:exact;width:${fill.width};background:${fill.background};"></div>
                 </div>
               </td>
-              <td style="width:18%;padding:0.35rem 0 0.35rem 0.5rem;border:none;text-align:right;vertical-align:middle;color:${toneFillColor(row.tone)};font-weight:600;font-size:11px;">
-                ${toneLabel(row.tone)}${row.score != null ? ` · ${row.score}%` : ""}
+              <td style="width:34%;padding:0.35rem 0 0.35rem 0.5rem;border:none;text-align:right;vertical-align:middle;color:${summaryColor};font-weight:600;font-size:11px;line-height:1.35;">
+                ${row.score != null ? `${row.score}% · ` : ""}${escapeHtml(qualitativeLabel)}
               </td>
             </tr>
-          `
-            )
+          `;
+            })
             .join("")}
           </tbody>
         </table>

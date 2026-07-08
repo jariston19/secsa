@@ -84,6 +84,7 @@ interface RetentionData {
     studentCount: number;
     l1L2Readiness: number;
     l3Readiness: number;
+    l4L6Readiness: number;
   }>;
   programTopics: {
     columns: string[];
@@ -99,6 +100,7 @@ const RETENTION_PROGRAM_CHART_IDS = [
   "program-score",
   "program-l1l2-readiness",
   "program-l3-readiness",
+  "program-l4l6-readiness",
   "program-topic",
 ] as const;
 
@@ -163,7 +165,7 @@ function RetentionProgramDonuts({
   metric,
 }: {
   programs: RetentionData["programs"];
-  metric: "averageScore" | "l1L2Readiness" | "l3Readiness";
+  metric: "averageScore" | "l1L2Readiness" | "l3Readiness" | "l4L6Readiness";
 }) {
   if (programs.length === 0) {
     return <p className="muted">No program data yet.</p>;
@@ -172,11 +174,18 @@ function RetentionProgramDonuts({
   const metricValue = (row: RetentionData["programs"][number]) => {
     if (metric === "averageScore") return row.averageScore;
     if (metric === "l1L2Readiness") return row.l1L2Readiness;
-    return row.l3Readiness;
+    if (metric === "l3Readiness") return row.l3Readiness;
+    return row.l4L6Readiness;
   };
 
   const metricLabel =
-    metric === "averageScore" ? "avg score" : metric === "l1L2Readiness" ? "L1–L2" : "L3";
+    metric === "averageScore"
+      ? "avg score"
+      : metric === "l1L2Readiness"
+        ? "L1–L2"
+        : metric === "l3Readiness"
+          ? "L3"
+          : "L4–L6";
 
   return (
     <div className="demographics-program-donut-grid overview-pass-donut-grid">
@@ -467,6 +476,16 @@ function renderRetentionChart(id: RetentionChartId, data: RetentionData): ReactN
           description="Application-level correct rate by enrolled program."
         >
           <RetentionProgramDonuts programs={data.programs} metric="l3Readiness" />
+        </ChartCard>
+      );
+    case "program-l4l6-readiness":
+      return (
+        <ChartCard
+          className="analytics-chart-card-balanced analytics-chart-card-donut-pair analytics-chart-card-program-donuts"
+          title="L4–L6 retention by program"
+          description="Higher-order thinking average (Analysis, Synthesis, Evaluation)."
+        >
+          <RetentionProgramDonuts programs={data.programs} metric="l4L6Readiness" />
         </ChartCard>
       );
     case "program-topic":

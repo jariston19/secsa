@@ -9,6 +9,11 @@ const DIFFICULTY_ORDER = [Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD] a
 
 const L1_L2_BLOOM_LEVELS: BloomLevel[] = [BloomLevel.KNOWLEDGE, BloomLevel.COMPREHENSION];
 const L3_BLOOM_LEVELS: BloomLevel[] = [BloomLevel.APPLICATION];
+const L4_L6_BLOOM_LEVELS: BloomLevel[] = [
+  BloomLevel.ANALYSIS,
+  BloomLevel.SYNTHESIS,
+  BloomLevel.EVALUATION,
+];
 
 function pct(correct: number, total: number) {
   return total > 0 ? (correct / total) * 100 : 0;
@@ -422,6 +427,7 @@ export async function buildSegmentAnalytics(
       studentCount: row.scores.length,
       l1L2Readiness: bloomReadiness(row.bloom, L1_L2_BLOOM_LEVELS),
       l3Readiness: bloomReadiness(row.bloom, L3_BLOOM_LEVELS),
+      l4L6Readiness: bloomReadiness(row.bloom, L4_L6_BLOOM_LEVELS),
     }))
     .filter((row) => row.studentCount > 0)
     .sort((a, b) => b.averageScore - a.averageScore);

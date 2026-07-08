@@ -212,6 +212,7 @@ export default function StudentSubmissionDetailModal({ submissionId, token, onCl
       studentName,
       studentEmail: submission.student.email,
       yearLevel: submission.student.yearLevel,
+      programCourse: submission.student.programCourse,
       questionSetName: submission.questionSet.name,
       questionSetType: submission.questionSet.type,
       attemptType: submission.attemptType,
