@@ -7,7 +7,7 @@ Initial working scaffold for the SECSA comprehensive/diagnostic exam system.
 - **Students**: login, take deployed exam, randomized order, score/percentage/pass-fail (75%)
 - **Teachers**: subjects, optional topics, questions with images, question sets, deploy diagnostic/retake pools
 - **Superadmin**: add users, analytics overview, retake approvals
-- **Retakes**: max 2, teacher/superadmin approval, separate retake question pool
+- **Retakes**: max 1, teacher/superadmin approval, separate retake question pool
 - **Year levels**: student `yearLevel` (e.g. `2` = incoming 2nd year)
 
 ## Quick start (development)

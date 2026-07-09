@@ -4,7 +4,7 @@ import { nonQaExamAttemptWhere, nonQaStudentWhere } from "../lib/studentFilters.
 import { submittedAtFilter } from "../lib/analyticsSeason.js";
 import { countStudentsInScoreBuckets } from "../lib/scoreBuckets.js";
 
-const MAX_RETAKES = 2;
+const MAX_RETAKES = 1;
 
 function isComprehensiveExamType(type: QuestionSetType) {
   return type === QuestionSetType.COMPREHENSIVE || type === QuestionSetType.RETAKE;

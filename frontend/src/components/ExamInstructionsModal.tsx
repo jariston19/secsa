@@ -111,7 +111,7 @@ export default function ExamInstructionsModal({
               <h3>Retake policy</h3>
               <ul className="instructions-list">
                 <li>This is an approved <strong>retake attempt</strong>.</li>
-                <li>You may have up to <strong>2 retake chances</strong> in total, subject to teacher or superadmin approval.</li>
+                <li>You may have up to <strong>1 retake chance</strong> in total, subject to teacher or superadmin approval.</li>
                 <li>Retake questions may differ from your first attempt.</li>
               </ul>
             </>
@@ -175,7 +175,7 @@ export default function ExamInstructionsModal({
               <ul className="instructions-list">
                 <li>If you do not pass, a retake is <strong>not automatic</strong>.</li>
                 <li>Your teacher or superadmin will review and approve retakes if you are eligible.</li>
-                <li>You may have up to <strong>2 retake chances</strong> after your first attempt.</li>
+                <li>You may have up to <strong>1 retake chance</strong> after your first attempt.</li>
               </ul>
             </>
           )}

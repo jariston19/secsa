@@ -54,7 +54,7 @@ const startExamSchema = z.object({
   examKind: z.enum(["comprehensive", "incoming_diagnostic", "preboard"]).optional(),
 });
 
-const MAX_RETAKES = 2;
+const MAX_RETAKES = 1;
 
 type StudentAttemptRow = {
   id: string;

@@ -17,7 +17,7 @@
 
 - SECSA is an MCQ comprehensive exam platform for ~20–30 teachers and 500+ students.
 - Stack: React/Vite frontend, Fastify + Prisma backend, SQLite; deployable via Docker Compose.
-- Pass threshold is 75% (`score / total items × 100`); retakes require teacher/superadmin approval with a limit of 2.
+- Pass threshold is 75% (`score / total items × 100`); retakes require teacher/superadmin approval with a limit of 1.
 - Year level maps to incoming cohort (e.g. year 2 = incoming 2nd year); comprehensive exams test the previous year's subjects.
 - Subjects use course code + title (e.g. ACEE 106 Electromagnetics); topics are optional but enable finer exam design and analytics.
 - Program courses: Civil Engineering, Mechanical Engineering, Electrical Engineering, Information Technology, Architecture; pools filter by year + program course.
