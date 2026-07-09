@@ -7,8 +7,8 @@ import FieldInfoTip from "./FieldInfoTip";
 import { api } from "../lib/api";
 import { curriculumYearForStudentYear, formatExamType, MIN_YEAR_LEVEL, parseYearLevel, sanitizeYearInput, type QuestionSetExamType, preboardMaxCurriculumYearForProgram, preboardStudentYearForProgram } from "../lib/constants";
 import {
+  expandExamDifficultyAllocations,
   difficultyCountsForTotal,
-  expandTopicConfigsWithPoolAwareDifficulty,
   type ExamDifficultyCounts,
   type SubjectDifficultyShortfall,
 } from "../lib/examDifficultyDistribution";
@@ -227,18 +227,12 @@ export default function BuildQuestionSetModal({
         setExamTotalItems(String(set.totalItems));
         setSelectedSubjectIds([...new Set(set.configs.map((config) => config.subjectId))]);
         const savedOverrides: Record<string, number> = {};
-        const savedDifficultyOverrides: Record<string, ExamDifficultyCounts> = {};
         for (const config of set.configs) {
           const key = topicAllocationKey(config.subjectId, config.topicId);
           savedOverrides[key] = config.easyCount + config.mediumCount + config.hardCount;
-          savedDifficultyOverrides[key] = {
-            easyCount: config.easyCount,
-            mediumCount: config.mediumCount,
-            hardCount: config.hardCount,
-          };
         }
         setTopicItemOverrides(savedOverrides);
-        setTopicDifficultyOverrides(savedDifficultyOverrides);
+        setTopicDifficultyOverrides({});
         setExcludedTopicKeys(computeExcludedTopicKeys(set.configs, topics));
         setAdjustingSubjectIds([]);
         setTopicDrafts({});
@@ -410,54 +404,35 @@ export default function BuildQuestionSetModal({
   }, [loading, parsedTotalItems, selectedSubjectIds]);
 
   const subjectDifficultyByKey = useMemo(() => {
-    const map = new Map<
-      string,
-      { easyCount: number; mediumCount: number; hardCount: number }
-    >();
-    for (const allocation of subjectAllocations) {
-      const expanded = expandTopicConfigsWithPoolAwareDifficulty(
-        allocation.topics.map((topic) => ({
+    return expandExamDifficultyAllocations(
+      subjectAllocations.map((allocation) => ({
+        subjectId: allocation.subjectId,
+        sortKey: allocation.subjectId,
+        itemCount: allocation.itemCount,
+        pool: {
+          easy: poolCount(allocation.subjectId, null, "EASY"),
+          medium: poolCount(allocation.subjectId, null, "MEDIUM"),
+          hard: poolCount(allocation.subjectId, null, "HARD"),
+        },
+        topics: allocation.topics.map((topic) => ({
           key: topic.key,
           itemCount: topic.itemCount,
-          sortKey: topic.label,
-          pool: {
-            easy: poolCount(topic.subjectId, topic.topicId, "EASY"),
-            medium: poolCount(topic.subjectId, topic.topicId, "MEDIUM"),
-            hard: poolCount(topic.subjectId, topic.topicId, "HARD"),
-          },
-        }))
-      );
-      for (const topic of expanded) {
-        map.set(topic.key, {
-          easyCount: topic.easyCount,
-          mediumCount: topic.mediumCount,
-          hardCount: topic.hardCount,
-        });
-      }
-    }
-    return map;
+          sortKey: topic.key,
+        })),
+      }))
+    );
   }, [subjectAllocations, questions]);
 
   const subjectShortfallBySubjectId = useMemo(() => {
     const map = new Map<string, SubjectDifficultyShortfall>();
     for (const allocation of subjectAllocations) {
-      const expanded = expandTopicConfigsWithPoolAwareDifficulty(
-        allocation.topics.map((topic) => ({
-          itemCount: topic.itemCount,
-          sortKey: topic.label,
-          pool: {
-            easy: poolCount(topic.subjectId, topic.topicId, "EASY"),
-            medium: poolCount(topic.subjectId, topic.topicId, "MEDIUM"),
-            hard: poolCount(topic.subjectId, topic.topicId, "HARD"),
-          },
-        }))
-      );
-      if (expanded.length > 0) {
-        map.set(allocation.subjectId, expanded[0].subjectShortfall);
-      }
+      const firstTopic = allocation.topics.find((topic) => topic.itemCount > 0);
+      if (!firstTopic) continue;
+      const entry = subjectDifficultyByKey.get(firstTopic.key);
+      if (entry) map.set(allocation.subjectId, entry.subjectShortfall);
     }
     return map;
-  }, [subjectAllocations, questions]);
+  }, [subjectAllocations, subjectDifficultyByKey]);
 
   const allocatedRows = useMemo(
     () => subjectAllocations.flatMap((allocation) => allocation.topics),
@@ -931,6 +906,7 @@ export default function BuildQuestionSetModal({
   const difficultyTotals = useMemo(() => {
     return allocatedRows.reduce(
       (acc, row) => {
+        if (row.itemCount === 0) return acc;
         const { easyCount, mediumCount, hardCount } = difficultyForRow(row);
         return {
           easyCount: acc.easyCount + easyCount,
@@ -976,11 +952,11 @@ export default function BuildQuestionSetModal({
       <div className={inline ? "sets-header build-set-inline-header" : "modal-header"}>
         <div>
           <h2>{isEditing ? "Edit Question Set" : "Build Question Set"}</h2>
-          <p className="muted">
-            {isEditing
-              ? "Adjust total items, subjects, topics, or difficulty counts per topic."
-              : "Set total exam items, add subjects, and adjust topics as needed."}
-          </p>
+          {isEditing ? (
+            <p className="muted">
+              Adjust total items, subjects, topics, or difficulty counts per topic.
+            </p>
+          ) : null}
           {isEditing && setStatus === "DEPLOYED" && (
             <span className="build-set-deployed-badge">Deployed</span>
           )}
@@ -1002,124 +978,129 @@ export default function BuildQuestionSetModal({
               Set details
               <FieldInfoTip
                 label="Question set allocation help"
-                text="Items divide evenly across subjects by course code. Use Edit on each subject to transfer items between its topics, set easy, medium, and hard counts, or remove topics from the exam. Defaults use 30% easy, 50% medium, and 20% hard per subject."
+                text="Items divide evenly across subjects by course code. Use Edit on each subject to transfer items between its topics, set easy, medium, and hard counts, or remove topics from the exam. The exam total uses a 30% easy / 50% medium / 20% hard split across all subjects."
               />
             </h3>
-            <div className="build-set-meta">
-              <label className="build-set-meta-name">
-                <span className="build-set-field-label">Set name</span>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Incoming 2nd Year Comprehensive 2026"
-                  required
-                />
-              </label>
-              <label className="build-set-meta-year">
-                <span className="build-set-field-label">Incoming year</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="2"
-                  value={yearLevel}
-                  onChange={(e) => updateYearLevel(sanitizeYearInput(e.target.value))}
-                  onBlur={commitYearLevel}
-                  disabled={isEditing}
-                  required
-                />
-                <span className="field-hint">
-                  {isPreboard
-                    ? `Uses curriculum years 1–${preboardMaxCurriculumYear} subjects.`
-                    : `Uses curriculum year ${curriculumYear} subjects.`}
-                </span>
-              </label>
-              <label className="build-set-meta-course">
-                <span className="build-set-field-label">Program course</span>
-                <select
-                  value={setProgramCourse}
-                  onChange={(e) => setSetProgramCourse(e.target.value as ProgramCourseId)}
-                  disabled={isEditing || isSharedDiagnostic}
-                  required
-                >
-                  {programCourseOptions.map((course) => (
-                    <option key={course.id} value={course.id}>
-                      {course.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="build-set-meta-type">
-                <span className="build-set-field-label">Exam type</span>
-                <select
-                  value={type}
-                  onChange={(e) => setType(e.target.value as QuestionSetExamType)}
-                  disabled={isEditing || isIncomingDiagnosticYear}
-                >
-                  {isIncomingDiagnosticYear ? (
-                    <option value="DIAGNOSTIC">Diagnostic</option>
-                  ) : (
-                    <>
-                      <option value="COMPREHENSIVE">Comprehensive</option>
-                      <option value="RETAKE">Retake</option>
-                      {isPreboardYear ? <option value="PREBOARD">Preboard</option> : null}
-                    </>
-                  )}
-                </select>
-              </label>
-            </div>
-            <div className="build-set-meta-exam">
-              <label className="build-set-meta-total">
-                <span className="build-set-field-label">Total items</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="100"
-                  value={examTotalItems}
-                  onChange={(e) => setExamTotalItems(sanitizeCountInput(e.target.value))}
-                  required
-                />
-              </label>
-              <div className="build-set-meta-time">
-                <span className="build-set-field-label">Time limit</span>
-                <div className="build-set-time-inputs">
+            <div className="build-set-details-grid">
+              <div className="build-set-details-primary">
+                <label className="build-set-field">
+                  <span className="build-set-field-label">Set name</span>
                   <input
-                    type="number"
-                    min={0}
-                    max={8}
-                    inputMode="numeric"
-                    aria-label="Hours"
-                    value={timeLimitHours}
-                    onChange={(e) => setTimeLimitHours(e.target.value.replace(/\D/g, ""))}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Incoming 2nd Year Comprehensive 2026"
                     required
                   />
-                  <span className="build-set-time-unit">hrs</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={59}
-                    inputMode="numeric"
-                    aria-label="Minutes"
-                    value={timeLimitMinutes}
-                    onChange={(e) => setTimeLimitMinutes(e.target.value.replace(/\D/g, ""))}
-                    required
-                  />
-                  <span className="build-set-time-unit">min</span>
+                </label>
+                <div className="build-set-details-pair">
+                  <label className="build-set-field build-set-field-year">
+                    <span className="build-set-field-label">Incoming year</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="2"
+                      value={yearLevel}
+                      onChange={(e) => updateYearLevel(sanitizeYearInput(e.target.value))}
+                      onBlur={commitYearLevel}
+                      disabled={isEditing}
+                      required
+                    />
+                  </label>
+                  <label className="build-set-field">
+                    <span className="build-set-field-label">Program course</span>
+                    <select
+                      value={setProgramCourse}
+                      onChange={(e) => setSetProgramCourse(e.target.value as ProgramCourseId)}
+                      disabled={isEditing || isSharedDiagnostic}
+                      required
+                    >
+                      {programCourseOptions.map((course) => (
+                        <option key={course.id} value={course.id}>
+                          {course.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="field-hint build-set-curriculum-hint">
+                    {isPreboard
+                      ? `Uses curriculum years 1–${preboardMaxCurriculumYear} subjects.`
+                      : `Uses curriculum year ${curriculumYear} subjects.`}
+                  </p>
                 </div>
+                <label className="build-set-field">
+                  <span className="build-set-field-label">Exam type</span>
+                  <select
+                    value={type}
+                    onChange={(e) => setType(e.target.value as QuestionSetExamType)}
+                    disabled={isEditing || isIncomingDiagnosticYear}
+                  >
+                    {isIncomingDiagnosticYear ? (
+                      <option value="DIAGNOSTIC">Diagnostic</option>
+                    ) : (
+                      <>
+                        <option value="COMPREHENSIVE">Comprehensive</option>
+                        <option value="RETAKE">Retake</option>
+                        {isPreboardYear ? <option value="PREBOARD">Preboard</option> : null}
+                      </>
+                    )}
+                  </select>
+                </label>
               </div>
-              <div className="build-set-meta-pass">
-                <span className="build-set-field-label">Passing rate</span>
-                <div className="build-set-pass-input">
+              <div className="build-set-details-exam">
+                <p className="build-set-details-exam-title">Exam settings</p>
+                <label className="build-set-field">
+                  <span className="build-set-field-label">Total items</span>
                   <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
+                    type="text"
                     inputMode="numeric"
-                    value={passThreshold}
-                    onChange={(e) => setPassThreshold(e.target.value.replace(/[^\d.]/g, ""))}
+                    placeholder="100"
+                    value={examTotalItems}
+                    onChange={(e) => setExamTotalItems(sanitizeCountInput(e.target.value))}
                     required
                   />
-                  <span className="build-set-pass-suffix">%</span>
+                </label>
+                <div className="build-set-field build-set-field-time">
+                  <span className="build-set-field-label">Time limit</span>
+                  <div className="build-set-time-inputs">
+                    <input
+                      type="number"
+                      min={0}
+                      max={8}
+                      inputMode="numeric"
+                      aria-label="Hours"
+                      value={timeLimitHours}
+                      onChange={(e) => setTimeLimitHours(e.target.value.replace(/\D/g, ""))}
+                      required
+                    />
+                    <span className="build-set-time-unit">hrs</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={59}
+                      inputMode="numeric"
+                      aria-label="Minutes"
+                      value={timeLimitMinutes}
+                      onChange={(e) => setTimeLimitMinutes(e.target.value.replace(/\D/g, ""))}
+                      required
+                    />
+                    <span className="build-set-time-unit">min</span>
+                  </div>
+                </div>
+                <div className="build-set-field build-set-field-pass">
+                  <span className="build-set-field-label">Passing rate</span>
+                  <div className="build-set-pass-input">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      inputMode="numeric"
+                      value={passThreshold}
+                      onChange={(e) => setPassThreshold(e.target.value.replace(/[^\d.]/g, ""))}
+                      required
+                    />
+                    <span className="build-set-pass-suffix">%</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1485,7 +1466,7 @@ export default function BuildQuestionSetModal({
               Subject totals stay fixed from the exam total. Use Edit to move items, difficulty
               counts, or remove topics within a subject. Reset restores all topics.
               {parsedTotalItems > 0
-                ? ` Default exam split is ${autoDifficultyTotals.easyCount}/${autoDifficultyTotals.mediumCount}/${autoDifficultyTotals.hardCount} (30/50/20) before overrides.`
+                ? ` Target exam split: ${autoDifficultyTotals.easyCount} easy / ${autoDifficultyTotals.mediumCount} medium / ${autoDifficultyTotals.hardCount} hard (30/50/20). Totals may shift if topic pools cannot supply a band.`
                 : null}
             </p>
           </div>

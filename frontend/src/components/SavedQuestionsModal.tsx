@@ -5,7 +5,6 @@ import {
   BLOOM_LEVEL_LABELS,
   bloomOptionsForDifficulty,
   defaultBloomLevelForDifficulty,
-  type BloomLevelId,
 } from "../lib/bloomLevel";
 import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
@@ -101,7 +100,8 @@ export default function SavedQuestionsModal({
   const [selectedTopicId, setSelectedTopicId] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<QuestionEditDraft | null>(null);
@@ -226,6 +226,60 @@ export default function SavedQuestionsModal({
     totalItems,
   } = usePagination(questions, { resetKey: questionsResetKey });
 
+  const selectedQuestions = useMemo(
+    () => questions.filter((question) => selectedIds.has(question.id)),
+    [questions, selectedIds]
+  );
+
+  const selectedCount = selectedQuestions.length;
+  const pageQuestionIds = useMemo(
+    () => paginatedQuestions.map((question) => question.id),
+    [paginatedQuestions]
+  );
+  const allPageSelected =
+    pageQuestionIds.length > 0 && pageQuestionIds.every((id) => selectedIds.has(id));
+  const somePageSelected =
+    !allPageSelected && pageQuestionIds.some((id) => selectedIds.has(id));
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    cancelEdit();
+  }, [questionsResetKey, cancelEdit]);
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelect(questionId: string, selected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (selected) next.add(questionId);
+      else next.delete(questionId);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(questionIds: string[], selected: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const questionId of questionIds) {
+        if (selected) next.add(questionId);
+        else next.delete(questionId);
+      }
+      return next;
+    });
+  }
+
+  function handleToolbarEdit() {
+    if (selectedQuestions.length !== 1) return;
+    startEdit(selectedQuestions[0]);
+  }
+
+  function handleQuestionRowClick(questionId: string, isSelected: boolean) {
+    if (editingId || bulkBusy) return;
+    toggleSelect(questionId, !isSelected);
+  }
+
   function startEdit(question: Question) {
     if (editDraft?.imagePreview?.startsWith("blob:")) {
       URL.revokeObjectURL(editDraft.imagePreview);
@@ -315,6 +369,7 @@ export default function SavedQuestionsModal({
 
       const message = toastUpdated("question", truncateLabel(question.text));
       cancelEdit();
+      clearSelection();
       onUpdated(message, false);
       await loadQuestions();
     } catch (err) {
@@ -325,29 +380,58 @@ export default function SavedQuestionsModal({
     }
   }
 
-  async function deleteQuestion(id: string, preview: string) {
+  async function deleteSelectedQuestions() {
+    if (selectedQuestions.length === 0) return;
+
+    const preview =
+      selectedQuestions.length === 1
+        ? `"${truncate(selectedQuestions[0].text, 120)}"`
+        : `${selectedQuestions.length} selected questions`;
+
     const confirmed = await confirm({
-      title: "Delete question?",
-      message: `Delete this question?\n\n"${truncate(preview, 120)}"\n\nThis cannot be undone.`,
+      title: selectedQuestions.length === 1 ? "Delete question?" : "Delete selected questions?",
+      message: `Delete ${preview}?\n\nThis cannot be undone.`,
       tone: "danger",
       confirmLabel: "Delete",
     });
     if (!confirmed) return;
 
-    setDeletingId(id);
-    if (editingId === id) cancelEdit();
+    setBulkBusy(true);
+    if (editingId && selectedIds.has(editingId)) cancelEdit();
 
-    try {
-      await api(`/questions/${id}`, { method: "DELETE" }, token);
-      const message = toastDeleted("question", truncateLabel(preview, 120));
-      onUpdated(message, false);
-      await loadQuestions();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to delete question";
-      onUpdated(message, true);
-    } finally {
-      setDeletingId(null);
+    let deleted = 0;
+    const failed: string[] = [];
+
+    for (const question of selectedQuestions) {
+      try {
+        await api(`/questions/${question.id}`, { method: "DELETE" }, token);
+        deleted += 1;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to delete question";
+        failed.push(message);
+      }
     }
+
+    if (deleted > 0) {
+      const message =
+        deleted === 1
+          ? toastDeleted("question", truncateLabel(selectedQuestions[0].text, 120))
+          : `Deleted ${deleted} question${deleted === 1 ? "" : "s"}.`;
+      onUpdated(message, false);
+      clearSelection();
+      await loadQuestions();
+    }
+
+    if (failed.length > 0) {
+      onUpdated(
+        failed.length === selectedQuestions.length
+          ? failed[0]
+          : `${failed.length} question(s) could not be deleted. ${failed[0]}`,
+        true
+      );
+    }
+
+    setBulkBusy(false);
   }
 
   const selectedSubject = courseSubjects.find((s) => s.id === selectedSubjectId);
@@ -576,6 +660,31 @@ export default function SavedQuestionsModal({
               </p>
             ) : (
               <>
+                <div className="saved-list-bulk-panel card">
+                  <span className="muted saved-list-selection-count">
+                    {selectedCount > 0
+                      ? `${selectedCount} selected`
+                      : `${questions.length} question${questions.length === 1 ? "" : "s"} shown`}
+                  </span>
+                  <div className="saved-list-bulk-actions">
+                    <button
+                      type="button"
+                      className="btn secondary btn-sm"
+                      disabled={selectedCount !== 1 || bulkBusy || Boolean(editingId)}
+                      onClick={handleToolbarEdit}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn danger btn-sm"
+                      disabled={selectedCount === 0 || bulkBusy || Boolean(editingId)}
+                      onClick={() => deleteSelectedQuestions().catch(() => {})}
+                    >
+                      {bulkBusy ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                </div>
                 <ListPanel
                   rowHeight="tall"
                   footer={
@@ -593,61 +702,74 @@ export default function SavedQuestionsModal({
                 <table>
                   <thead>
                     <tr>
+                      <th className="saved-list-select-cell">
+                        <input
+                          type="checkbox"
+                          checked={allPageSelected}
+                          ref={(input) => {
+                            if (input) input.indeterminate = somePageSelected;
+                          }}
+                          onChange={(e) => toggleSelectAll(pageQuestionIds, e.target.checked)}
+                          disabled={Boolean(editingId) || bulkBusy}
+                          aria-label="Select all on this page"
+                        />
+                      </th>
                       <th>Difficulty</th>
                       <th>Topic</th>
                       <th className="saved-questions-text-col">Question</th>
                       <th>Answer</th>
-                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedQuestions.map((question) => (
+                    {paginatedQuestions.map((question) => {
+                      const isSelected = selectedIds.has(question.id);
+
+                      return (
                       <tr
                         key={question.id}
-                        className={editingId === question.id ? "saved-questions-row-active" : undefined}
+                        className={[
+                          isSelected ? "saved-list-selected-row" : undefined,
+                          editingId === question.id ? "saved-questions-row-active" : undefined,
+                          !editingId && !bulkBusy ? "saved-list-clickable-row" : undefined,
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || undefined}
+                        onClick={() => handleQuestionRowClick(question.id, isSelected)}
                       >
+                        <td
+                          className="saved-list-select-cell"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => toggleSelect(question.id, e.target.checked)}
+                            disabled={Boolean(editingId) || bulkBusy}
+                            aria-label={`Select question ${truncate(question.text, 48)}`}
+                          />
+                        </td>
                         <td>
                           <span
                             className={`difficulty-badge ${question.difficulty.toLowerCase()}`}
                           >
                             {formatDifficulty(question.difficulty)}
                           </span>
-                          <span className="muted saved-questions-bloom-tag">
-                            {BLOOM_LEVEL_LABELS[question.bloomLevel as BloomLevelId] ??
-                              question.bloomLevel}
-                          </span>
                         </td>
                         <td className="saved-questions-topic-col">
                           {question.topic?.name ?? "—"}
                         </td>
                         <td className="saved-questions-text-col">
-                          <span className="saved-questions-preview">{truncate(question.text)}</span>
+                          <span className="saved-questions-preview" title={question.text}>
+                            {question.text}
+                          </span>
                           {question.imagePath && (
                             <span className="saved-questions-image-tag">Image</span>
                           )}
                         </td>
                         <td className="saved-questions-answer-col">{question.correctOption}</td>
-                        <td>
-                          <div className="action-buttons">
-                            <button
-                              type="button"
-                              className="btn secondary btn-sm"
-                              onClick={() => startEdit(question)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn danger btn-sm"
-                              disabled={deletingId === question.id}
-                              onClick={() => deleteQuestion(question.id, question.text)}
-                            >
-                              {deletingId === question.id ? "Deleting..." : "Delete"}
-                            </button>
-                          </div>
-                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -676,7 +798,6 @@ export default function SavedQuestionsModal({
               <div className="modal-header">
                 <div>
                   <h2 id="saved-question-edit-title">Edit question</h2>
-                  <p className="muted section-desc">{truncate(editingQuestion.text, 120)}</p>
                 </div>
                 <button type="button" className="btn secondary" onClick={requestCloseEdit}>
                   Close

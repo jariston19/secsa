@@ -473,7 +473,7 @@ export default function SavedTopicsModal({
                       disabled={selectedCount === 0 || bulkBusy}
                       onClick={() => deleteSelectedTopics().catch(() => {})}
                     >
-                      {bulkBusy ? "Deleting..." : "Delete selected"}
+                      {bulkBusy ? "Deleting..." : "Delete"}
                     </button>
                     <button
                       type="button"
@@ -481,7 +481,7 @@ export default function SavedTopicsModal({
                       disabled={filteredTopics.length === 0 || bulkBusy}
                       onClick={requestDeleteAllForSubject}
                     >
-                      Delete all shown
+                      Delete all
                     </button>
                   </>
                 )}

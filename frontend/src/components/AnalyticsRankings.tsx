@@ -65,6 +65,14 @@ function formatAttemptType(type: string) {
   return type === "RETAKE" ? "Retake" : "First";
 }
 
+function matchesRankingSearch(row: RankingRow, query: string) {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return true;
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  const haystack = `${row.firstName} ${row.lastName} ${row.name}`.toLowerCase();
+  return tokens.every((token) => haystack.includes(token));
+}
+
 export default function AnalyticsRankings({ token, onViewStudent }: Props) {
   const programCourseOptions = useProgramCourseOptions();
   const { appendExamYear, seasonLabel } = useAnalyticsSeason();
@@ -72,6 +80,7 @@ export default function AnalyticsRankings({ token, onViewStudent }: Props) {
   const [courseFilter, setCourseFilter] = useState<ProgramCourseFilter>("ALL");
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
   const [viewLimit, setViewLimit] = useState<ViewLimit>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [data, setData] = useState<RankingsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -108,7 +117,13 @@ export default function AnalyticsRankings({ token, onViewStudent }: Props) {
   }, [token, query]);
 
   const rankings = data?.rankings ?? [];
-  const visibleRankings = viewLimit === "top10" ? rankings.slice(0, 10) : rankings;
+  const filteredRankings = useMemo(
+    () => rankings.filter((row) => matchesRankingSearch(row, searchQuery)),
+    [rankings, searchQuery]
+  );
+  const visibleRankings =
+    viewLimit === "top10" ? filteredRankings.slice(0, 10) : filteredRankings;
+  const searchTrimmed = searchQuery.trim();
 
   const filterSubtitle = [
     examType === "comprehensive" ? "Comprehensive" : "Diagnostic",
@@ -186,14 +201,24 @@ export default function AnalyticsRankings({ token, onViewStudent }: Props) {
                 ))}
               </select>
             </label>
-            <div className="analytics-reports-filter-field analytics-rankings-limit-field">
-              <span>Show</span>
+            <label className="analytics-reports-filter-field analytics-rankings-limit-field">
+              Show
               <SegmentedControl
                 segments={[...VIEW_LIMIT_SEGMENTS]}
                 value={viewLimit}
                 onChange={(value) => setViewLimit(value as ViewLimit)}
               />
-            </div>
+            </label>
+            <label className="analytics-reports-filter-field analytics-rankings-search">
+              Search
+              <input
+                type="search"
+                placeholder="Student name…"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                autoComplete="off"
+              />
+            </label>
           </div>
         </div>
 
@@ -213,6 +238,10 @@ export default function AnalyticsRankings({ token, onViewStudent }: Props) {
 
         {!data || data.studentsRanked === 0 ? (
           <p className="muted analytics-rankings-empty">No {examType} exam scores yet for this filter.</p>
+        ) : filteredRankings.length === 0 ? (
+          <p className="muted analytics-rankings-empty">
+            No students match{searchTrimmed ? ` "${searchTrimmed}"` : " your search"}.
+          </p>
         ) : (
           <div className="analytics-rankings-body">
           <ListPanel
@@ -220,9 +249,9 @@ export default function AnalyticsRankings({ token, onViewStudent }: Props) {
             footer={
               visibleRankings.length > 0 ? (
                 <p className="muted analytics-rankings-footer-summary">
-                  {viewLimit === "top10" && rankings.length > visibleRankings.length
-                    ? `Showing top ${visibleRankings.length} of ${rankings.length} ranked students.`
-                    : `${visibleRankings.length} ranked student${visibleRankings.length === 1 ? "" : "s"}.`}
+                  {viewLimit === "top10" && filteredRankings.length > visibleRankings.length
+                    ? `Showing top ${visibleRankings.length} of ${filteredRankings.length} ranked student${filteredRankings.length === 1 ? "" : "s"}${searchTrimmed ? ` matching "${searchTrimmed}"` : ""}.`
+                    : `${visibleRankings.length} ranked student${visibleRankings.length === 1 ? "" : "s"}${searchTrimmed ? ` matching "${searchTrimmed}"` : ""}${searchTrimmed && filteredRankings.length < rankings.length ? ` (${rankings.length} total)` : ""}.`}
                 </p>
               ) : null
             }

@@ -471,7 +471,7 @@ export default function SavedSubjectsModal({
                         disabled={selectedCount === 0 || bulkBusy}
                         onClick={() => deleteSelectedSubjects().catch(() => {})}
                       >
-                        {bulkBusy ? "Deleting..." : "Delete selected"}
+                        {bulkBusy ? "Deleting..." : "Delete"}
                       </button>
                       <button
                         type="button"
@@ -479,7 +479,7 @@ export default function SavedSubjectsModal({
                         disabled={filteredSubjects.length === 0 || bulkBusy}
                         onClick={requestDeleteAllFiltered}
                       >
-                        Delete all filtered
+                        Delete all
                       </button>
                     </>
                   )}

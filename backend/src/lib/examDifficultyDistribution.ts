@@ -241,7 +241,126 @@ function subjectPoolTotals(pools: TopicDifficultyPool[]) {
   );
 }
 
-/** Apply 30/50/20 per subject, rebalance across topics using real pool caps. */
+function expandRowsForBandTargets<
+  T extends { itemCount: number; sortKey?: string; key?: string },
+>(
+  rows: T[],
+  bandTargets: ExamDifficultyCounts,
+  pools: TopicDifficultyPool | TopicDifficultyPool[]
+): Array<T & ExamDifficultyCounts> {
+  if (rows.length === 0) return [];
+
+  const itemCounts = rows.map((row) => row.itemCount);
+  const sortKeys = rows.map((row, index) => row.sortKey ?? String(index));
+  const perRowPools = Array.isArray(pools);
+  const poolList = perRowPools ? pools : rows.map(() => pools);
+
+  const subjectTotal = itemCounts.reduce((sum, count) => sum + count, 0);
+  if (subjectTotal <= 0) {
+    return rows.map((row) => ({
+      ...row,
+      easyCount: 0,
+      mediumCount: 0,
+      hardCount: 0,
+    }));
+  }
+
+  const hardCaps = perRowPools
+    ? itemCounts.map((count, index) => Math.min(count, poolList[index]?.hard ?? 0))
+    : itemCounts;
+  const maxHard = perRowPools
+    ? hardCaps.reduce((sum, count) => sum + count, 0)
+    : Math.min(pools.hard, subjectTotal);
+  const hardTarget = Math.min(bandTargets.hardCount, maxHard, subjectTotal);
+  const hardCounts = distributeDifficultyBucket(hardCaps, hardTarget, sortKeys);
+  const hardShortfall = bandTargets.hardCount - hardCounts.reduce((sum, count) => sum + count, 0);
+
+  const remainingAfterHard = itemCounts.map((count, index) => count - hardCounts[index]);
+  const remainingTotal = remainingAfterHard.reduce((sum, count) => sum + count, 0);
+  const mediumCaps = perRowPools
+    ? remainingAfterHard.map((count, index) => Math.min(count, poolList[index]?.medium ?? 0))
+    : remainingAfterHard;
+  const maxMedium = perRowPools
+    ? mediumCaps.reduce((sum, count) => sum + count, 0)
+    : Math.min(pools.medium, remainingTotal);
+  const mediumTarget = Math.min(bandTargets.mediumCount + hardShortfall, maxMedium, remainingTotal);
+  const mediumCounts = distributeDifficultyBucket(mediumCaps, mediumTarget, sortKeys);
+
+  return rows.map((row, index) => {
+    const hardCount = hardCounts[index] ?? 0;
+    const mediumCount = mediumCounts[index] ?? 0;
+    return {
+      ...row,
+      hardCount,
+      mediumCount,
+      easyCount: itemCounts[index] - hardCount - mediumCount,
+    };
+  });
+}
+
+export type ExamSubjectDifficultyInput = {
+  subjectId: string;
+  sortKey?: string;
+  itemCount: number;
+  pool: TopicDifficultyPool;
+  topics: Array<{ key: string; itemCount: number; sortKey?: string }>;
+};
+
+/** Apply 30/50/20 to the exam total, apportion by subject, then split across topics. */
+export function expandExamDifficultyAllocations(subjects: ExamSubjectDifficultyInput[]) {
+  const result = new Map<
+    string,
+    ExamDifficultyCounts & { subjectShortfall: SubjectDifficultyShortfall }
+  >();
+
+  const examTotal = subjects.reduce((sum, subject) => sum + subject.itemCount, 0);
+  if (examTotal <= 0) return result;
+
+  const examTargets = difficultyCountsForTotal(examTotal);
+  const subjectPools = subjects.map((subject) => subject.pool);
+
+  const subjectBandRows = expandRowsForBandTargets(
+    subjects.map((subject) => ({
+      itemCount: subject.itemCount,
+      sortKey: subject.sortKey ?? subject.subjectId,
+    })),
+    examTargets,
+    subjectPools
+  );
+
+  subjects.forEach((subject, index) => {
+    const bandTargets = subjectBandRows[index] ?? {
+      easyCount: 0,
+      mediumCount: 0,
+      hardCount: 0,
+    };
+    const subjectShortfall: SubjectDifficultyShortfall = {
+      easy: Math.max(0, bandTargets.easyCount - subject.pool.easy),
+      medium: Math.max(0, bandTargets.mediumCount - subject.pool.medium),
+      hard: Math.max(0, bandTargets.hardCount - subject.pool.hard),
+    };
+
+    const topicRows = expandRowsForBandTargets(
+      subject.topics.filter((topic) => topic.itemCount > 0),
+      bandTargets,
+      subject.pool
+    );
+
+    for (const row of topicRows) {
+      if (!row.key) continue;
+      result.set(row.key, {
+        easyCount: row.easyCount,
+        mediumCount: row.mediumCount,
+        hardCount: row.hardCount,
+        subjectShortfall,
+      });
+    }
+  });
+
+  return result;
+}
+
+/** Apply 30/50/20 to the config total, rebalance across rows using real pool caps. */
 export function expandTopicConfigsWithPoolAwareDifficulty<
   T extends { itemCount: number; sortKey?: string; pool: TopicDifficultyPool },
 >(configs: T[]): Array<T & ExamDifficultyCounts & { subjectShortfall: SubjectDifficultyShortfall }> {
@@ -267,17 +386,20 @@ export function expandTopicConfigsWithPoolAwareDifficulty<
     hard: Math.max(0, targets.hardCount - poolTotals.hard),
   };
 
-  const ideal = expandTopicConfigsWithSubjectDifficulty(
-    configs.map((config) => ({ itemCount: config.itemCount, sortKey: config.sortKey }))
+  const topicRows = expandRowsForBandTargets(
+    configs.map((config, index) => ({
+      itemCount: config.itemCount,
+      sortKey: config.sortKey ?? String(index),
+    })),
+    targets,
+    poolTotals
   );
-  const sortKeys = configs.map((config, index) => config.sortKey ?? String(index));
-  const rebalanced = rebalanceRowsForPools(ideal, pools, sortKeys);
 
   return configs.map((config, index) => ({
     ...config,
-    easyCount: rebalanced[index]?.easyCount ?? 0,
-    mediumCount: rebalanced[index]?.mediumCount ?? 0,
-    hardCount: rebalanced[index]?.hardCount ?? 0,
+    easyCount: topicRows[index]?.easyCount ?? 0,
+    mediumCount: topicRows[index]?.mediumCount ?? 0,
+    hardCount: topicRows[index]?.hardCount ?? 0,
     subjectShortfall,
   }));
 }
