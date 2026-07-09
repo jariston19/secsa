@@ -676,36 +676,41 @@ export default function IndividualStudentAnalytics({
                       <th>Course</th>
                       <th>Year</th>
                       <th>Email</th>
-                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {studentTablePagination.paginatedItems.map((student) => (
-                      <tr key={student.id}>
+                    {studentTablePagination.paginatedItems.map((student) => {
+                      const studentName = formatFullName(student.firstName, student.lastName);
+                      return (
+                      <tr
+                        key={student.id}
+                        className="individual-student-table-row-clickable"
+                        tabIndex={0}
+                        title={`View ${studentName}`}
+                        onClick={() => selectStudent(student, results)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            selectStudent(student, results);
+                          }
+                        }}
+                      >
                         <td>
-                          <strong>{formatFullName(student.firstName, student.lastName)}</strong>
+                          <strong>{studentName}</strong>
                         </td>
                         <td>{formatProgramCourse(student.programCourse) ?? "—"}</td>
                         <td>{student.yearLevel ?? "—"}</td>
                         <td>{student.email}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn secondary btn-sm"
-                            onClick={() => selectStudent(student, results)}
-                          >
-                            View
-                          </button>
-                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {Array.from({ length: studentTablePlaceholderCount }, (_, index) => (
                       <tr
                         key={`student-row-placeholder-${index}`}
                         className="individual-student-table-row-placeholder"
                         aria-hidden="true"
                       >
-                        <td colSpan={5} />
+                        <td colSpan={4} />
                       </tr>
                     ))}
                   </tbody>

@@ -10769,10 +10769,14 @@ td:has(.action-buttons) {
   font-size: 0.6875rem;
 }
 
-.individual-student-table-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+.individual-student-table tbody tr.individual-student-table-row-clickable {
+  cursor: pointer;
+}
+
+.individual-student-table tbody tr.individual-student-table-row-clickable:hover,
+.individual-student-table tbody tr.individual-student-table-row-clickable:focus-visible {
+  background: color-mix(in srgb, var(--ios-blue) 8%, transparent);
+  outline: none;
 }
 
 .individual-student-search {
