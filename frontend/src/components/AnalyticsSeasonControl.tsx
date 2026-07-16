@@ -1,7 +1,7 @@
 import { useAnalyticsSeason } from "../lib/analyticsSeason";
 
 interface Props {
-  variant?: "overview" | "bar";
+  variant?: "overview" | "bar" | "compact";
 }
 
 export default function AnalyticsSeasonControl({ variant = "bar" }: Props) {
@@ -9,6 +9,30 @@ export default function AnalyticsSeasonControl({ variant = "bar" }: Props) {
     useAnalyticsSeason();
 
   const isOverview = variant === "overview";
+  const isCompact = variant === "compact";
+
+  if (isCompact) {
+    return (
+      <label className="analytics-season-field analytics-season-field-compact">
+        Exam year
+        <select
+          value={examYear === "ALL" ? "ALL" : String(examYear)}
+          disabled={loadingYears}
+          onChange={(event) => {
+            const value = event.target.value;
+            setExamYear(value === "ALL" ? "ALL" : Number(value));
+          }}
+        >
+          <option value="ALL">All years</option>
+          {availableYears.map((year) => (
+            <option key={year} value={String(year)}>
+              {year}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
 
   return (
     <div

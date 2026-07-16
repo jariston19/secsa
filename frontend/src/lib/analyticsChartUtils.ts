@@ -33,6 +33,36 @@ export function scoreDonutVariant(score: number): "default" | "risk" {
   return score >= PASS_THRESHOLD ? "default" : "risk";
 }
 
+export const SCORE_DISTRIBUTION_BUCKET_LABELS = [
+  "0–9%",
+  "10–19%",
+  "20–29%",
+  "30–39%",
+  "40–49%",
+  "50–59%",
+  "60–69%",
+  "70–79%",
+  "80–89%",
+  "90–100%",
+] as const;
+
+export function emptyScoreDistributionBuckets() {
+  return SCORE_DISTRIBUTION_BUCKET_LABELS.map((label) => ({ label, students: 0 }));
+}
+
+export function normalizeScoreDistribution(
+  buckets: Array<{ label: string; students: number }> | undefined
+) {
+  if (!buckets || buckets.length === 0) return emptyScoreDistributionBuckets();
+  return buckets;
+}
+
+export function scoreDistributionTotal(
+  buckets: Array<{ label: string; students: number }>
+) {
+  return buckets.reduce((sum, bucket) => sum + bucket.students, 0);
+}
+
 export function toneClass(tone: ScoreTone) {
   return `chart-tone-${tone}`;
 }

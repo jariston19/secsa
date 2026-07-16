@@ -16,9 +16,17 @@ import {
 } from "../services/individualStudentAnalytics.js";
 import { buildAnalyticsReports } from "../services/analyticsReports.js";
 import { buildOverviewDashboard } from "../services/overviewDashboard.js";
+import {
+  buildExamResultsRoster,
+  type ExamResultsCategory,
+} from "../services/examResultsRoster.js";
 import { buildCohortTrends } from "../services/cohortTrends.js";
 import { buildDemographicAnalytics, buildRetentionAnalytics } from "../services/demographicAnalytics.js";
 import { buildAnalyticsRankings, type RankingsExamType } from "../services/analyticsRankings.js";
+import {
+  buildExamStatusRoster,
+  type ExamStatusCategory,
+} from "../services/examStatusRoster.js";
 import { listAvailableExamYears, parseExamYearQuery } from "../lib/analyticsSeason.js";
 
 export async function analyticsRoutes(app: FastifyInstance) {
@@ -48,6 +56,32 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const yearLevel = parseYearLevelQuery(query.yearLevel);
     const programCourse = await parseProgramCourseQuery(query.programCourse);
     return buildOverviewDashboard(yearLevel, programCourse, parseExamYear(query.examYear));
+  });
+
+  app.get("/exam-results", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
+
+    const query = request.query as {
+      category?: string;
+      yearLevel?: string;
+      programCourse?: string;
+      examYear?: string;
+    };
+
+    const categoryRaw = (query.category ?? "passed").trim().toLowerCase();
+    if (categoryRaw !== "passed" && categoryRaw !== "failed_after_retake") {
+      return reply.code(400).send({
+        error: "category must be passed or failed_after_retake.",
+      });
+    }
+
+    return buildExamResultsRoster({
+      category: categoryRaw as ExamResultsCategory,
+      yearLevel: parseYearLevelQuery(query.yearLevel),
+      programCourse: await parseProgramCourseQuery(query.programCourse),
+      examYear: parseExamYear(query.examYear),
+    });
   });
 
   app.get("/trends", async (request) => {
@@ -116,14 +150,44 @@ export async function analyticsRoutes(app: FastifyInstance) {
     };
 
     const examTypeRaw = (query.examType ?? "comprehensive").trim().toLowerCase();
-    if (examTypeRaw !== "diagnostic" && examTypeRaw !== "comprehensive") {
+    if (
+      examTypeRaw !== "diagnostic" &&
+      examTypeRaw !== "comprehensive" &&
+      examTypeRaw !== "retake"
+    ) {
       return reply.code(400).send({
-        error: "examType must be diagnostic or comprehensive.",
+        error: "examType must be diagnostic, comprehensive, or retake.",
       });
     }
 
     return buildAnalyticsRankings({
       examType: examTypeRaw as RankingsExamType,
+      yearLevel: parseYearLevelQuery(query.yearLevel),
+      programCourse: await parseProgramCourseQuery(query.programCourse),
+      examYear: parseExamYear(query.examYear),
+    });
+  });
+
+  app.get("/exam-status", async (request, reply) => {
+    const user = getUser(request);
+    requireRoles(user, [Role.SUPERADMIN, Role.TEACHER]);
+
+    const query = request.query as {
+      category?: string;
+      yearLevel?: string;
+      programCourse?: string;
+      examYear?: string;
+    };
+
+    const categoryRaw = (query.category ?? "first_not_taken").trim().toLowerCase();
+    if (categoryRaw !== "first_not_taken" && categoryRaw !== "retake_pending") {
+      return reply.code(400).send({
+        error: "category must be first_not_taken or retake_pending.",
+      });
+    }
+
+    return buildExamStatusRoster({
+      category: categoryRaw as ExamStatusCategory,
       yearLevel: parseYearLevelQuery(query.yearLevel),
       programCourse: await parseProgramCourseQuery(query.programCourse),
       examYear: parseExamYear(query.examYear),

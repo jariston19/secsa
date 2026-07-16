@@ -6,6 +6,9 @@ import ModalPagination from "../components/ModalPagination";
 import QuestionEncoder from "../components/QuestionEncoder";
 import QuestionSetPreviewModal from "../components/QuestionSetPreviewModal";
 import RetakeApprovalsModal from "../components/RetakeApprovalsModal";
+import AnalyticsExamStatus from "../components/AnalyticsExamStatus";
+import AnalyticsExamResults from "../components/AnalyticsExamResults";
+import { AnalyticsSeasonProvider } from "../lib/analyticsSeason";
 import SavedQuestionsModal from "../components/SavedQuestionsModal";
 import SavedSubjectsModal from "../components/SavedSubjectsModal";
 import SavedTopicsModal from "../components/SavedTopicsModal";
@@ -57,7 +60,9 @@ type Tab =
   | "saved-subjects"
   | "saved-topics"
   | "saved-questions"
-  | "retake-approvals";
+  | "retake-approvals"
+  | "exam-roster"
+  | "exam-results";
 
 type SetStatusFilter = "ALL" | "DRAFT" | "DEPLOYED";
 type SetTypeFilter = "ALL" | QuestionSetExamType;
@@ -238,6 +243,8 @@ export default function TeacherDashboard() {
 
   const trailingSegments = useMemo(
     () => [
+      { id: "exam-roster", label: "Exam Status" },
+      { id: "exam-results", label: "Exam Results" },
       {
         id: "retake-approvals",
         label: "Approvals",
@@ -1055,6 +1062,18 @@ export default function TeacherDashboard() {
 
       {activeTab === "retake-approvals" && (
         <RetakeApprovalsModal inline token={token} onUpdated={handleSavedUpdated} />
+      )}
+
+      {activeTab === "exam-roster" && (
+        <AnalyticsSeasonProvider token={token}>
+          <AnalyticsExamStatus token={token} />
+        </AnalyticsSeasonProvider>
+      )}
+
+      {activeTab === "exam-results" && (
+        <AnalyticsSeasonProvider token={token}>
+          <AnalyticsExamResults token={token} />
+        </AnalyticsSeasonProvider>
       )}
       </TabPanel>
       </div>

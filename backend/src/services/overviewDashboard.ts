@@ -129,13 +129,6 @@ export async function buildOverviewDashboard(
     }
   }
 
-  const latestComprehensiveByStudent = new Map<string, (typeof submittedAttempts)[number]>();
-  for (const attempt of comprehensiveAttempts) {
-    if (!latestComprehensiveByStudent.has(attempt.studentId)) {
-      latestComprehensiveByStudent.set(attempt.studentId, attempt);
-    }
-  }
-
   const latestDiagnosticByStudent = new Map<string, (typeof submittedAttempts)[number]>();
   for (const attempt of diagnosticAttempts) {
     if (!latestDiagnosticByStudent.has(attempt.studentId)) {
@@ -143,8 +136,18 @@ export async function buildOverviewDashboard(
     }
   }
 
+  const comprehensiveFirstTakerAttempts = comprehensiveAttempts.filter(
+    (attempt) => attempt.attemptType === AttemptType.FIRST
+  );
+  const comprehensiveRetakeAttempts = comprehensiveAttempts.filter(
+    (attempt) => attempt.attemptType === AttemptType.RETAKE
+  );
+
   const comprehensiveScoreDistribution = countStudentsInScoreBuckets(
-    [...latestComprehensiveByStudent.values()].map((attempt) => attempt.percentage ?? 0)
+    comprehensiveFirstTakerAttempts.map((attempt) => attempt.percentage ?? 0)
+  );
+  const comprehensiveRetakeScoreDistribution = countStudentsInScoreBuckets(
+    comprehensiveRetakeAttempts.map((attempt) => attempt.percentage ?? 0)
   );
   const diagnosticScoreDistribution = countStudentsInScoreBuckets(
     [...latestDiagnosticByStudent.values()].map((attempt) => attempt.percentage ?? 0)
@@ -270,12 +273,6 @@ export async function buildOverviewDashboard(
   const retakeAttempts = submittedAttempts.filter(
     (attempt) => attempt.attemptType === AttemptType.RETAKE
   );
-  const comprehensiveFirstTakerAttempts = comprehensiveAttempts.filter(
-    (attempt) => attempt.attemptType === AttemptType.FIRST
-  );
-  const comprehensiveRetakeAttempts = comprehensiveAttempts.filter(
-    (attempt) => attempt.attemptType === AttemptType.RETAKE
-  );
   const diagnosticFirstTakerAttempts = diagnosticAttempts.filter(
     (attempt) => attempt.attemptType === AttemptType.FIRST
   );
@@ -306,6 +303,7 @@ export async function buildOverviewDashboard(
           comprehensiveMonthPrevious,
           comprehensiveScoreDistribution
         ),
+        retakeScoreDistribution: comprehensiveRetakeScoreDistribution,
         cohorts: {
           firstTakers: cohortPassStats(comprehensiveFirstTakerAttempts),
           retakers: cohortPassStats(comprehensiveRetakeAttempts),

@@ -10,9 +10,14 @@ import {
   type ProgramCourseFilter,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
+import {
+  normalizeScoreDistribution,
+  scoreDistributionTotal,
+} from "../lib/analyticsChartUtils";
 import { api } from "../lib/api";
 import { useAnalyticsSeason } from "../lib/analyticsSeason";
 import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
+import type { ExamStatusNavigationRequest } from "./AnalyticsExamStatus";
 
 export interface OverviewCohortPassStats {
   count: number;
@@ -32,6 +37,7 @@ export interface OverviewExamTypeHealth {
     month: { current: number; previous: number; delta: number; exams: number };
   };
   scoreDistribution: Array<{ label: string; students: number }>;
+  retakeScoreDistribution?: Array<{ label: string; students: number }>;
   cohorts?: {
     firstTakers: OverviewCohortPassStats;
     retakers: OverviewCohortPassStats;
@@ -77,6 +83,7 @@ const OVERVIEW_CHART_ORDER = [
   "pass-rate-comprehensive",
   "pass-rate-diagnostic",
   "score-distribution-comprehensive",
+  "score-distribution-retake",
   "score-distribution-diagnostic",
   "retake-success",
   "at-risk",
@@ -102,6 +109,7 @@ function formatRelativeTime(iso: string | null) {
 
 interface Props {
   token: string | null;
+  onOpenExamStatus?: (request: ExamStatusNavigationRequest) => void;
 }
 
 function DiagnosticPassRateCard({ health }: { health: OverviewExamTypeHealth }) {
@@ -225,12 +233,17 @@ function ScoreDistributionCard({
   description,
   health,
   className,
+  emptyMessage,
 }: {
   title: string;
   description: string;
-  health: OverviewExamTypeHealth;
+  health: { scoreDistribution?: Array<{ label: string; students: number }> };
   className: string;
+  emptyMessage?: string;
 }) {
+  const buckets = normalizeScoreDistribution(health.scoreDistribution);
+  const totalStudents = scoreDistributionTotal(buckets);
+
   return (
     <article className={`overview-hero-card ${className}`}>
       <div className="overview-hero-card-top">
@@ -239,17 +252,30 @@ function ScoreDistributionCard({
           <p className="muted">{description}</p>
         </div>
       </div>
-      <VerticalHistogram
-        buckets={health.scoreDistribution.map((bucket) => ({
-          label: bucket.label.replace("–", "-"),
-          value: bucket.students,
-        }))}
-      />
+      {totalStudents === 0 && emptyMessage ? (
+        <p className="muted overview-distribution-empty">{emptyMessage}</p>
+      ) : (
+        <VerticalHistogram
+          buckets={buckets.map((bucket) => ({
+            label: bucket.label.replace("–", "-"),
+            value: bucket.students,
+          }))}
+        />
+      )}
     </article>
   );
 }
 
-function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): ReactNode {
+function renderOverviewChart(
+  id: OverviewChartId,
+  data: OverviewDashboardData,
+  context: {
+    onOpenExamStatus?: (request: ExamStatusNavigationRequest) => void;
+    courseFilter: ProgramCourseFilter;
+    yearFilter: YearLevelFilter;
+  }
+): ReactNode {
+  const { onOpenExamStatus, courseFilter, yearFilter } = context;
   const maxYearPass = Math.max(...data.passRateByYear.map((row) => row.passRate), 1);
 
   switch (id) {
@@ -263,9 +289,21 @@ function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): 
       return (
         <ScoreDistributionCard
           title="Score Distribution — Comprehensive"
-          description="Latest comprehensive or retake attempt per student"
+          description="First-time comprehensive attempts only"
           health={data.performanceHealth.comprehensive}
           className="overview-hero-distribution"
+        />
+      );
+    case "score-distribution-retake":
+      return (
+        <ScoreDistributionCard
+          title="Score Distribution — Retake"
+          description="Retake exam attempts on the comprehensive pool"
+          health={{
+            scoreDistribution: data.performanceHealth.comprehensive.retakeScoreDistribution,
+          }}
+          emptyMessage="No retake attempts yet for this filter."
+          className="overview-hero-distribution overview-hero-distribution-retake"
         />
       );
     case "score-distribution-diagnostic":
@@ -322,9 +360,25 @@ function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): 
           </div>
           <div className="overview-activity-grid overview-at-risk-grid">
             <article className="overview-activity-tile overview-activity-tile-risk">
-              <span className="overview-activity-value overview-activity-alert">
-                {data.atRisk.failedNotRetaken}
-              </span>
+              {data.atRisk.failedNotRetaken > 0 && onOpenExamStatus ? (
+                <button
+                  type="button"
+                  className="overview-activity-value overview-activity-alert analytics-exam-status-link"
+                  onClick={() =>
+                    onOpenExamStatus({
+                      category: "retake_pending",
+                      courseFilter,
+                      yearFilter,
+                    })
+                  }
+                >
+                  {data.atRisk.failedNotRetaken}
+                </button>
+              ) : (
+                <span className="overview-activity-value overview-activity-alert">
+                  {data.atRisk.failedNotRetaken}
+                </span>
+              )}
               <span className="overview-activity-label">Failed, not retaken</span>
               <span className="muted overview-activity-compare">Haven&apos;t retaken yet</span>
             </article>
@@ -417,7 +471,7 @@ function renderOverviewChart(id: OverviewChartId, data: OverviewDashboardData): 
   }
 }
 
-export default function AnalyticsOverview({ token }: Props) {
+export default function AnalyticsOverview({ token, onOpenExamStatus }: Props) {
   const programCourseOptions = useProgramCourseOptions();
   const { appendExamYear, seasonLabel } = useAnalyticsSeason();
   const [yearFilter, setYearFilter] = useState<YearLevelFilter>("ALL");
@@ -428,7 +482,7 @@ export default function AnalyticsOverview({ token }: Props) {
   const [error, setError] = useState("");
   const hasLoadedRef = useRef(false);
   const [chartOrder, setChartOrder] = useChartOrder(
-    "analytics-overview-chart-order-v2",
+    "analytics-overview-chart-order-v3",
     OVERVIEW_CHART_ORDER
   );
 
@@ -537,7 +591,13 @@ export default function AnalyticsOverview({ token }: Props) {
           onOrderChange={setChartOrder}
           slotLayout={OVERVIEW_CHART_LAYOUT}
         >
-          {(id) => renderOverviewChart(id as OverviewChartId, data)}
+          {(id) =>
+            renderOverviewChart(id as OverviewChartId, data, {
+              onOpenExamStatus,
+              courseFilter,
+              yearFilter,
+            })
+          }
         </SwappableChartGrid>
       </div>
     </AnalyticsPrintArea>

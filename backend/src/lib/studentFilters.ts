@@ -5,6 +5,7 @@ export function nonQaStudentWhere(yearLevel?: number, programCourse?: string) {
   return {
     role: Role.STUDENT,
     qaUnlimited: false,
+    isActive: true,
     ...(Number.isFinite(yearLevel) ? { yearLevel } : {}),
     ...(programCourse ? { programCourse } : {}),
   };

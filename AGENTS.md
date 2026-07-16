@@ -26,4 +26,4 @@
 - Only one deployed question set per type per year + program course at a time.
 - Analytics uses three lenses: Group/Year, Per Student, Per Question; primary UI is superadmin AdminDashboard → Analytics.
 - Question authoring guidelines and analytics chart mapping live in `docs/question-guidelines-and-analytics-outline.md`.
-- Default dev: `npm run dev` from repo root; demo logins include `admin@secsa.local` and `teacher@secsa.local` (password `password123`).
+- Default dev: `npm run dev` from repo root (frontend **5174**, backend **3002**; Docker uses 5173/3001); demo logins include `admin@secsa.local` and `teacher@secsa.local` (password `password123`).

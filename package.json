@@ -5,7 +5,7 @@
   "description": "MCQ diagnostic exam platform by Josiah P. Ariston",
   "author": "Josiah P. Ariston",
   "scripts": {
-    "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
+    "dev": "concurrently -n backend,frontend -c blue,green \"node scripts/dev-backend.cjs\" \"npm run dev --workspace=frontend\"",
     "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
     "db:migrate": "npm run db:migrate --workspace=backend",
     "db:seed": "npm run db:seed --workspace=backend",
@@ -16,6 +16,8 @@
     "db:seed-trial-students": "npm run db:seed-trial-students --workspace=backend",
     "db:remove-trial-students": "npm run db:remove-trial-students --workspace=backend",
     "db:remove-intake-batches": "npm run db:remove-intake-batches --workspace=backend",
+    "db:reset-program-year": "npm run db:reset-program-year --workspace=backend --",
+    "db:reset-student-exams": "npm run db:reset-student-exams --workspace=backend --",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "loadtest:exam": "k6 run load-tests/student-exam.js",

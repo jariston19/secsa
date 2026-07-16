@@ -11,10 +11,11 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json ./
+COPY prisma ./prisma
 RUN npm install
 
 COPY . .
-RUN npm run db:generate && npm run build
+RUN npm run build
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

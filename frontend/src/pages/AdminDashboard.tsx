@@ -12,6 +12,10 @@ import AnalyticsDemographics from "../components/AnalyticsDemographics";
 import AnalyticsRetention from "../components/AnalyticsRetention";
 import AnalyticsTrends from "../components/AnalyticsTrends";
 import AnalyticsRankings from "../components/AnalyticsRankings";
+import AnalyticsExamStatus, {
+  type ExamStatusNavigationRequest,
+} from "../components/AnalyticsExamStatus";
+import AnalyticsExamResults from "../components/AnalyticsExamResults";
 import QuestionPerformanceModal from "../components/QuestionPerformanceModal";
 import StudentSubmissionDetailModal from "../components/StudentSubmissionDetailModal";
 import StudentSubmissionsSection from "../components/StudentSubmissionsSection";
@@ -30,6 +34,8 @@ type Tab =
   | "analytics-demographics"
   | "analytics-retention"
   | "analytics-rankings"
+  | "analytics-exam-status"
+  | "analytics-exam-results"
   | "analytics-group"
   | "analytics-student"
   | "analytics-question"
@@ -63,6 +69,8 @@ const ADMIN_PAGE_MENUS = [
       { id: "analytics-demographics", label: "Demographics" },
       { id: "analytics-retention", label: "Retention" },
       { id: "analytics-rankings", label: "Rankings" },
+      { id: "analytics-exam-status", label: "Exam Status" },
+      { id: "analytics-exam-results", label: "Exam Results" },
       { id: "analytics-group", label: "Group" },
       { id: "analytics-student", label: "Student" },
       { id: "analytics-question", label: "Question" },
@@ -81,6 +89,8 @@ export default function AdminDashboard() {
     id: string;
     name: string;
   } | null>(null);
+  const [examStatusRequest, setExamStatusRequest] =
+    useState<ExamStatusNavigationRequest | null>(null);
 
   useEffect(() => {
     if (activeTab !== "submissions") {
@@ -141,7 +151,15 @@ export default function AdminDashboard() {
         <BackupRestorePanel token={token} onUpdated={showMessage} />
       )}
 
-      {activeTab === "analytics-overview" && <AnalyticsOverview token={token} />}
+      {activeTab === "analytics-overview" && (
+        <AnalyticsOverview
+          token={token}
+          onOpenExamStatus={(request) => {
+            setExamStatusRequest(request);
+            setActiveTab("analytics-exam-status");
+          }}
+        />
+      )}
 
       {activeTab === "analytics-trends" && <AnalyticsTrends token={token} />}
 
@@ -156,8 +174,22 @@ export default function AdminDashboard() {
             setStudentViewRequest({ id: studentId, name });
             setActiveTab("analytics-student");
           }}
+          onOpenExamStatus={(request) => {
+            setExamStatusRequest(request);
+            setActiveTab("analytics-exam-status");
+          }}
         />
       )}
+
+      {activeTab === "analytics-exam-status" && (
+        <AnalyticsExamStatus
+          token={token}
+          navigationRequest={examStatusRequest}
+          onNavigationConsumed={() => setExamStatusRequest(null)}
+        />
+      )}
+
+      {activeTab === "analytics-exam-results" && <AnalyticsExamResults token={token} />}
 
       {activeTab === "analytics-group" && <GroupAnalytics token={token} />}
 

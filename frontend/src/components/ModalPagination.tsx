@@ -6,6 +6,8 @@ interface Props {
   totalItems: number;
   onPageChange: (page: number) => void;
   itemNoun?: string;
+  searchQuery?: string;
+  layout?: "end" | "split";
 }
 
 export default function ModalPagination({
@@ -16,19 +18,30 @@ export default function ModalPagination({
   totalItems,
   onPageChange,
   itemNoun,
+  searchQuery,
+  layout = "end",
 }: Props) {
   if (totalItems === 0) return null;
 
   const showNavigation = totalPages > 1;
+  const searchSuffix = searchQuery?.trim() ? ` matching “${searchQuery.trim()}”` : "";
+  const rangeLabel = itemNoun
+    ? `Showing ${pageStart}–${pageEnd} of ${totalItems} ${itemNoun}${totalItems === 1 ? "" : "s"}`
+    : `Showing ${pageStart}–${pageEnd} of ${totalItems}`;
   const singlePageSummary = itemNoun
     ? `${totalItems} ${itemNoun}${totalItems === 1 ? "" : "s"}`
     : `Showing ${pageStart}–${pageEnd} of ${totalItems}`;
+  const summaryText = showNavigation
+    ? `${rangeLabel}${searchSuffix}`
+    : `${singlePageSummary}${searchSuffix}`;
 
   return (
-    <div className="modal-pagination modal-pagination-inline">
-      <span className="muted modal-pagination-summary">
-        {showNavigation ? `Showing ${pageStart}–${pageEnd} of ${totalItems}` : singlePageSummary}
-      </span>
+    <div
+      className={`modal-pagination modal-pagination-inline${
+        layout === "split" ? " modal-pagination-split" : ""
+      }`}
+    >
+      <span className="muted modal-pagination-summary">{summaryText}</span>
       {showNavigation ? (
         <div className="modal-pagination-actions">
           <button

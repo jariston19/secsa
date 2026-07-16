@@ -57,16 +57,17 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: 5173,
+    // Docker serves production on 5173; local dev uses 5174 to avoid conflict.
+    port: 5174,
     strictPort: true,
     allowedHosts: true,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:3001",
+        target: "http://127.0.0.1:3002",
         changeOrigin: true,
       },
       "/uploads": {
-        target: "http://127.0.0.1:3001",
+        target: "http://127.0.0.1:3002",
         changeOrigin: true,
       },
     },

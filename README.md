@@ -18,8 +18,10 @@ cd backend && npx prisma migrate dev --name init && npm run db:seed
 cd .. && npm run dev
 ```
 
-- Frontend: http://localhost:5173
-- Backend: http://localhost:3001
+- Frontend: http://localhost:5174
+- Backend: http://localhost:3002 (proxied at `/api` through the frontend)
+
+Docker production uses **5173** (frontend) and **3001** (API), so `npm run dev` uses different ports and can run alongside Docker without conflict.
 
 ### Demo accounts
 

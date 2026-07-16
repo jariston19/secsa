@@ -18,6 +18,8 @@
     "db:remove-trial-students": "tsx prisma/remove-trial-students.ts",
     "db:reset-trial-student": "tsx prisma/reset-trial-student.ts",
     "db:remove-intake-batches": "tsx prisma/remove-intake-batches.ts",
+    "db:reset-program-year": "tsx prisma/reset-program-year.ts",
+    "db:reset-student-exams": "tsx prisma/reset-student-exams.ts",
     "db:generate": "prisma generate",
     "postinstall": "prisma generate"
   },

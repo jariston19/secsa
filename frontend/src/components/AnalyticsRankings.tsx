@@ -12,9 +12,10 @@ import {
   type ProgramCourseFilter,
 } from "../lib/programCourse";
 import { useProgramCourseOptions } from "../lib/programs";
+import type { ExamStatusNavigationRequest } from "./AnalyticsExamStatus";
 
 type YearLevelFilter = "ALL" | "1" | "2" | "3" | "4";
-type ExamTypeTab = "comprehensive" | "diagnostic";
+type ExamTypeTab = "comprehensive" | "diagnostic" | "retake";
 type ViewLimit = "all" | "top10";
 
 interface RankingRow {
@@ -45,10 +46,12 @@ interface RankingsData {
 interface Props {
   token: string | null;
   onViewStudent?: (studentId: string, name: string) => void;
+  onOpenExamStatus?: (request: ExamStatusNavigationRequest) => void;
 }
 
 const EXAM_TYPE_SEGMENTS = [
   { id: "comprehensive", label: "Comprehensive" },
+  { id: "retake", label: "Retake" },
   { id: "diagnostic", label: "Diagnostic" },
 ] as const;
 
@@ -65,6 +68,12 @@ function formatAttemptType(type: string) {
   return type === "RETAKE" ? "Retake" : "First";
 }
 
+function examTypeLabel(examType: ExamTypeTab) {
+  if (examType === "comprehensive") return "comprehensive";
+  if (examType === "retake") return "retake";
+  return "diagnostic";
+}
+
 function matchesRankingSearch(row: RankingRow, query: string) {
   const trimmed = query.trim().toLowerCase();
   if (!trimmed) return true;
@@ -73,7 +82,7 @@ function matchesRankingSearch(row: RankingRow, query: string) {
   return tokens.every((token) => haystack.includes(token));
 }
 
-export default function AnalyticsRankings({ token, onViewStudent }: Props) {
+export default function AnalyticsRankings({ token, onViewStudent, onOpenExamStatus }: Props) {
   const programCourseOptions = useProgramCourseOptions();
   const { appendExamYear, seasonLabel } = useAnalyticsSeason();
   const [examType, setExamType] = useState<ExamTypeTab>("comprehensive");
@@ -124,9 +133,16 @@ export default function AnalyticsRankings({ token, onViewStudent }: Props) {
   const visibleRankings =
     viewLimit === "top10" ? filteredRankings.slice(0, 10) : filteredRankings;
   const searchTrimmed = searchQuery.trim();
+  const missingCount = Math.max(0, (data?.studentsInScope ?? 0) - (data?.studentsRanked ?? 0));
+  const canOpenExamStatus =
+    examType === "comprehensive" && missingCount > 0 && onOpenExamStatus != null;
 
   const filterSubtitle = [
-    examType === "comprehensive" ? "Comprehensive" : "Diagnostic",
+    examType === "comprehensive"
+      ? "Comprehensive"
+      : examType === "retake"
+        ? "Retake"
+        : "Diagnostic",
     viewLimit === "top10" ? "Top 10" : "All ranks",
     courseFilter === "ALL" ? "All courses" : formatProgramCourse(courseFilter),
     yearFilter === "ALL" ? "All incoming years" : `Incoming year ${yearFilter}`,
@@ -154,10 +170,6 @@ export default function AnalyticsRankings({ token, onViewStudent }: Props) {
         <header className="analytics-rankings-header">
           <div>
             <h2>Score rankings</h2>
-            <p className="muted section-desc">
-              Students ranked by best {examType === "comprehensive" ? "comprehensive" : "diagnostic"}{" "}
-              exam score. QA profiles are excluded.
-            </p>
           </div>
         </header>
 
@@ -231,13 +243,35 @@ export default function AnalyticsRankings({ token, onViewStudent }: Props) {
             <span className="analytics-trends-stat-label">Ranked</span>
             <strong>{data?.studentsRanked ?? 0}</strong>
           </article>
+          {examType === "comprehensive" ? (
+            <article className="analytics-trends-stat">
+              <span className="analytics-trends-stat-label">Not yet assessed</span>
+              {canOpenExamStatus ? (
+                <button
+                  type="button"
+                  className="analytics-trends-stat-link"
+                  onClick={() =>
+                    onOpenExamStatus?.({
+                      category: "first_not_taken",
+                      courseFilter,
+                      yearFilter,
+                    })
+                  }
+                >
+                  {missingCount}
+                </button>
+              ) : (
+                <strong>{missingCount}</strong>
+              )}
+            </article>
+          ) : null}
         </div>
 
         {error ? <p className="error">{error}</p> : null}
         </div>
 
         {!data || data.studentsRanked === 0 ? (
-          <p className="muted analytics-rankings-empty">No {examType} exam scores yet for this filter.</p>
+          <p className="muted analytics-rankings-empty">No {examTypeLabel(examType)} exam scores yet for this filter.</p>
         ) : filteredRankings.length === 0 ? (
           <p className="muted analytics-rankings-empty">
             No students match{searchTrimmed ? ` "${searchTrimmed}"` : " your search"}.
@@ -266,7 +300,7 @@ export default function AnalyticsRankings({ token, onViewStudent }: Props) {
                     <th>Course</th>
                     <th>Score</th>
                     <th>Result</th>
-                    <th>Attempt</th>
+                    {examType !== "retake" ? <th>Attempt</th> : null}
                     <th>Submitted</th>
                   </tr>
                 </thead>
@@ -314,7 +348,9 @@ export default function AnalyticsRankings({ token, onViewStudent }: Props) {
                           {row.passed ? "Pass" : "Fail"}
                         </span>
                       </td>
-                      <td>{formatAttemptType(row.attemptType)}</td>
+                      {examType !== "retake" ? (
+                        <td>{formatAttemptType(row.attemptType)}</td>
+                      ) : null}
                       <td>{formatDate(row.submittedAt)}</td>
                     </tr>
                   ))}

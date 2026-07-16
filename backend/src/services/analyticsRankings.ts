@@ -3,20 +3,16 @@ import { prisma } from "../lib/prisma.js";
 import { formatFullName } from "../lib/names.js";
 import { nonQaStudentWhere, nonQaSubmittedExamWhere } from "../lib/studentFilters.js";
 
-export type RankingsExamType = "diagnostic" | "comprehensive";
+export type RankingsExamType = "diagnostic" | "comprehensive" | "retake";
 
-function isComprehensiveExamType(type: QuestionSetType) {
-  return type === QuestionSetType.COMPREHENSIVE || type === QuestionSetType.RETAKE;
-}
-
-function isDiagnosticExamType(type: QuestionSetType) {
-  return type === QuestionSetType.DIAGNOSTIC;
+function questionSetTypeForExamType(examType: RankingsExamType): QuestionSetType {
+  if (examType === "diagnostic") return QuestionSetType.DIAGNOSTIC;
+  if (examType === "retake") return QuestionSetType.RETAKE;
+  return QuestionSetType.COMPREHENSIVE;
 }
 
 function matchesExamType(type: QuestionSetType, examType: RankingsExamType) {
-  return examType === "comprehensive"
-    ? isComprehensiveExamType(type)
-    : isDiagnosticExamType(type);
+  return type === questionSetTypeForExamType(examType);
 }
 
 function assignRanks<T extends { percentage: number }>(rows: T[]) {
@@ -50,10 +46,7 @@ export async function buildAnalyticsRankings(filters: {
       where: {
         ...nonQaSubmittedExamWhere(yearLevel, programCourse, examYear),
         questionSet: {
-          type:
-            examType === "comprehensive"
-              ? { in: [QuestionSetType.COMPREHENSIVE, QuestionSetType.RETAKE] }
-              : QuestionSetType.DIAGNOSTIC,
+          type: questionSetTypeForExamType(examType),
         },
       },
       select: {

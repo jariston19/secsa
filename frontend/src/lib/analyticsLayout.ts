@@ -31,6 +31,7 @@ export const OVERVIEW_CHART_LAYOUT = chartSlotLayout({
   "pass-rate-comprehensive": "tall",
   "pass-rate-diagnostic": "tall",
   "score-distribution-comprehensive": "tall",
+  "score-distribution-retake": "tall",
   "score-distribution-diagnostic": "tall",
   "retake-success": "tall",
   "at-risk": "tall",
