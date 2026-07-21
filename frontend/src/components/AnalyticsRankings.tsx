@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import ListPanel from "./ListPanel";
 import SegmentedControl from "./SegmentedControl";
 import AnalyticsSeasonControl from "./AnalyticsSeasonControl";
 import { api } from "../lib/api";
 import { useAnalyticsSeason } from "../lib/analyticsSeason";
-import { MIN_YEAR_LEVEL, incomingYearLevelsForFilter } from "../lib/constants";
+import { incomingYearLevelsForFilter } from "../lib/constants";
 import { formatFullName } from "../lib/names";
 import {
   formatProgramCourse,
   type ProgramCourseFilter,
 } from "../lib/programCourse";
+import { printRankingsList } from "../lib/printRankingsList";
 import { useProgramCourseOptions } from "../lib/programs";
 import type { ExamStatusNavigationRequest } from "./AnalyticsExamStatus";
 
@@ -131,7 +131,9 @@ export default function AnalyticsRankings({ token, onViewStudent, onOpenExamStat
     [rankings, searchQuery]
   );
   const visibleRankings =
-    viewLimit === "top10" ? filteredRankings.slice(0, 10) : filteredRankings;
+    viewLimit === "top10"
+      ? filteredRankings.filter((row) => row.rank <= 10)
+      : filteredRankings;
   const searchTrimmed = searchQuery.trim();
   const missingCount = Math.max(0, (data?.studentsInScope ?? 0) - (data?.studentsRanked ?? 0));
   const canOpenExamStatus =
@@ -149,6 +151,17 @@ export default function AnalyticsRankings({ token, onViewStudent, onOpenExamStat
     seasonLabel,
   ].join(" · ");
 
+  function handlePrint() {
+    printRankingsList({
+      title: "Score Rankings",
+      subtitle: filterSubtitle,
+      examType,
+      rows: visibleRankings,
+      studentsInScope: data?.studentsInScope ?? 0,
+      studentsRanked: data?.studentsRanked ?? 0,
+    });
+  }
+
   if (loading && !data) {
     return (
       <section className="card analytics-rankings">
@@ -158,18 +171,21 @@ export default function AnalyticsRankings({ token, onViewStudent, onOpenExamStat
   }
 
   return (
-    <AnalyticsPrintArea
-      id="analytics-print-rankings"
-      title="Analytics — Rankings"
-      subtitle={filterSubtitle}
-    >
       <section className={`card analytics-rankings${refreshing ? " is-refreshing" : ""}`}>
         <div className="analytics-rankings-top">
         <AnalyticsSeasonControl />
 
-        <header className="analytics-rankings-header">
-          <div>
-            <h2>Score rankings</h2>
+        <header className="analytics-rankings-header analytics-roster-header">
+          <h2>Score rankings</h2>
+          <div className="analytics-roster-header-actions">
+            <button
+              type="button"
+              className="btn secondary btn-sm analytics-print-btn"
+              onClick={handlePrint}
+              disabled={visibleRankings.length === 0}
+            >
+              Print list
+            </button>
           </div>
         </header>
 
@@ -283,8 +299,8 @@ export default function AnalyticsRankings({ token, onViewStudent, onOpenExamStat
             footer={
               visibleRankings.length > 0 ? (
                 <p className="muted analytics-rankings-footer-summary">
-                  {viewLimit === "top10" && filteredRankings.length > visibleRankings.length
-                    ? `Showing top ${visibleRankings.length} of ${filteredRankings.length} ranked student${filteredRankings.length === 1 ? "" : "s"}${searchTrimmed ? ` matching "${searchTrimmed}"` : ""}.`
+                  {viewLimit === "top10"
+                    ? `Showing top 10 score ranks — ${visibleRankings.length} student${visibleRankings.length === 1 ? "" : "s"}${filteredRankings.length > visibleRankings.length ? ` of ${filteredRankings.length} ranked` : ""}${searchTrimmed ? ` matching "${searchTrimmed}"` : ""}.`
                     : `${visibleRankings.length} ranked student${visibleRankings.length === 1 ? "" : "s"}${searchTrimmed ? ` matching "${searchTrimmed}"` : ""}${searchTrimmed && filteredRankings.length < rankings.length ? ` (${rankings.length} total)` : ""}.`}
                 </p>
               ) : null
@@ -361,6 +377,5 @@ export default function AnalyticsRankings({ token, onViewStudent, onOpenExamStat
           </div>
         )}
       </section>
-    </AnalyticsPrintArea>
   );
 }

@@ -11275,13 +11275,64 @@ td:has(.action-buttons) {
   gap: 1.25rem;
 }
 
+.individual-student-topic-panel {
+  --individual-student-topic-row-height: 4.25rem;
+}
+
+.individual-student-compare-panel {
+  --individual-student-compare-row-height: 1.9rem;
+}
+
 .individual-student-topic-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
   gap: 0.4rem;
-  height: 100%;
   width: 100%;
+}
+
+.individual-student-topic-panel .analytics-panel-body,
+.individual-student-compare-panel .analytics-panel-body {
+  overflow: hidden;
+}
+
+.individual-student-paginated-chart {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.individual-student-topic-panel .individual-student-topic-grid {
+  flex: 0 1 auto;
+  height: auto;
+  grid-auto-rows: auto;
+  align-content: start;
+}
+
+.individual-student-topic-panel .individual-student-topic-tile {
+  height: auto;
+}
+
+.individual-student-compare-panel .individual-student-compare-chart {
+  flex: 0 1 auto;
+  height: auto;
+  justify-content: flex-start;
+}
+
+.individual-student-compare-panel .individual-student-compare-row {
+  flex: 0 0 auto;
+}
+
+.individual-student-topic-panel .chart-card-pagination,
+.individual-student-compare-panel .chart-card-pagination {
+  margin-top: auto;
+}
+
+.individual-student-compare-panel .individual-student-legend {
+  flex-shrink: 0;
+  margin-top: 0.35rem;
 }
 
 .individual-student-topic-tile {
@@ -11294,7 +11345,6 @@ td:has(.action-buttons) {
   gap: 0.1rem;
   font-size: 0.6875rem;
   width: 100%;
-  height: 100%;
   min-width: 0;
   min-height: 0;
   box-sizing: border-box;
@@ -11346,7 +11396,7 @@ td:has(.action-buttons) {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
 }
 

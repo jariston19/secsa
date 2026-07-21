@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode, useRef } from "react";
 import AnalyticsPrintArea from "./AnalyticsPrintArea";
 import ListPanel from "./ListPanel";
 import ModalPagination from "./ModalPagination";
@@ -190,6 +190,117 @@ function insightLabel(type: InsightType) {
   return "Watch";
 }
 
+type TopicRow = NonNullable<IndividualReport["byTopic"]>[number];
+
+function IndividualStudentTopicTiles({ topics }: { topics: TopicRow[] }) {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const pagination = usePagination(topics, {
+    containerRef: chartRef,
+    resetKey: topics.map((topic) => topic.topicId).join("|"),
+    measure: {
+      rowHeightVar: "--individual-student-topic-row-height",
+      rowHeightFallbackPx: 68,
+      minPageSize: 3,
+      columns: 3,
+    },
+  });
+
+  return (
+    <AnalyticsPanel title="Score per topic" className="individual-student-topic-panel">
+      <div ref={chartRef} className="individual-student-paginated-chart">
+        <div className="analytics-topic-tile-grid individual-student-topic-grid">
+          {pagination.paginatedItems.map((topic) => (
+            <div
+              key={topic.topicId}
+              className={`individual-student-topic-tile chart-tone-${topic.tone}`}
+            >
+              <span className="individual-student-topic-name">{topic.topic}</span>
+              <span className="individual-student-topic-score">{topic.score.toFixed(0)}%</span>
+              <span className="muted individual-student-topic-code">{topic.subject}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {pagination.totalPages > 1 ? (
+        <div className="chart-card-pagination analytics-no-print">
+          <ModalPagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            pageStart={pagination.pageStart}
+            pageEnd={pagination.pageEnd}
+            totalItems={pagination.totalItems}
+            onPageChange={pagination.setPage}
+            itemNoun="topic"
+          />
+        </div>
+      ) : null}
+    </AnalyticsPanel>
+  );
+}
+
+function IndividualStudentClassCompare({ topics }: { topics: TopicRow[] }) {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const pagination = usePagination(topics, {
+    containerRef: chartRef,
+    resetKey: topics.map((topic) => topic.topicId).join("|"),
+    measure: {
+      rowHeightVar: "--individual-student-compare-row-height",
+      rowHeightFallbackPx: 30,
+      minPageSize: 3,
+    },
+  });
+
+  return (
+    <AnalyticsPanel title="Student vs. class average" className="individual-student-compare-panel">
+      <div ref={chartRef} className="individual-student-paginated-chart">
+        <div className="individual-student-compare-chart">
+          {pagination.paginatedItems.map((topic) => {
+            const max = 100;
+            const studentWidth = (topic.score / max) * 100;
+            const classPos =
+              topic.classAverage != null ? (topic.classAverage / max) * 100 : null;
+            return (
+              <div key={topic.topicId} className="individual-student-compare-row">
+                <span className="individual-student-compare-label">{topic.topic}</span>
+                <div className="individual-student-compare-track">
+                  {classPos != null ? (
+                    <span
+                      className="individual-student-compare-marker"
+                      style={{ left: `${classPos}%` }}
+                      title={`Class avg ${topic.classAverage?.toFixed(0)}%`}
+                    />
+                  ) : null}
+                  <span
+                    className={`individual-student-compare-bar chart-tone-${topic.tone}`}
+                    style={{ width: `${studentWidth}%` }}
+                  />
+                </div>
+                <span className="individual-student-compare-value">{topic.score.toFixed(0)}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {pagination.totalPages > 1 ? (
+        <div className="chart-card-pagination analytics-no-print">
+          <ModalPagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            pageStart={pagination.pageStart}
+            pageEnd={pagination.pageEnd}
+            totalItems={pagination.totalItems}
+            onPageChange={pagination.setPage}
+            itemNoun="topic"
+          />
+        </div>
+      ) : null}
+      <p className="muted individual-student-legend">
+        Blue bar = student · Grey tick = class average
+      </p>
+    </AnalyticsPanel>
+  );
+}
+
 function renderIndividualStudentChart(id: IndividualStudentChartId, report: IndividualReport): ReactNode {
   switch (id) {
     case "multi-year-journey":
@@ -232,62 +343,27 @@ function renderIndividualStudentChart(id: IndividualStudentChartId, report: Indi
         </AnalyticsPanel>
       );
     case "topic-tiles":
-      return (
+      return (report.byTopic ?? []).length === 0 ? (
         <AnalyticsPanel title="Score per topic">
-          <div className="analytics-topic-tile-grid individual-student-topic-grid">
-            {(report.byTopic ?? []).map((topic) => (
-              <div
-                key={topic.topicId}
-                className={`individual-student-topic-tile chart-tone-${topic.tone}`}
-              >
-                <span className="individual-student-topic-name">{topic.topic}</span>
-                <span className="individual-student-topic-score">{topic.score.toFixed(0)}%</span>
-                <span className="muted individual-student-topic-code">{topic.subject}</span>
-              </div>
-            ))}
-          </div>
+          <p className="muted">No topic data yet.</p>
         </AnalyticsPanel>
+      ) : (
+        <IndividualStudentTopicTiles topics={report.byTopic ?? []} />
       );
     case "class-compare":
-      return (
+      return (report.byTopic ?? []).length === 0 ? (
         <AnalyticsPanel title="Student vs. class average">
-          <div className="individual-student-compare-chart">
-            {(report.byTopic ?? []).map((topic) => {
-              const max = 100;
-              const studentWidth = (topic.score / max) * 100;
-              const classPos =
-                topic.classAverage != null ? (topic.classAverage / max) * 100 : null;
-              return (
-                <div key={topic.topicId} className="individual-student-compare-row">
-                  <span className="individual-student-compare-label">{topic.topic}</span>
-                  <div className="individual-student-compare-track">
-                    {classPos != null ? (
-                      <span
-                        className="individual-student-compare-marker"
-                        style={{ left: `${classPos}%` }}
-                        title={`Class avg ${topic.classAverage?.toFixed(0)}%`}
-                      />
-                    ) : null}
-                    <span
-                      className={`individual-student-compare-bar chart-tone-${topic.tone}`}
-                      style={{ width: `${studentWidth}%` }}
-                    />
-                  </div>
-                  <span className="individual-student-compare-value">{topic.score.toFixed(0)}%</span>
-                </div>
-              );
-            })}
-          </div>
-          <p className="muted individual-student-legend">
-            Blue bar = student · Grey tick = class average
-          </p>
+          <p className="muted">No topic data yet.</p>
         </AnalyticsPanel>
+      ) : (
+        <IndividualStudentClassCompare topics={report.byTopic ?? []} />
       );
     case "bloom-levels":
       return (
         <AnalyticsPanel
           title="Domain profile"
           description="L1–L6 cognitive domains. Spot surface recall vs deeper analysis and evaluation gaps."
+          className="individual-student-bloom-panel"
         >
           <GroupedBloomBars
             items={(report.byBloomLevel ?? []).map((row) => ({

@@ -17,13 +17,11 @@ function matchesExamType(type: QuestionSetType, examType: RankingsExamType) {
 
 function assignRanks<T extends { percentage: number }>(rows: T[]) {
   let rank = 0;
-  let position = 0;
   let previousScore: number | null = null;
 
   return rows.map((row) => {
-    position += 1;
     if (previousScore === null || row.percentage < previousScore) {
-      rank = position;
+      rank += 1;
       previousScore = row.percentage;
     }
     return { ...row, rank };

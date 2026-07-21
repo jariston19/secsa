@@ -21,7 +21,7 @@ export function readCssVarLength(
   return parsed > 0 ? parsed : fallbackPx;
 }
 
-interface MeasurePageSizeOptions {
+export interface MeasurePageSizeOptions {
   rowHeightVar?: string;
   rowHeightFallbackPx?: number;
   headerSelector?: string;
