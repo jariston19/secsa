@@ -346,6 +346,8 @@ export default function AdminUsersModal({
       programCourse: user.programCourse ?? courseOptions[0]?.id ?? "",
       gender: user.gender ?? "MALE",
       schoolType: user.schoolType ?? "PUBLIC",
+      seniorHighStrand: user.seniorHighStrand ?? "",
+      previousSchool: user.previousSchool ?? "",
       isActive: user.isActive,
       qaUnlimited: user.qaUnlimited,
       password: "",
@@ -390,6 +392,14 @@ export default function AdminUsersModal({
             programCourse: editDraft.role === "STUDENT" ? editDraft.programCourse : null,
             gender: editDraft.role === "STUDENT" ? editDraft.gender : null,
             schoolType: editDraft.role === "STUDENT" ? editDraft.schoolType : null,
+            seniorHighStrand:
+              editDraft.role === "STUDENT"
+                ? editDraft.seniorHighStrand || null
+                : null,
+            previousSchool:
+              editDraft.role === "STUDENT"
+                ? editDraft.previousSchool.trim() || null
+                : null,
             ...(editDraft.role !== "SUPERADMIN" ? { isActive: editDraft.isActive } : {}),
             qaUnlimited: editDraft.role === "STUDENT" ? editDraft.qaUnlimited : false,
             ...(editDraft.password.trim() ? { password: editDraft.password } : {}),

@@ -62,6 +62,16 @@ enum SchoolType {
   PRIVATE
 }
 
+enum SeniorHighStrand {
+  STEM
+  ABM
+  HUMSS
+  GAS
+  TVL
+  SPORTS
+  ARTS_AND_DESIGN
+}
+
 model Program {
   id        String   @id @default(cuid())
   slug      String   @unique
@@ -86,8 +96,10 @@ model User {
   yearLevel     Int?
   programCourse String?
   program       Program? @relation(fields: [programCourse], references: [slug], onUpdate: Cascade)
-  gender        Gender?
-  schoolType    SchoolType?
+  gender            Gender?
+  schoolType        SchoolType?
+  seniorHighStrand  SeniorHighStrand?
+  previousSchool    String?
   qaUnlimited  Boolean  @default(false)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())

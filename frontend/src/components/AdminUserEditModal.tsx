@@ -9,8 +9,10 @@ import {
 import {
   GENDER_OPTIONS,
   SCHOOL_TYPE_OPTIONS,
+  SENIOR_HIGH_STRAND_OPTIONS,
   type GenderId,
   type SchoolTypeId,
+  type SeniorHighStrandId,
 } from "../lib/studentDemographics";
 import type { UserEditDraft, UserRow } from "./AdminUserGroupTable";
 
@@ -33,6 +35,7 @@ function UserEditFields({
   showCourseFields,
   showGenderField,
   showSchoolField,
+  showSeniorHighFields,
   showQaFields,
 }: {
   editDraft: UserEditDraft;
@@ -42,6 +45,7 @@ function UserEditFields({
   showCourseFields: boolean;
   showGenderField: boolean;
   showSchoolField: boolean;
+  showSeniorHighFields: boolean;
   showQaFields: boolean;
 }) {
   const programCourseOptions = useProgramCourseOptions();
@@ -150,7 +154,7 @@ function UserEditFields({
       )}
       {showSchoolField && editDraft.role === "STUDENT" && (
         <label>
-          <span className="admin-user-edit-label">School</span>
+          <span className="admin-user-edit-label">School type</span>
           <span className="admin-user-edit-control">
             <select
               className="table-input"
@@ -170,6 +174,56 @@ function UserEditFields({
             </select>
           </span>
         </label>
+      )}
+      {showSeniorHighFields && editDraft.role === "STUDENT" && (
+        <div className="admin-user-internal-panel">
+          <p className="admin-user-internal-title">Internal information</p>
+          <p className="muted admin-user-internal-desc">
+            Admin records only — not shown to students, teachers, or exam reports.
+          </p>
+          <label>
+            <span className="admin-user-edit-label">Senior high strand</span>
+            <span className="admin-user-edit-control">
+              <select
+                className="table-input"
+                value={editDraft.seniorHighStrand}
+                onChange={(e) =>
+                  setEditDraft(
+                    (draft) =>
+                      draft && {
+                        ...draft,
+                        seniorHighStrand: e.target.value as SeniorHighStrandId | "",
+                      }
+                  )
+                }
+              >
+                <option value="">Not set</option>
+                {SENIOR_HIGH_STRAND_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </label>
+          <label>
+            <span className="admin-user-edit-label">Former school</span>
+            <span className="admin-user-edit-control">
+              <input
+                className="table-input"
+                type="text"
+                value={editDraft.previousSchool}
+                onChange={(e) =>
+                  setEditDraft(
+                    (draft) => draft && { ...draft, previousSchool: e.target.value }
+                  )
+                }
+                placeholder="Senior high they came from"
+                maxLength={200}
+              />
+            </span>
+          </label>
+        </div>
       )}
       {showQaFields && editDraft.role === "STUDENT" && (
         <label>
@@ -312,6 +366,7 @@ export default function AdminUserEditModal({
             showCourseFields={editingAsStudent}
             showGenderField={editingAsStudent}
             showSchoolField={editingAsStudent}
+            showSeniorHighFields={editingAsStudent}
             showQaFields={editingAsStudent && group === "student"}
           />
         </div>

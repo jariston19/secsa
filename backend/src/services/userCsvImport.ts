@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { Gender, Role, SchoolType, type PrismaClient } from "@prisma/client";
+import { Gender, Role, SchoolType, SeniorHighStrand, type PrismaClient } from "@prisma/client";
 import { parseCsv } from "../lib/parseCsv.js";
 import { toProgramSlug } from "../lib/programCourse.js";
 import { assertYearLevelForProgram } from "../lib/yearLevel.js";
@@ -15,6 +15,8 @@ export const USER_CSV_HEADERS = [
   "program_course",
   "gender",
   "school_type",
+  "senior_high_strand",
+  "previous_school",
   "qa_unlimited",
 ] as const;
 
@@ -39,6 +41,12 @@ const HEADER_ALIASES: Record<string, (typeof USER_CSV_HEADERS)[number]> = {
   school_type: "school_type",
   schooltype: "school_type",
   school: "school_type",
+  senior_high_strand: "senior_high_strand",
+  seniorhighstrand: "senior_high_strand",
+  strand: "senior_high_strand",
+  previous_school: "previous_school",
+  previousschool: "previous_school",
+  school_name: "previous_school",
   qa_unlimited: "qa_unlimited",
   qaunlimited: "qa_unlimited",
   qa: "qa_unlimited",
@@ -60,6 +68,8 @@ type ParsedUserRow = {
   programCourse: string | null;
   gender: Gender | null;
   schoolType: SchoolType | null;
+  seniorHighStrand: SeniorHighStrand | null;
+  previousSchool: string | null;
   qaUnlimited: boolean;
 };
 
@@ -104,6 +114,14 @@ function parseSchoolType(value: string): SchoolType | null {
   if (key === "PUBLIC") return SchoolType.PUBLIC;
   if (key === "PRIVATE") return SchoolType.PRIVATE;
   return null;
+}
+
+function parseSeniorHighStrand(value: string): SeniorHighStrand | null {
+  const key = value.trim().toUpperCase().replace(/\s+/g, "_");
+  if (key === "ARTS_AND_DESIGN" || key === "ARTS") return SeniorHighStrand.ARTS_AND_DESIGN;
+  return (Object.values(SeniorHighStrand) as string[]).includes(key)
+    ? (key as SeniorHighStrand)
+    : null;
 }
 
 function parseBoolean(value: string) {
@@ -151,6 +169,8 @@ function parseRow(
   const programCourseRaw = readCell(row, indexes, "program_course");
   const genderRaw = readCell(row, indexes, "gender");
   const schoolTypeRaw = readCell(row, indexes, "school_type");
+  const seniorHighStrandRaw = readCell(row, indexes, "senior_high_strand");
+  const previousSchoolRaw = readCell(row, indexes, "previous_school");
   const qaUnlimitedRaw = readCell(row, indexes, "qa_unlimited");
 
   if (!emailRaw) return { error: `Row ${rowNumber}: email is required.` };
@@ -226,6 +246,23 @@ function parseRow(
       };
     }
 
+    let seniorHighStrand: SeniorHighStrand | null = null;
+    if (seniorHighStrandRaw) {
+      seniorHighStrand = parseSeniorHighStrand(seniorHighStrandRaw);
+      if (!seniorHighStrand) {
+        return {
+          error: `Row ${rowNumber}: senior_high_strand must be STEM, ABM, HUMSS, GAS, TVL, SPORTS, or ARTS_AND_DESIGN.`,
+        };
+      }
+    }
+
+    const previousSchool = previousSchoolRaw.trim() || null;
+    if (previousSchool && previousSchool.length > 200) {
+      return {
+        error: `Row ${rowNumber}: previous_school must be 200 characters or fewer.`,
+      };
+    }
+
     return {
       data: {
         email,
@@ -237,14 +274,24 @@ function parseRow(
         programCourse,
         gender,
         schoolType,
+        seniorHighStrand,
+        previousSchool,
         qaUnlimited: qaUnlimited ?? false,
       },
     };
   }
 
-  if (yearLevelRaw || programCourseRaw || genderRaw || schoolTypeRaw || qaUnlimitedRaw) {
+  if (
+    yearLevelRaw ||
+    programCourseRaw ||
+    genderRaw ||
+    schoolTypeRaw ||
+    seniorHighStrandRaw ||
+    previousSchoolRaw ||
+    qaUnlimitedRaw
+  ) {
     return {
-      error: `Row ${rowNumber}: year_level, program_course, gender, school_type, and qa_unlimited apply only to STUDENT rows.`,
+      error: `Row ${rowNumber}: year_level, program_course, gender, school_type, senior_high_strand, previous_school, and qa_unlimited apply only to STUDENT rows.`,
     };
   }
 
@@ -259,6 +306,8 @@ function parseRow(
       programCourse: null,
       gender: null,
       schoolType: null,
+      seniorHighStrand: null,
+      previousSchool: null,
       qaUnlimited: false,
     },
   };
@@ -267,7 +316,7 @@ function parseRow(
 export function userCsvTemplate() {
   return [
     USER_CSV_HEADERS.join(","),
-    "student1@school.edu,password123,Juan,Dela Cruz,STUDENT,1,INFORMATION_TECHNOLOGY,MALE,PUBLIC,false",
+    "student1@school.edu,password123,Juan,Dela Cruz,STUDENT,1,INFORMATION_TECHNOLOGY,MALE,PUBLIC,STEM,Example Senior High School,false",
     "teacher1@school.edu,password123,Maria,Santos,TEACHER,,,,,",
   ].join("\n");
 }
@@ -355,6 +404,8 @@ export async function importUsersFromCsv(prisma: PrismaClient, csvText: string) 
           programCourse: data.role === Role.STUDENT ? data.programCourse : null,
           gender: data.role === Role.STUDENT ? data.gender : null,
           schoolType: data.role === Role.STUDENT ? data.schoolType : null,
+          seniorHighStrand: data.role === Role.STUDENT ? data.seniorHighStrand : null,
+          previousSchool: data.role === Role.STUDENT ? data.previousSchool : null,
           qaUnlimited: data.role === Role.STUDENT ? data.qaUnlimited : false,
         },
       });

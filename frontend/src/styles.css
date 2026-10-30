@@ -1093,6 +1093,47 @@ button.sidebar-header-toggle:focus-visible {
   border: 0.5px solid var(--card-border);
 }
 
+.add-user-internal-panel {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem 1rem;
+  border: 0.5px dashed color-mix(in srgb, var(--ios-label-tertiary) 35%, transparent);
+  border-radius: var(--ios-radius-lg);
+  background: color-mix(in srgb, var(--ios-bg-elevated) 70%, transparent);
+}
+
+.add-user-internal-panel legend {
+  padding: 0 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ios-label-secondary);
+}
+
+.add-user-internal-desc {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.admin-user-internal-panel {
+  grid-column: 1 / -1;
+  margin-top: 0.25rem;
+  padding: 0.85rem 1rem;
+  border: 0.5px dashed color-mix(in srgb, var(--ios-label-tertiary) 35%, transparent);
+  border-radius: var(--ios-radius-md);
+  background: color-mix(in srgb, var(--ios-bg-tertiary) 40%, var(--ios-bg-elevated));
+}
+
+.admin-user-internal-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ios-label-secondary);
+}
+
+.admin-user-internal-desc {
+  margin: 0.35rem 0 0.75rem;
+  font-size: 0.8125rem;
+}
+
 .add-user-student-panel legend {
   margin-bottom: 0.75rem;
 }

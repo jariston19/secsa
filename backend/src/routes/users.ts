@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import bcrypt from "bcryptjs";
-import { Role, Gender, SchoolType } from "@prisma/client";
+import { Role, Gender, SchoolType, SeniorHighStrand } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getUser, requireRoles } from "../lib/auth.js";
@@ -31,6 +31,8 @@ const createUserSchema = z.object({
   programCourse: programCourseSlugSchema.optional(),
   gender: z.nativeEnum(Gender).optional(),
   schoolType: z.nativeEnum(SchoolType).optional(),
+  seniorHighStrand: z.nativeEnum(SeniorHighStrand).optional(),
+  previousSchool: z.string().trim().max(200).optional(),
   qaUnlimited: z.boolean().optional(),
 });
 
@@ -44,6 +46,8 @@ const updateUserSchema = z.object({
   programCourse: programCourseSlugSchema.optional().nullable(),
   gender: z.nativeEnum(Gender).optional().nullable(),
   schoolType: z.nativeEnum(SchoolType).optional().nullable(),
+  seniorHighStrand: z.nativeEnum(SeniorHighStrand).optional().nullable(),
+  previousSchool: z.string().trim().max(200).optional().nullable(),
   isActive: z.boolean().optional(),
   qaUnlimited: z.boolean().optional(),
 });
@@ -79,7 +83,7 @@ const bulkDemoteSchema = bulkProgramSchema.extend({
   }
 });
 
-const userSelect = {
+const userSelectBase = {
   id: true,
   email: true,
   firstName: true,
@@ -94,6 +98,17 @@ const userSelect = {
   createdAt: true,
 } as const;
 
+/** Superadmin-only — not exposed to teachers or students. */
+const userSelectAdmin = {
+  ...userSelectBase,
+  seniorHighStrand: true,
+  previousSchool: true,
+} as const;
+
+function userSelectForRole(role: Role) {
+  return role === Role.SUPERADMIN ? userSelectAdmin : userSelectBase;
+}
+
 export async function userRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate);
 
@@ -103,7 +118,7 @@ export async function userRoutes(app: FastifyInstance) {
 
     const users = await prisma.user.findMany({
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      select: userSelect,
+      select: userSelectForRole(user.role),
     });
 
     return { users };
@@ -161,6 +176,18 @@ export async function userRoutes(app: FastifyInstance) {
           ? body.schoolType
           : existing.schoolType
         : null;
+    const nextSeniorHighStrand =
+      nextRole === Role.STUDENT
+        ? body.seniorHighStrand !== undefined
+          ? body.seniorHighStrand
+          : existing.seniorHighStrand
+        : null;
+    const nextPreviousSchool =
+      nextRole === Role.STUDENT
+        ? body.previousSchool !== undefined
+          ? body.previousSchool
+          : existing.previousSchool
+        : null;
 
     if (nextRole === Role.STUDENT && !nextYearLevel) {
       return reply.code(400).send({ error: "Students require a year level." });
@@ -208,11 +235,13 @@ export async function userRoutes(app: FastifyInstance) {
           programCourse: nextProgramCourse,
           gender: nextGender,
           schoolType: nextSchoolType,
+          seniorHighStrand: nextSeniorHighStrand,
+          previousSchool: nextPreviousSchool,
           ...(body.password
             ? { passwordHash: await bcrypt.hash(body.password, 10) }
             : {}),
         },
-        select: userSelect,
+        select: userSelectAdmin,
       });
 
       return { user: updated };
@@ -273,9 +302,12 @@ export async function userRoutes(app: FastifyInstance) {
           programCourse: body.role === Role.STUDENT ? body.programCourse : null,
           gender: body.role === Role.STUDENT ? body.gender : null,
           schoolType: body.role === Role.STUDENT ? body.schoolType : null,
+          seniorHighStrand: body.role === Role.STUDENT ? body.seniorHighStrand ?? null : null,
+          previousSchool:
+            body.role === Role.STUDENT ? body.previousSchool?.trim() || null : null,
           qaUnlimited: body.role === Role.STUDENT ? Boolean(body.qaUnlimited) : false,
         },
-        select: userSelect,
+        select: userSelectAdmin,
       });
       return reply.code(201).send({ user: created });
     } catch {

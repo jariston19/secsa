@@ -19,6 +19,8 @@ export interface UserRow {
   programCourse: string | null;
   gender: import("../lib/studentDemographics").GenderId | null;
   schoolType: import("../lib/studentDemographics").SchoolTypeId | null;
+  seniorHighStrand: import("../lib/studentDemographics").SeniorHighStrandId | null;
+  previousSchool: string | null;
   isActive: boolean;
   qaUnlimited: boolean;
 }
@@ -32,6 +34,8 @@ export interface UserEditDraft {
   programCourse: string;
   gender: import("../lib/studentDemographics").GenderId;
   schoolType: import("../lib/studentDemographics").SchoolTypeId;
+  seniorHighStrand: import("../lib/studentDemographics").SeniorHighStrandId | "";
+  previousSchool: string;
   isActive: boolean;
   qaUnlimited: boolean;
   password: string;

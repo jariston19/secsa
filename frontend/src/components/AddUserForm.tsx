@@ -7,8 +7,10 @@ import { useProgramCourseOptions } from "../lib/programs";
 import {
   GENDER_OPTIONS,
   SCHOOL_TYPE_OPTIONS,
+  SENIOR_HIGH_STRAND_OPTIONS,
   type GenderId,
   type SchoolTypeId,
+  type SeniorHighStrandId,
 } from "../lib/studentDemographics";
 import { duplicateUserEmailMessage } from "../lib/userEmailDuplicates";
 import { toastBatchCreated, toastCreated } from "../lib/toastMessages";
@@ -72,6 +74,8 @@ export default function AddUserForm({ token, onCreated }: Props) {
       programCourse: programCourseOptions[0]?.id ?? DEFAULT_PROGRAM_COURSE,
       gender: "MALE" as GenderId,
       schoolType: "PUBLIC" as SchoolTypeId,
+      seniorHighStrand: "" as SeniorHighStrandId | "",
+      previousSchool: "",
       qaUnlimited: false,
     };
   }
@@ -158,6 +162,14 @@ export default function AddUserForm({ token, onCreated }: Props) {
             programCourse: form.role === "STUDENT" ? form.programCourse : undefined,
             gender: form.role === "STUDENT" ? form.gender : undefined,
             schoolType: form.role === "STUDENT" ? form.schoolType : undefined,
+            seniorHighStrand:
+              form.role === "STUDENT" && form.seniorHighStrand
+                ? form.seniorHighStrand
+                : undefined,
+            previousSchool:
+              form.role === "STUDENT" && form.previousSchool.trim()
+                ? form.previousSchool.trim()
+                : undefined,
             qaUnlimited: form.role === "STUDENT" ? form.qaUnlimited : undefined,
           }),
         },
@@ -232,8 +244,9 @@ export default function AddUserForm({ token, onCreated }: Props) {
         <div>
           <h3>Import from CSV</h3>
           <p className="muted section-desc">
-            Students need year level, program course, gender, and school type. Leave those columns
-            blank for teachers and superadmins.
+            Students need year level, program course, gender, and school type. Optional internal
+            columns: senior_high_strand and previous_school (admin-only records). Leave student
+            columns blank for teachers and superadmins.
           </p>
         </div>
         <div className="encoder-csv-import-actions">
@@ -411,7 +424,7 @@ export default function AddUserForm({ token, onCreated }: Props) {
                     ))}
                   </select>
                 </FormField>
-                <FormField label="School" reserveHintSpace>
+                <FormField label="School type" reserveHintSpace>
                   <select
                     value={form.schoolType}
                     onChange={(event) =>
@@ -427,6 +440,44 @@ export default function AddUserForm({ token, onCreated }: Props) {
                   </select>
                 </FormField>
               </div>
+
+              <fieldset className="add-user-internal-panel">
+                <legend>Internal information</legend>
+                <p className="muted section-desc add-user-internal-desc">
+                  Admin records only — not shown to students, teachers, or exam reports.
+                </p>
+                <div className="add-user-fields add-user-fields-2">
+                  <FormField label="Senior high strand" reserveHintSpace>
+                    <select
+                      value={form.seniorHighStrand}
+                      onChange={(event) =>
+                        setForm({
+                          ...form,
+                          seniorHighStrand: event.target.value as SeniorHighStrandId | "",
+                        })
+                      }
+                    >
+                      <option value="">Not set</option>
+                      {SENIOR_HIGH_STRAND_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+                  <FormField label="Former school" reserveHintSpace>
+                    <input
+                      type="text"
+                      value={form.previousSchool}
+                      onChange={(event) =>
+                        setForm({ ...form, previousSchool: event.target.value })
+                      }
+                      placeholder="Senior high they came from"
+                      maxLength={200}
+                    />
+                  </FormField>
+                </div>
+              </fieldset>
 
               <div className="add-user-toggle-row">
                 <div>
